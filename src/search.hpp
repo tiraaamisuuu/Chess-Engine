@@ -293,13 +293,23 @@ struct SearchContext {
     const std::atomic<bool>* abortFlag=nullptr;
 
     Move killer[128][2]{};
+    Move countermove[2][64][64]{};
+    Move plyMove[128]{};
     int history[2][64][64]{};
+    int staticEvalByPly[128]{};
     std::vector<u64> gameHistory; // position hashes from actual game (includes current root)
     std::vector<u64> repetition;
 };
 
 static bool sameMove(const Move& a, const Move& b){
     return a.from==b.from && a.to==b.to && a.promo==b.promo && a.isCastle==b.isCastle && a.isEnPassant==b.isEnPassant;
+}
+
+static Move invalidMove(){
+    Move m{};
+    m.from = 64;
+    m.to = 64;
+    return m;
 }
 
 static int mvvLvaScore(const Board& bd, const Move& m){
@@ -315,7 +325,7 @@ static int mvvLvaScore(const Board& bd, const Move& m){
     return victim*10 - attacker;
 }
 
-static int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const Move& ttMove, int ply){
+static int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const Move& ttMove, int ply, const Move& prevMove){
     if(ttMove.from==m.from && ttMove.to==m.to && ttMove.promo==m.promo) return 1000000;
 
     if(m.isCapture || m.isEnPassant){
@@ -328,6 +338,10 @@ static int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const M
     }
 
     int side = (bd.stm==Color::White)?0:1;
+    if(prevMove.from < 64 && prevMove.to < 64){
+        const Move& cm = ctx.countermove[side][prevMove.from][prevMove.to];
+        if(sameMove(m, cm)) return 85000;
+    }
     return ctx.history[side][m.from][m.to];
 }
 
@@ -386,12 +400,40 @@ static bool isThreefoldRepetition(const Board& bd, const SearchContext& ctx){
     return false;
 }
 
-static int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta){
+static int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int ply){
     if(timeUp(ctx)) return 0;
     ctx.stats.qnodes++;
 
+    alpha = std::max(alpha, -MATE + ply);
+    beta = std::min(beta, MATE - ply - 1);
+    if(alpha >= beta) return alpha;
+
+    if(isThreefoldRepetition(bd, ctx)) return 0;
+
+    const bool inCheck = bd.inCheck(bd.stm);
+    if(inCheck){
+        std::vector<Move> evasions;
+        bd.genLegalMoves(evasions);
+        if(evasions.empty()) return -MATE + ply;
+
+        int best = -INF;
+        for(const Move& m : evasions){
+            Undo u{};
+            if(!bd.makeMove(m, u)) continue;
+            ctx.repetition.push_back(bd.hash);
+            int score = -quiescence(bd, ctx, -beta, -alpha, ply + 1);
+            ctx.repetition.pop_back();
+            bd.undoMove(u);
+
+            if(score > best) best = score;
+            if(score > alpha) alpha = score;
+            if(alpha >= beta) return score;
+        }
+        return best;
+    }
+
     int stand = evaluate(bd);
-    if(stand >= beta) return beta;
+    if(stand >= beta) return stand;
     if(stand > alpha) alpha = stand;
 
     std::vector<Move> pseudo;
@@ -399,34 +441,48 @@ static int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta){
 
     std::vector<Move> moves;
     moves.reserve(pseudo.size());
-    for(const auto& m: pseudo){
-        if(m.isCapture || m.isEnPassant || m.promo!=PieceType::None){
-            Undo u{};
-            if(bd.makeMove(m,u)){
-                moves.push_back(m);
-                bd.undoMove(u);
+    for(const Move& m : pseudo){
+        if(!(m.isCapture || m.isEnPassant || m.promo != PieceType::None)) continue;
+
+        if(!m.isEnPassant && m.promo == PieceType::None){
+            int victim = 0;
+            if(m.isCapture){
+                const Piece v = bd.at(m.to);
+                victim = pieceValue(v.t);
+            }
+            const int deltaMargin = 120;
+            if(stand + victim + deltaMargin < alpha){
+                continue;
             }
         }
+        moves.push_back(m);
     }
 
     std::sort(moves.begin(), moves.end(), [&](const Move& a, const Move& b){
-        return mvvLvaScore(bd,a) > mvvLvaScore(bd,b);
+        auto tactical = [&](const Move& m){
+            int s = mvvLvaScore(bd, m);
+            if(m.promo != PieceType::None) s += 2000 + pieceValue(m.promo);
+            return s;
+        };
+        return tactical(a) > tactical(b);
     });
 
-    for(const auto& m: moves){
+    for(const Move& m : moves){
         Undo u{};
-        if(!bd.makeMove(m,u)) continue;
-        int score = -quiescence(bd, ctx, -beta, -alpha);
+        if(!bd.makeMove(m, u)) continue;
+        ctx.repetition.push_back(bd.hash);
+        int score = -quiescence(bd, ctx, -beta, -alpha, ply + 1);
+        ctx.repetition.pop_back();
         bd.undoMove(u);
 
-        if(score >= beta) return beta;
+        if(score >= beta) return score;
         if(score > alpha) alpha = score;
     }
 
     return alpha;
 }
 
-static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta, int ply){
+static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta, int ply, const Move& prevMove, bool allowNullMove){
     if(timeUp(ctx)) return 0;
     ctx.stats.nodes++;
 
@@ -441,7 +497,17 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
 
     bool inCheck = bd.inCheck(bd.stm);
     int staticEval = 0;
-    if(!inCheck) staticEval = evaluate(bd);
+    if(!inCheck){
+        staticEval = evaluate(bd);
+        if(ply < 128) ctx.staticEvalByPly[ply] = staticEval;
+    } else if(ply < 128){
+        ctx.staticEvalByPly[ply] = -INF;
+    }
+
+    bool improving = false;
+    if(!inCheck && ply >= 2 && ply < 128){
+        improving = staticEval > ctx.staticEvalByPly[ply - 2];
+    }
 
     if(!inCheck && depth <= 3){
         const int rfpMargin = 95 * depth;
@@ -465,21 +531,30 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     }
 
     if(depth <= 0){
-        return quiescence(bd, ctx, alpha, beta);
+        return quiescence(bd, ctx, alpha, beta, ply);
     }
 
     // Null-move pruning: aggressive cut when position is quiet enough and side has material.
-    if(depth >= 3 && !inCheck && hasNonPawnMaterial(bd, bd.stm)){
+    if(allowNullMove && depth >= 3 && !inCheck && hasNonPawnMaterial(bd, bd.stm)){
         Board nb = bd;
         nb.epSquare = -1;
         nb.stm = other(nb.stm);
         nb.recomputeHash();
         ctx.repetition.push_back(nb.hash);
         int reduction = 2 + depth/4;
-        int score = -negamax(nb, ctx, depth - 1 - reduction, -beta, -beta + 1, ply + 1);
+        int score = -negamax(nb, ctx, depth - 1 - reduction, -beta, -beta + 1, ply + 1, invalidMove(), false);
         ctx.repetition.pop_back();
         if(ctx.stop) return 0;
-        if(score >= beta) return beta;
+        if(score >= beta){
+            if(depth >= 6){
+                const int verifyDepth = std::max(0, depth - 1 - reduction);
+                int verify = negamax(bd, ctx, verifyDepth, beta - 1, beta, ply, prevMove, false);
+                if(ctx.stop) return 0;
+                if(verify >= beta) return beta;
+            } else {
+                return beta;
+            }
+        }
     }
 
     std::vector<Move> moves;
@@ -490,14 +565,19 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         return 0;
     }
 
+    if(inCheck && moves.size() == 1 && depth < 10){
+        depth++;
+    }
+
     std::sort(moves.begin(), moves.end(), [&](const Move& a, const Move& b){
-        return scoreMove(bd, ctx, a, ttMove, ply) > scoreMove(bd, ctx, b, ttMove, ply);
+        return scoreMove(bd, ctx, a, ttMove, ply, prevMove) > scoreMove(bd, ctx, b, ttMove, ply, prevMove);
     });
 
     int best = -INF;
     Move bestM{};
 
     int originalAlpha = alpha;
+    const int side = (bd.stm==Color::White)?0:1;
     std::vector<Move> quietTried;
     quietTried.reserve(moves.size());
 
@@ -512,8 +592,11 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
             }
         }
 
-        if(!inCheck && depth <= 3 && isQuiet && i >= size_t(10 + depth*2)){
-            continue;
+        if(!inCheck && depth <= 3 && isQuiet){
+            size_t lmpThreshold = size_t(6 + depth * 3 + (improving ? 2 : 0));
+            if(i >= lmpThreshold){
+                continue;
+            }
         }
 
         if(isQuiet) quietTried.push_back(m);
@@ -521,6 +604,7 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         Undo u{};
         if(!bd.makeMove(m,u)) continue;
 
+        if(ply < 128) ctx.plyMove[ply] = m;
         ctx.repetition.push_back(bd.hash);
 
         int newDepth = depth - 1;
@@ -535,22 +619,24 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
             reduction = 1;
             if(newDepth >= 5) reduction++;
             if(i >= 8) reduction++;
-            reduction = std::min(reduction, std::max(0, newDepth - 1));
+            if(!improving) reduction++;
+            if(ctx.history[side][m.from][m.to] > 12000) reduction--;
+            reduction = std::clamp(reduction, 0, std::max(0, newDepth - 1));
         }
 
         if(i == 0){
-            score = -negamax(bd, ctx, newDepth, -beta, -alpha, ply + 1);
+            score = -negamax(bd, ctx, newDepth, -beta, -alpha, ply + 1, m, true);
         } else {
             // PVS + LMR: search late quiet moves reduced on a null-window first.
             const int scoutDepth = std::max(0, newDepth - reduction);
-            score = -negamax(bd, ctx, scoutDepth, -alpha - 1, -alpha, ply + 1);
+            score = -negamax(bd, ctx, scoutDepth, -alpha - 1, -alpha, ply + 1, m, true);
 
             if(!ctx.stop && reduction > 0 && score > alpha){
-                score = -negamax(bd, ctx, newDepth, -alpha - 1, -alpha, ply + 1);
+                score = -negamax(bd, ctx, newDepth, -alpha - 1, -alpha, ply + 1, m, true);
             }
 
             if(!ctx.stop && score > alpha && score < beta){
-                score = -negamax(bd, ctx, newDepth, -beta, -alpha, ply + 1);
+                score = -negamax(bd, ctx, newDepth, -beta, -alpha, ply + 1, m, true);
             }
         }
 
@@ -571,12 +657,14 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
                     ctx.killer[ply][1] = ctx.killer[ply][0];
                     ctx.killer[ply][0] = m;
                 }
-                int side = (bd.stm==Color::White)?0:1;
                 const int bonus = depth * depth * 16;
                 ctx.history[side][m.from][m.to] = std::min(90000, ctx.history[side][m.from][m.to] + bonus);
                 for(const Move& qm : quietTried){
                     if(sameMove(qm, m)) continue;
                     ctx.history[side][qm.from][qm.to] = std::max(-90000, ctx.history[side][qm.from][qm.to] - (bonus / 2));
+                }
+                if(prevMove.from < 64 && prevMove.to < 64){
+                    ctx.countermove[side][prevMove.from][prevMove.to] = m;
                 }
             }
             break;
@@ -597,6 +685,7 @@ static Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int time
     ctx.timeLimitMs = timeLimitMs;
     ctx.stop = false;
     ctx.tt.newSearch();
+    const Move noMove = invalidMove();
 
     for(int s=0; s<2; s++){
         for(int from=0; from<64; from++){
@@ -604,6 +693,10 @@ static Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int time
                 ctx.history[s][from][to] = (ctx.history[s][from][to] * 7) / 8;
             }
         }
+    }
+    for(int ply = 0; ply < 128; ply++){
+        ctx.plyMove[ply] = noMove;
+        ctx.staticEvalByPly[ply] = -INF;
     }
 
     ctx.repetition = ctx.gameHistory;
@@ -616,79 +709,101 @@ static Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int time
     if(rootMoves.empty()) return Move{};
 
     Move bestMove = rootMoves[0];
-    int bestScore = -INF;
+    int bestScore = 0;
 
     for(int d=1; d<=maxDepth; d++){
         if(timeUp(ctx)) break;
 
-        int alpha = -INF;
-        int beta  = INF;
-        if(d >= 3 && std::abs(bestScore) < MATE/2){
-            alpha = bestScore - 50;
-            beta  = bestScore + 50;
+        int window = INF;
+        if(d >= 3 && std::abs(bestScore) < MATE / 2){
+            window = 40;
         }
 
-        Move ttMove{};
-        if(auto* e = ctx.tt.probe(bd.hash)){
-            if(e->key==bd.hash) ttMove = e->best;
-        }
+        int acceptedScore = -INF;
+        Move acceptedMove = bestMove;
 
-        std::sort(rootMoves.begin(), rootMoves.end(), [&](const Move& a, const Move& b){
-            return scoreMove(bd, ctx, a, ttMove, 0) > scoreMove(bd, ctx, b, ttMove, 0);
-        });
-
-        int localBest=-INF;
-        Move localMove = rootMoves[0];
-
-        for(size_t i=0; i<rootMoves.size(); i++){
-            const Move& m = rootMoves[i];
+        while(!ctx.stop){
             if(timeUp(ctx)) break;
-            Undo u{};
-            if(!bd.makeMove(m,u)) continue;
 
-            ctx.repetition.push_back(bd.hash);
-            int score = 0;
-            if(i == 0){
-                score = -negamax(bd, ctx, d-1, -beta, -alpha, 1);
-            } else {
-                score = -negamax(bd, ctx, d-1, -alpha-1, -alpha, 1);
-                if(score > alpha && score < beta){
-                    score = -negamax(bd, ctx, d-1, -beta, -alpha, 1);
-                }
+            int alpha = -INF;
+            int beta = INF;
+            const bool aspiration = (window < INF);
+            if(aspiration){
+                alpha = bestScore - window;
+                beta = bestScore + window;
             }
-            ctx.repetition.pop_back();
 
-            bd.undoMove(u);
-
-            if(ctx.stop) break;
-
-            if(score > localBest){
-                localBest = score;
-                localMove = m;
+            Move ttMove{};
+            if(auto* e = ctx.tt.probe(bd.hash)){
+                if(e->key==bd.hash) ttMove = e->best;
             }
-            alpha = std::max(alpha, score);
 
-            if(alpha >= beta){
-                alpha = -INF;
-                beta = INF;
-                Undo u2{};
-                if(bd.makeMove(m,u2)){
-                    ctx.repetition.push_back(bd.hash);
-                    int score2 = -negamax(bd, ctx, d-1, -INF, INF, 1);
-                    ctx.repetition.pop_back();
-                    bd.undoMove(u2);
-                    if(!ctx.stop && score2 > localBest){
-                        localBest = score2;
-                        localMove = m;
+            std::sort(rootMoves.begin(), rootMoves.end(), [&](const Move& a, const Move& b){
+                auto rootOrderScore = [&](const Move& m){
+                    int s = scoreMove(bd, ctx, m, ttMove, 0, noMove);
+                    if(sameMove(m, bestMove)) s += 200000;
+                    return s;
+                };
+                return rootOrderScore(a) > rootOrderScore(b);
+            });
+
+            int localBest = -INF;
+            Move localMove = rootMoves[0];
+            int alphaRun = alpha;
+
+            for(size_t i=0; i<rootMoves.size(); i++){
+                const Move& m = rootMoves[i];
+                if(timeUp(ctx)) break;
+                Undo u{};
+                if(!bd.makeMove(m,u)) continue;
+
+                ctx.repetition.push_back(bd.hash);
+                int score = 0;
+                if(i == 0){
+                    score = -negamax(bd, ctx, d - 1, -beta, -alphaRun, 1, m, true);
+                } else {
+                    score = -negamax(bd, ctx, d - 1, -alphaRun - 1, -alphaRun, 1, m, true);
+                    if(!ctx.stop && score > alphaRun && score < beta){
+                        score = -negamax(bd, ctx, d - 1, -beta, -alphaRun, 1, m, true);
                     }
                 }
-                break;
+                ctx.repetition.pop_back();
+                bd.undoMove(u);
+
+                if(ctx.stop) break;
+
+                if(score > localBest){
+                    localBest = score;
+                    localMove = m;
+                }
+                alphaRun = std::max(alphaRun, score);
+                if(alphaRun >= beta){
+                    break;
+                }
             }
+
+            if(ctx.stop) break;
+            if(localBest == -INF) break;
+
+            const bool failLow = aspiration && (localBest <= alpha);
+            const bool failHigh = aspiration && (localBest >= beta);
+            if(failLow || failHigh){
+                if(window >= INF / 4){
+                    window = INF;
+                } else {
+                    window *= 2;
+                }
+                continue;
+            }
+
+            acceptedScore = localBest;
+            acceptedMove = localMove;
+            break;
         }
 
-        if(!ctx.stop){
-            bestScore = localBest;
-            bestMove = localMove;
+        if(!ctx.stop && acceptedScore != -INF){
+            bestScore = acceptedScore;
+            bestMove = acceptedMove;
             ctx.stats.depthReached = d;
             ctx.stats.bestScore = bestScore;
         }
