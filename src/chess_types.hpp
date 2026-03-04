@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <cmath>
+#include <cctype>
 #include <cstring>
 #include <optional>
 #include <random>

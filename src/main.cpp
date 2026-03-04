@@ -1,6 +1,147 @@
 #include "ui.hpp"
 
-int main(){
+int main(int argc, char** argv){
+    Zobrist zob;
+    Board board;
+    board.setZobrist(&zob);
+    board.reset();
+
+    auto parseInt = [](const std::string& s, int& out)->bool{
+        try{
+            size_t pos = 0;
+            int v = std::stoi(s, &pos);
+            if(pos != s.size()) return false;
+            out = v;
+            return true;
+        } catch(...){
+            return false;
+        }
+    };
+
+    int perftDepth = -1;
+    bool perftDivideMode = false;
+    bool runPerftTests = false;
+    bool runBench = false;
+    int perftSuiteMaxDepth = 4;
+    int benchDepth = 8;
+    int benchTimeMs = 4000;
+    int benchTTMB = 256;
+    std::string cliFen;
+
+    for(int i=1; i<argc; i++){
+        std::string a = argv[i];
+        auto needValue = [&](const std::string& flag)->const char*{
+            if(i + 1 >= argc){
+                std::cerr << "Missing value for " << flag << "\n";
+                return nullptr;
+            }
+            return argv[++i];
+        };
+
+        if(a == "--help" || a == "-h"){
+            std::cout
+                << "Usage:\n"
+                << "  gui                        # launch GUI\n"
+                << "  gui --perft <depth> [--fen \"...\"]\n"
+                << "  gui --divide <depth> [--fen \"...\"]\n"
+                << "  gui --perft-tests [--max-depth <n>]\n"
+                << "  gui --bench [--bench-depth <n>] [--bench-time <ms>] [--bench-tt <mb>]\n";
+            return 0;
+        } else if(a == "--perft"){
+            const char* v = needValue("--perft");
+            if(!v || !parseInt(v, perftDepth) || perftDepth < 0){
+                std::cerr << "Invalid --perft depth\n";
+                return 1;
+            }
+        } else if(a == "--divide"){
+            const char* v = needValue("--divide");
+            if(!v || !parseInt(v, perftDepth) || perftDepth < 0){
+                std::cerr << "Invalid --divide depth\n";
+                return 1;
+            }
+            perftDivideMode = true;
+        } else if(a == "--fen"){
+            const char* v = needValue("--fen");
+            if(!v){
+                return 1;
+            }
+            cliFen = v;
+        } else if(a == "--perft-tests"){
+            runPerftTests = true;
+        } else if(a == "--max-depth"){
+            const char* v = needValue("--max-depth");
+            if(!v || !parseInt(v, perftSuiteMaxDepth) || perftSuiteMaxDepth < 1){
+                std::cerr << "Invalid --max-depth value\n";
+                return 1;
+            }
+        } else if(a == "--bench"){
+            runBench = true;
+        } else if(a == "--bench-depth"){
+            const char* v = needValue("--bench-depth");
+            if(!v || !parseInt(v, benchDepth) || benchDepth < 1){
+                std::cerr << "Invalid --bench-depth value\n";
+                return 1;
+            }
+        } else if(a == "--bench-time"){
+            const char* v = needValue("--bench-time");
+            if(!v || !parseInt(v, benchTimeMs) || benchTimeMs < 50){
+                std::cerr << "Invalid --bench-time value\n";
+                return 1;
+            }
+        } else if(a == "--bench-tt"){
+            const char* v = needValue("--bench-tt");
+            if(!v || !parseInt(v, benchTTMB) || benchTTMB < 1){
+                std::cerr << "Invalid --bench-tt value\n";
+                return 1;
+            }
+        } else {
+            std::cerr << "Unknown argument: " << a << "\n";
+            std::cerr << "Use --help for CLI options.\n";
+            return 1;
+        }
+    }
+
+    if(runPerftTests){
+        return runPerftSuite(zob, perftSuiteMaxDepth);
+    }
+
+    if(perftDepth >= 0){
+        if(!cliFen.empty()){
+            if(!board.loadFEN(cliFen)){
+                std::cerr << "Invalid FEN for --perft/--divide\n";
+                return 1;
+            }
+        }
+
+        const auto t0 = std::chrono::steady_clock::now();
+        if(perftDivideMode){
+            const auto lines = perftDivide(board, perftDepth);
+            u64 total = 0;
+            for(const auto& [mv, nodes] : lines){
+                total += nodes;
+                std::cout << mv << ": " << nodes << "\n";
+            }
+            const auto t1 = std::chrono::steady_clock::now();
+            const int ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+            const double nps = (ms > 0) ? (double(total) * 1000.0 / double(ms)) : 0.0;
+            std::cout << "Total: " << total << " nodes in " << ms
+                      << " ms (" << static_cast<long long>(nps) << " nps)\n";
+        } else {
+            const u64 nodes = perft(board, perftDepth);
+            const auto t1 = std::chrono::steady_clock::now();
+            const int ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+            const double nps = (ms > 0) ? (double(nodes) * 1000.0 / double(ms)) : 0.0;
+            std::cout << "Perft(" << perftDepth << ") = " << nodes
+                      << " nodes in " << ms << " ms"
+                      << " (" << static_cast<long long>(nps) << " nps)\n";
+        }
+        return 0;
+    }
+
+    if(runBench){
+        return runSearchBenchmark(zob, benchDepth, benchTimeMs, benchTTMB);
+    }
+
     constexpr unsigned windowW=1320, windowH=880;
     sf::ContextSettings ctx;
     ctx.antialiasingLevel = 0;
@@ -58,11 +199,6 @@ int main(){
     PieceAtlas atlas;
     bool hasIcons = atlas.loadAll("assets/pieces_png");
 
-    Zobrist zob;
-    Board board;
-    board.setZobrist(&zob);
-    board.reset();
-
     // UI thread never calls search now; search runs in a worker thread.
     const int ttSizeMB = 256;
     SearchContext aiSearchCtx;
@@ -71,6 +207,8 @@ int main(){
     std::vector<Undo> undoStack;
     std::vector<std::string> moveListUCI;
     std::vector<std::string> moveListSAN;
+    std::vector<u64> positionHistory{board.hash};
+    aiSearchCtx.gameHistory = positionHistory;
 
     auto pushMove = [&](const Move& m)->bool{
         const std::string san = moveToSAN(board, m);
@@ -79,6 +217,7 @@ int main(){
             undoStack.push_back(u);
             moveListUCI.push_back(moveToUCI(m));
             moveListSAN.push_back(san);
+            positionHistory.push_back(board.hash);
             return true;
         }
         return false;
@@ -90,6 +229,7 @@ int main(){
         board.undoMove(u);
         if(!moveListUCI.empty()) moveListUCI.pop_back();
         if(!moveListSAN.empty()) moveListSAN.pop_back();
+        if(positionHistory.size() > 1) positionHistory.pop_back();
     };
     auto getBookMove = [&]()->std::optional<Move>{
         if(moveListUCI.size() >= 18) return std::nullopt;
@@ -309,6 +449,8 @@ int main(){
         board.reset();
         undoStack.clear();
         moveListUCI.clear();
+        positionHistory.clear();
+        positionHistory.push_back(board.hash);
         selectedSq.reset();
         selectedMoves.clear();
         lastMove.reset();
@@ -444,9 +586,11 @@ int main(){
         Board searchBoard = board;
         int threadMaxDepth = aiMaxDepth;
         int threadTimeMs   = aiTimeMs;
+        std::vector<u64> threadHistory = positionHistory;
 
-        aiThread = std::thread([&, searchBoard, threadMaxDepth, threadTimeMs]() mutable {
+        aiThread = std::thread([&, searchBoard, threadMaxDepth, threadTimeMs, threadHistory]() mutable {
             aiSearchCtx.abortFlag = &aiAbortSearch;
+            aiSearchCtx.gameHistory = threadHistory;
             Move m = searchBestMove(searchBoard, aiSearchCtx, threadMaxDepth, threadTimeMs);
             std::string pv = extractPVFromTT(searchBoard, aiSearchCtx, 12);
 

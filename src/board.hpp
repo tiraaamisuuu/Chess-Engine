@@ -58,6 +58,86 @@ struct Board {
         recomputeHash();
     }
 
+    bool loadFEN(const std::string& fen){
+        clear();
+
+        std::istringstream iss(fen);
+        std::string boardPart, stmPart, castlingPart, epPart;
+        int halfmove = 0;
+        int fullmove = 1;
+        if(!(iss >> boardPart >> stmPart >> castlingPart >> epPart >> halfmove >> fullmove)){
+            return false;
+        }
+
+        int rank = 7;
+        int file = 0;
+        for(char ch : boardPart){
+            if(ch == '/'){
+                if(file != 8) return false;
+                rank--;
+                file = 0;
+                continue;
+            }
+
+            if(std::isdigit(static_cast<unsigned char>(ch))){
+                int n = ch - '0';
+                if(n < 1 || n > 8) return false;
+                file += n;
+                if(file > 8) return false;
+                continue;
+            }
+
+            Color pc = std::isupper(static_cast<unsigned char>(ch)) ? Color::White : Color::Black;
+            char lo = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            PieceType pt = PieceType::None;
+            if(lo=='p') pt = PieceType::Pawn;
+            else if(lo=='n') pt = PieceType::Knight;
+            else if(lo=='b') pt = PieceType::Bishop;
+            else if(lo=='r') pt = PieceType::Rook;
+            else if(lo=='q') pt = PieceType::Queen;
+            else if(lo=='k') pt = PieceType::King;
+            else return false;
+
+            if(rank < 0 || file >= 8) return false;
+            b[rank*8 + file] = Piece{pt, pc};
+            file++;
+        }
+
+        if(rank != 0 || file != 8) return false;
+
+        if(stmPart == "w") stm = Color::White;
+        else if(stmPart == "b") stm = Color::Black;
+        else return false;
+
+        castling = 0;
+        if(castlingPart != "-"){
+            for(char c : castlingPart){
+                if(c=='K') castling |= 0b0001;
+                else if(c=='Q') castling |= 0b0010;
+                else if(c=='k') castling |= 0b0100;
+                else if(c=='q') castling |= 0b1000;
+                else return false;
+            }
+        }
+
+        epSquare = -1;
+        if(epPart != "-"){
+            if(epPart.size() != 2) return false;
+            char fch = epPart[0];
+            char rch = epPart[1];
+            if(fch < 'a' || fch > 'h' || rch < '1' || rch > '8') return false;
+            int ef = int(fch - 'a');
+            int er = int(rch - '1');
+            epSquare = er*8 + ef;
+        }
+
+        halfmoveClock = std::max(0, halfmove);
+        (void)fullmove;
+
+        recomputeHash();
+        return true;
+    }
+
     Piece at(int idx) const { return b[idx]; }
     Piece& atRef(int idx) { return b[idx]; }
 
@@ -593,4 +673,3 @@ static std::string moveToSAN(const Board& position, const Move& m){
 
     return san;
 }
-

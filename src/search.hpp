@@ -93,103 +93,185 @@ static int pstScore(PieceType t, int idxWhitePerspective, bool endgameKing){
 }
 
 static int evaluate(const Board& bd){
-    int material=0;
-    int pst=0;
+    int material = 0;
+    int pst = 0;
 
-    int phase=0;
+    int phase = 0;
     for(int i=0;i<64;i++){
-        Piece p=bd.b[i];
+        const Piece p = bd.b[i];
         if(isNone(p) || p.t==PieceType::King || p.t==PieceType::Pawn) continue;
         if(p.t==PieceType::Knight || p.t==PieceType::Bishop) phase += 1;
         else if(p.t==PieceType::Rook) phase += 2;
         else if(p.t==PieceType::Queen) phase += 4;
     }
     phase = std::clamp(phase, 0, 24);
-    bool endgameKing = (phase <= 8);
+    const bool endgameKing = (phase <= 8);
 
-    int whiteBishops=0, blackBishops=0;
+    int whiteBishops = 0, blackBishops = 0;
     int wpFile[8]{}, bpFile[8]{};
+    std::vector<int> wPawns, bPawns, wRooks, bRooks;
+    wPawns.reserve(8); bPawns.reserve(8); wRooks.reserve(2); bRooks.reserve(2);
 
     for(int i=0;i<64;i++){
-        Piece p=bd.b[i];
+        const Piece p = bd.b[i];
         if(isNone(p)) continue;
-        int base = pieceValue(p.t);
+
+        const int base = pieceValue(p.t);
         if(p.c==Color::White) material += base;
         else material -= base;
 
-        int idxW = (p.c==Color::White) ? i : mirrorIndex(i);
-        int ps = pstScore(p.t, idxW, endgameKing);
+        const int idxW = (p.c==Color::White) ? i : mirrorIndex(i);
+        const int ps = pstScore(p.t, idxW, endgameKing);
         if(p.c==Color::White) pst += ps;
         else pst -= ps;
 
         if(p.t==PieceType::Bishop){
             if(p.c==Color::White) whiteBishops++;
             else blackBishops++;
-        }
-        if(p.t==PieceType::Pawn){
-            int f=i%8;
-            if(p.c==Color::White) wpFile[f]++;
-            else bpFile[f]++;
+        } else if(p.t==PieceType::Pawn){
+            const int f = i % 8;
+            if(p.c==Color::White){
+                wpFile[f]++;
+                wPawns.push_back(i);
+            } else {
+                bpFile[f]++;
+                bPawns.push_back(i);
+            }
+        } else if(p.t==PieceType::Rook){
+            if(p.c==Color::White) wRooks.push_back(i);
+            else bRooks.push_back(i);
         }
     }
 
     int bishopPair = 0;
-    if(whiteBishops>=2) bishopPair += 30;
-    if(blackBishops>=2) bishopPair -= 30;
+    if(whiteBishops >= 2) bishopPair += 30;
+    if(blackBishops >= 2) bishopPair -= 30;
 
-    int pawnStruct=0;
-    for(int f=0;f<8;f++){
-        if(wpFile[f]>=2) pawnStruct -= 12*(wpFile[f]-1);
-        if(bpFile[f]>=2) pawnStruct += 12*(bpFile[f]-1);
+    int pawnStruct = 0;
+    for(int f=0; f<8; f++){
+        if(wpFile[f] >= 2) pawnStruct -= 12 * (wpFile[f] - 1);
+        if(bpFile[f] >= 2) pawnStruct += 12 * (bpFile[f] - 1);
 
-        if(wpFile[f]>0){
-            bool left = (f>0 && wpFile[f-1]>0);
-            bool right= (f<7 && wpFile[f+1]>0);
+        if(wpFile[f] > 0){
+            const bool left = (f > 0 && wpFile[f-1] > 0);
+            const bool right = (f < 7 && wpFile[f+1] > 0);
             if(!left && !right) pawnStruct -= 10;
         }
-        if(bpFile[f]>0){
-            bool left = (f>0 && bpFile[f-1]>0);
-            bool right= (f<7 && bpFile[f+1]>0);
+        if(bpFile[f] > 0){
+            const bool left = (f > 0 && bpFile[f-1] > 0);
+            const bool right = (f < 7 && bpFile[f+1] > 0);
             if(!left && !right) pawnStruct += 10;
         }
     }
 
-    int mobility=0;
+    int passedPawns = 0;
+    static const int passedBonusByRank[8] = {0, 5, 10, 20, 35, 60, 90, 0};
+    for(int sq : wPawns){
+        const int f = sq % 8;
+        const int r = sq / 8;
+        bool blocked = false;
+        for(int rr = r + 1; rr < 8 && !blocked; rr++){
+            for(int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ff++){
+                const Piece p = bd.b[rr*8 + ff];
+                if(!isNone(p) && p.c==Color::Black && p.t==PieceType::Pawn){
+                    blocked = true;
+                    break;
+                }
+            }
+        }
+        if(!blocked){
+            passedPawns += passedBonusByRank[r];
+        }
+    }
+    for(int sq : bPawns){
+        const int f = sq % 8;
+        const int r = sq / 8;
+        bool blocked = false;
+        for(int rr = r - 1; rr >= 0 && !blocked; rr--){
+            for(int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ff++){
+                const Piece p = bd.b[rr*8 + ff];
+                if(!isNone(p) && p.c==Color::White && p.t==PieceType::Pawn){
+                    blocked = true;
+                    break;
+                }
+            }
+        }
+        if(!blocked){
+            const int progress = 7 - r;
+            passedPawns -= passedBonusByRank[progress];
+        }
+    }
+
+    int rookFiles = 0;
+    auto rookFileBonus = [&](int sq, Color c)->int{
+        const int f = sq % 8;
+        const int ownPawns = (c==Color::White) ? wpFile[f] : bpFile[f];
+        const int oppPawns = (c==Color::White) ? bpFile[f] : wpFile[f];
+        if(ownPawns == 0 && oppPawns == 0) return 24;
+        if(ownPawns == 0) return 12;
+        return 0;
+    };
+    for(int sq : wRooks) rookFiles += rookFileBonus(sq, Color::White);
+    for(int sq : bRooks) rookFiles -= rookFileBonus(sq, Color::Black);
+
+    int mobility = 0;
     {
-        Board t=bd;
-        t.stm=Color::White;
+        Board t = bd;
+        t.stm = Color::White;
         std::vector<Move> w; t.genPseudoMoves(w);
-        t.stm=Color::Black;
+        t.stm = Color::Black;
         std::vector<Move> b; t.genPseudoMoves(b);
         mobility = (int(w.size()) - int(b.size())) * 2;
     }
 
-    int kingSafety=0;
+    int kingSafety = 0;
     if(!endgameKing){
-        int wK = bd.findKing(Color::White);
-        int bK = bd.findKing(Color::Black);
+        const int wK = bd.findKing(Color::White);
+        const int bK = bd.findKing(Color::Black);
 
-        auto kingCentrePenalty = [&](int kIdx, Color c)->int{
-            if(kIdx<0) return 0;
-            int f=kIdx%8, r=kIdx/8;
-            int df = std::abs(f-4);
+        auto kingCentrePenalty = [&](int kIdx)->int{
+            if(kIdx < 0) return 0;
+            const int f = kIdx % 8;
+            const int r = kIdx / 8;
+            const int df = std::abs(f - 4);
             int pen = 0;
-            if(df<=1 && (r==0 || r==7)) pen += 10;
-            if(df<=1 && (r==1 || r==6)) pen += 20;
-            if(df<=1 && (r==2 || r==5)) pen += 35;
+            if(df <= 1 && (r==0 || r==7)) pen += 10;
+            if(df <= 1 && (r==1 || r==6)) pen += 20;
+            if(df <= 1 && (r==2 || r==5)) pen += 35;
             return pen;
         };
 
-        kingSafety -= kingCentrePenalty(wK, Color::White);
-        kingSafety += kingCentrePenalty(bK, Color::Black);
+        auto kingShieldScore = [&](int kIdx, Color c)->int{
+            if(kIdx < 0) return 0;
+            const int f = kIdx % 8;
+            const int r = kIdx / 8;
+            const int dir = (c==Color::White) ? 1 : -1;
+            const int sr = r + dir;
+            if(sr < 0 || sr > 7) return 0;
 
-        bool wCanCastle = (bd.castling & 0b0011);
-        bool bCanCastle = (bd.castling & 0b1100);
+            int score = 0;
+            for(int df = -1; df <= 1; df++){
+                const int nf = f + df;
+                if(nf < 0 || nf > 7) continue;
+                const Piece p = bd.b[sr*8 + nf];
+                if(!isNone(p) && p.c==c && p.t==PieceType::Pawn) score += 8;
+                else score -= 6;
+            }
+            return score;
+        };
+
+        kingSafety -= kingCentrePenalty(wK);
+        kingSafety += kingCentrePenalty(bK);
+        kingSafety += kingShieldScore(wK, Color::White);
+        kingSafety -= kingShieldScore(bK, Color::Black);
+
+        const bool wCanCastle = (bd.castling & 0b0011) != 0;
+        const bool bCanCastle = (bd.castling & 0b1100) != 0;
         if(!wCanCastle) kingSafety -= 10;
         if(!bCanCastle) kingSafety += 10;
     }
 
-    int scoreWhite = material + pst + bishopPair + pawnStruct + mobility + kingSafety;
+    int scoreWhite = material + pst + bishopPair + pawnStruct + passedPawns + rookFiles + mobility + kingSafety;
     return (bd.stm==Color::White) ? scoreWhite : -scoreWhite;
 }
 
@@ -361,6 +443,13 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     int staticEval = 0;
     if(!inCheck) staticEval = evaluate(bd);
 
+    if(!inCheck && depth <= 3){
+        const int rfpMargin = 95 * depth;
+        if(staticEval - rfpMargin >= beta){
+            return staticEval;
+        }
+    }
+
     Move ttMove{};
     if(auto* e = ctx.tt.probe(bd.hash)){
         if(e->key==bd.hash){
@@ -409,6 +498,8 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     Move bestM{};
 
     int originalAlpha = alpha;
+    std::vector<Move> quietTried;
+    quietTried.reserve(moves.size());
 
     for(size_t i=0;i<moves.size();i++){
         const Move& m = moves[i];
@@ -425,6 +516,8 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
             continue;
         }
 
+        if(isQuiet) quietTried.push_back(m);
+
         Undo u{};
         if(!bd.makeMove(m,u)) continue;
 
@@ -433,9 +526,9 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         int newDepth = depth - 1;
         bool givesCheck = bd.inCheck(bd.stm);
         if(givesCheck){
-          newDepth++;
+            newDepth++;
         }
-        int score=0;
+        int score = 0;
 
         int reduction = 0;
         if(newDepth >= 3 && i >= 3 && isQuiet && !givesCheck){
@@ -445,13 +538,20 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
             reduction = std::min(reduction, std::max(0, newDepth - 1));
         }
 
-        if(reduction > 0){
-            score = -negamax(bd, ctx, newDepth - reduction, -alpha-1, -alpha, ply+1);
-            if(score > alpha){
-                score = -negamax(bd, ctx, newDepth, -beta, -alpha, ply+1);
-            }
+        if(i == 0){
+            score = -negamax(bd, ctx, newDepth, -beta, -alpha, ply + 1);
         } else {
-            score = -negamax(bd, ctx, newDepth, -beta, -alpha, ply+1);
+            // PVS + LMR: search late quiet moves reduced on a null-window first.
+            const int scoutDepth = std::max(0, newDepth - reduction);
+            score = -negamax(bd, ctx, scoutDepth, -alpha - 1, -alpha, ply + 1);
+
+            if(!ctx.stop && reduction > 0 && score > alpha){
+                score = -negamax(bd, ctx, newDepth, -alpha - 1, -alpha, ply + 1);
+            }
+
+            if(!ctx.stop && score > alpha && score < beta){
+                score = -negamax(bd, ctx, newDepth, -beta, -alpha, ply + 1);
+            }
         }
 
         ctx.repetition.pop_back();
@@ -472,7 +572,12 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
                     ctx.killer[ply][0] = m;
                 }
                 int side = (bd.stm==Color::White)?0:1;
-                ctx.history[side][m.from][m.to] = std::min(90000, ctx.history[side][m.from][m.to] + depth*depth*8);
+                const int bonus = depth * depth * 16;
+                ctx.history[side][m.from][m.to] = std::min(90000, ctx.history[side][m.from][m.to] + bonus);
+                for(const Move& qm : quietTried){
+                    if(sameMove(qm, m)) continue;
+                    ctx.history[side][qm.from][qm.to] = std::max(-90000, ctx.history[side][qm.from][qm.to] - (bonus / 2));
+                }
             }
             break;
         }
@@ -698,4 +803,162 @@ static std::string extractPVFromTT(Board bd, SearchContext& ctx, int maxPlies=12
         pv += moveToUCI(*it);
     }
     return pv;
+}
+
+static u64 perft(Board& bd, int depth){
+    if(depth <= 0) return 1;
+
+    std::vector<Move> legal;
+    bd.genLegalMoves(legal);
+    if(depth == 1) return static_cast<u64>(legal.size());
+
+    u64 nodes = 0;
+    for(const Move& m : legal){
+        Undo u{};
+        if(!bd.makeMove(m, u)) continue;
+        nodes += perft(bd, depth - 1);
+        bd.undoMove(u);
+    }
+    return nodes;
+}
+
+static std::vector<std::pair<std::string, u64>> perftDivide(Board& bd, int depth){
+    std::vector<std::pair<std::string, u64>> out;
+    if(depth <= 0) return out;
+
+    std::vector<Move> legal;
+    bd.genLegalMoves(legal);
+    out.reserve(legal.size());
+    for(const Move& m : legal){
+        Undo u{};
+        if(!bd.makeMove(m, u)) continue;
+        const u64 nodes = (depth == 1) ? 1 : perft(bd, depth - 1);
+        bd.undoMove(u);
+        out.emplace_back(moveToUCI(m), nodes);
+    }
+    return out;
+}
+
+struct PerftCase {
+    const char* name;
+    const char* fen;
+    std::vector<std::pair<int, u64>> expectations;
+};
+
+static int runPerftSuite(const Zobrist& zob, int maxDepthPerCase = 4){
+    const std::vector<PerftCase> cases = {
+        {"Start Position", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", {
+            {1, 20ULL}, {2, 400ULL}, {3, 8902ULL}, {4, 197281ULL}
+        }},
+        {"Kiwipete", "r3k2r/p1ppqpb1/bn2pnp1/2pP4/1p2P3/2N2N2/PPQBBPPP/R3K2R w KQkq - 0 1", {
+            {1, 45ULL}, {2, 1947ULL}, {3, 85877ULL}, {4, 3617140ULL}
+        }},
+        {"Position 3", "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", {
+            {1, 14ULL}, {2, 191ULL}, {3, 2812ULL}, {4, 43238ULL}
+        }},
+        {"Position 4", "r3k2r/Pppp1ppp/1b3nbN/nP6/B1P1P3/5N2/Pp1P1PPP/R2Q1RK1 w kq - 0 1", {
+            {1, 30ULL}, {2, 1160ULL}, {3, 35941ULL}, {4, 1371859ULL}
+        }},
+        {"Position 5", "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", {
+            {1, 44ULL}, {2, 1486ULL}, {3, 62379ULL}, {4, 2103487ULL}
+        }},
+        {"Position 6", "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/2NP1N2/PPP1QPPP/R4RK1 w - - 0 10", {
+            {1, 44ULL}, {2, 1987ULL}, {3, 83034ULL}, {4, 3596057ULL}
+        }}
+    };
+
+    int failures = 0;
+    for(const auto& tc : cases){
+        Board bd;
+        bd.setZobrist(&zob);
+        if(!bd.loadFEN(tc.fen)){
+            std::cout << "[FAIL] " << tc.name << " (invalid FEN)\n";
+            failures++;
+            continue;
+        }
+
+        std::cout << "\n== " << tc.name << " ==\n";
+        for(const auto& [depth, expected] : tc.expectations){
+            if(depth > maxDepthPerCase) continue;
+            auto t0 = std::chrono::steady_clock::now();
+            const u64 got = perft(bd, depth);
+            auto t1 = std::chrono::steady_clock::now();
+            const int ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+            const double nps = (ms > 0) ? (double(got) * 1000.0 / double(ms)) : 0.0;
+
+            const bool ok = (got == expected);
+            std::cout << "d" << depth
+                      << " expected=" << expected
+                      << " got=" << got
+                      << " time=" << ms << "ms"
+                      << " nps=" << static_cast<long long>(nps)
+                      << (ok ? " [OK]" : " [FAIL]")
+                      << "\n";
+            if(!ok) failures++;
+        }
+    }
+
+    if(failures == 0){
+        std::cout << "\nPerft suite: PASS\n";
+        return 0;
+    }
+    std::cout << "\nPerft suite: FAIL (" << failures << " mismatches)\n";
+    return 1;
+}
+
+struct BenchmarkPosition {
+    const char* name;
+    const char* fen;
+};
+
+static int runSearchBenchmark(const Zobrist& zob, int depth, int perPositionTimeMs, int ttSizeMB = 256){
+    const std::vector<BenchmarkPosition> positions = {
+        {"Start", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"},
+        {"Middlegame 1", "r2q1rk1/pp2bppp/2np1n2/2p1p1B1/2P1P3/2NP1N2/PP2QPPP/R4RK1 w - - 0 10"},
+        {"Middlegame 2", "r1bq1rk1/pp2bppp/2n1pn2/2pp4/2P5/2NP1NP1/PP2PPBP/R1BQ1RK1 w - - 0 9"},
+        {"Endgame", "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1"}
+    };
+
+    u64 totalNodes = 0;
+    int totalMs = 0;
+    std::cout << "Benchmark: depth=" << depth << " timeLimit=" << perPositionTimeMs
+              << "ms positions=" << positions.size() << "\n";
+
+    for(const auto& p : positions){
+        Board bd;
+        bd.setZobrist(&zob);
+        if(!bd.loadFEN(p.fen)){
+            std::cout << "[FAIL] " << p.name << " invalid FEN\n";
+            return 1;
+        }
+
+        SearchContext ctx;
+        ctx.tt.resizeMB(static_cast<size_t>(ttSizeMB));
+        ctx.gameHistory = {bd.hash};
+
+        const Move best = searchBestMove(bd, ctx, depth, perPositionTimeMs);
+        const double nps = (ctx.stats.timeMs > 0)
+            ? (double(ctx.stats.nodes) * 1000.0 / double(ctx.stats.timeMs))
+            : 0.0;
+
+        std::cout << std::left << std::setw(12) << p.name
+                  << " best=" << moveToUCI(best)
+                  << " depth=" << ctx.stats.depthReached
+                  << " score=" << ctx.stats.bestScore
+                  << " nodes=" << ctx.stats.nodes
+                  << " qnodes=" << ctx.stats.qnodes
+                  << " time=" << ctx.stats.timeMs << "ms"
+                  << " nps=" << static_cast<long long>(nps)
+                  << "\n";
+
+        totalNodes += ctx.stats.nodes;
+        totalMs += ctx.stats.timeMs;
+    }
+
+    const double totalNps = (totalMs > 0) ? (double(totalNodes) * 1000.0 / double(totalMs)) : 0.0;
+    std::cout << "Benchmark summary: nodes=" << totalNodes
+              << " time=" << totalMs << "ms"
+              << " nps=" << static_cast<long long>(totalNps)
+              << "\n";
+    return 0;
 }

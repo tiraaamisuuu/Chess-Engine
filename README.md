@@ -84,6 +84,25 @@ Run
 ```bash
 ./gui
 ```
+
+## ENGINE TOOLS (HEADLESS)
+
+After building, you can run engine-only tools from the CLI:
+
+```bash
+./build/gui --help
+./build/gui --perft 4
+./build/gui --divide 3
+./build/gui --perft-tests --max-depth 4
+./build/gui --bench --bench-depth 6 --bench-time 1500 --bench-tt 128
+```
+
+Automated regression runner:
+
+```bash
+scripts/run_regression.sh ./build/gui
+```
+
 ## NOTES
 
 Default AI search depth is defined in `src/main.cpp`.
