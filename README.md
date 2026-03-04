@@ -4,6 +4,7 @@
 This project is a C++ chess engine with an SFML 2.6.x GUI.
 It will NOT compile against SFML 3.x.
 Make sure you are using SFML 2.6.x on all platforms.
+Source files: `src/main.cpp`, `src/ui.cpp`, `src/chess_core.hpp`.
 
 ## BUILDING ON macOS (Apple Silicon / Intel)
 
@@ -20,7 +21,7 @@ Recommended setup
 Build SFML 2.6.2 locally into ~/.local/sfml-2.6.2
 #### Compile command
 ```bash
-clang++ -O2 -std=c++17 main.cpp -o gui -I"$HOME/.local/sfml-2.6.2/include" -L"$HOME/.local/sfml-2.6.2/lib" -lsfml-graphics -lsfml-window -lsfml-system -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo -pthread -Wl,-rpath,"$HOME/.local/sfml-2.6.2/lib" -Wl,-sectcreate,__TEXT,__info_plist,macos/Info.plist
+clang++ -O2 -std=c++17 src/main.cpp src/ui.cpp -o gui -I"$HOME/.local/sfml-2.6.2/include" -L"$HOME/.local/sfml-2.6.2/lib" -lsfml-graphics -lsfml-window -lsfml-system -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo -pthread -Wl,-rpath,"$HOME/.local/sfml-2.6.2/lib" -Wl,-sectcreate,__TEXT,__info_plist,macos/Info.plist
 ```
 Run
 ```bash
@@ -42,7 +43,7 @@ sudo dnf install sfml-devel pkg-config
 
 #### Compile command
 ```bash
-g++ -O2 -std=c++17 main.cpp -o gui $(pkg-config --cflags --libs sfml-graphics sfml-window sfml-system) -pthread
+g++ -O2 -std=c++17 src/main.cpp src/ui.cpp -o gui $(pkg-config --cflags --libs sfml-graphics sfml-window sfml-system) -pthread
 
 ```
 Run

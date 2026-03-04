@@ -3,7 +3,7 @@ set -euo pipefail
 
 SFML_PREFIX="${SFML_PREFIX:-$HOME/.local/sfml-2.6.2}"
 
-clang++ -O3 -DNDEBUG -flto -std=c++17 main.cpp -o gui \
+clang++ -O3 -DNDEBUG -flto -std=c++17 src/main.cpp src/ui.cpp -o gui \
   -I"$SFML_PREFIX/include" \
   -L"$SFML_PREFIX/lib" \
   -lsfml-graphics -lsfml-window -lsfml-system \
