@@ -18,9 +18,12 @@
 #include <filesystem>
 #include <sstream>
 #include <iostream>
+#include <fstream>
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <cstdio>
+#include <cstdlib>
 
 using u8  = std::uint8_t;
 using u16 = std::uint16_t;
@@ -28,6 +31,25 @@ using u32 = std::uint32_t;
 using u64 = std::uint64_t;
 
 static sf::Vector2f snap(sf::Vector2f p) { return sf::Vector2f(std::round(p.x), std::round(p.y)); }
+static void setCrispTextPosition(sf::Text& t, sf::Vector2f p){
+    const sf::FloatRect b = t.getLocalBounds();
+    t.setPosition(snap(sf::Vector2f(p.x - b.left, p.y - b.top)));
+}
+static std::string trim(std::string s){
+    while(!s.empty() && (s.back()=='\n' || s.back()=='\r' || s.back()==' ' || s.back()=='\t')) s.pop_back();
+    size_t i = 0;
+    while(i < s.size() && (s[i]==' ' || s[i]=='\t' || s[i]=='\n' || s[i]=='\r')) ++i;
+    return s.substr(i);
+}
+static std::string shellQuote(const std::string& s){
+    std::string out = "'";
+    for(char c : s){
+        if(c=='\'') out += "'\\''";
+        else out.push_back(c);
+    }
+    out.push_back('\'');
+    return out;
+}
 
 // ======================== Squares / Coords ========================
 struct Square { int file=0, rank=0; }; // 0..7
@@ -135,6 +157,17 @@ static std::string moveToUCI(const Move& m){
         s.push_back(pc);
     }
     return s;
+}
+
+static char sanPieceChar(PieceType t){
+    switch(t){
+        case PieceType::Knight: return 'N';
+        case PieceType::Bishop: return 'B';
+        case PieceType::Rook:   return 'R';
+        case PieceType::Queen:  return 'Q';
+        case PieceType::King:   return 'K';
+        default: return '?';
+    }
 }
 
 // ======================== Zobrist + TT ========================
@@ -721,6 +754,79 @@ struct Board {
     }
 };
 
+static std::string moveToSAN(const Board& position, const Move& m){
+    Piece moving = position.at(m.from);
+    if(isNone(moving)) return moveToUCI(m);
+
+    const Square fromSq = indexToSq(m.from);
+    const Square toSq   = indexToSq(m.to);
+
+    std::string san;
+    if(m.isCastle){
+        san = (toSq.file > fromSq.file) ? "O-O" : "O-O-O";
+    } else {
+        const bool isPawn = (moving.t == PieceType::Pawn);
+        const bool isCapture = m.isCapture || m.isEnPassant;
+
+        if(!isPawn){
+            san.push_back(sanPieceChar(moving.t));
+
+            Board probe = position;
+            std::vector<Move> legal;
+            probe.genLegalMoves(legal);
+
+            bool ambiguous = false;
+            bool sameFile = false;
+            bool sameRank = false;
+            for(const auto& cand : legal){
+                if(cand.from == m.from || cand.to != m.to) continue;
+                Piece cp = probe.at(cand.from);
+                if(cp.t != moving.t || cp.c != moving.c) continue;
+                ambiguous = true;
+                if((cand.from % 8) == (m.from % 8)) sameFile = true;
+                if((cand.from / 8) == (m.from / 8)) sameRank = true;
+            }
+
+            if(ambiguous){
+                if(!sameFile){
+                    san.push_back(char('a' + fromSq.file));
+                } else if(!sameRank){
+                    san.push_back(char('1' + fromSq.rank));
+                } else {
+                    san.push_back(char('a' + fromSq.file));
+                    san.push_back(char('1' + fromSq.rank));
+                }
+            }
+        }
+
+        if(isPawn && isCapture){
+            san.push_back(char('a' + fromSq.file));
+        }
+        if(isCapture){
+            san.push_back('x');
+        }
+
+        san += sqName(toSq);
+
+        if(m.promo != PieceType::None){
+            san.push_back('=');
+            san.push_back(sanPieceChar(m.promo));
+        }
+    }
+
+    Board after = position;
+    Undo u{};
+    if(after.makeMove(m, u)){
+        std::vector<Move> replies;
+        after.genLegalMoves(replies);
+        if(after.inCheck(after.stm)){
+            san.push_back(replies.empty() ? '#' : '+');
+        }
+    }
+
+    return san;
+}
+
 // ======================== Evaluation (PST + extras) ========================
 static int mirrorIndex(int idx){
     int f = idx%8, r=idx/8;
@@ -927,6 +1033,7 @@ struct SearchContext {
     std::chrono::steady_clock::time_point start;
     int timeLimitMs=1000;
     bool stop=false;
+    const std::atomic<bool>* abortFlag=nullptr;
 
     Move killer[128][2]{};
     int history[2][64][64]{};
@@ -968,6 +1075,10 @@ static int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const M
 
 static inline bool timeUp(SearchContext& ctx){
     if(ctx.stop) return true;
+    if(ctx.abortFlag && ctx.abortFlag->load(std::memory_order_relaxed)){
+        ctx.stop = true;
+        return true;
+    }
     auto now = std::chrono::steady_clock::now();
     int ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - ctx.start).count();
     if(ms >= ctx.timeLimitMs){
@@ -979,6 +1090,26 @@ static inline bool timeUp(SearchContext& ctx){
 
 static const int INF = 100000000;
 static const int MATE = 1000000;
+
+static int scoreToTT(int score, int ply){
+    if(score >= MATE - 10000) return score + ply;
+    if(score <= -MATE + 10000) return score - ply;
+    return score;
+}
+
+static int scoreFromTT(int score, int ply){
+    if(score >= MATE - 10000) return score - ply;
+    if(score <= -MATE + 10000) return score + ply;
+    return score;
+}
+
+static bool hasNonPawnMaterial(const Board& bd, Color side){
+    for(const auto& p : bd.b){
+        if(isNone(p) || p.c != side) continue;
+        if(p.t != PieceType::King && p.t != PieceType::Pawn) return true;
+    }
+    return false;
+}
 
 static int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta){
     if(timeUp(ctx)) return 0;
@@ -1024,6 +1155,11 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     if(timeUp(ctx)) return 0;
     ctx.stats.nodes++;
 
+    // Mate-distance pruning keeps mate scores consistent and trims impossible windows.
+    alpha = std::max(alpha, -MATE + ply);
+    beta = std::min(beta, MATE - ply - 1);
+    if(alpha >= beta) return alpha;
+
     if(bd.insufficientMaterial()) return 0;
     if(bd.halfmoveClock >= 100) return 0;
 
@@ -1031,14 +1167,18 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     for(u64 h : ctx.repetition){
         if(h==bd.hash) repCount++;
     }
-    if(repCount>=2) return 0;
+    if(repCount>=3) return 0;
+
+    bool inCheck = bd.inCheck(bd.stm);
+    int staticEval = 0;
+    if(!inCheck) staticEval = evaluate(bd);
 
     Move ttMove{};
     if(auto* e = ctx.tt.probe(bd.hash)){
         if(e->key==bd.hash){
             ttMove = e->best;
             if(e->depth >= depth){
-                int s = e->score;
+                int s = scoreFromTT(e->score, ply);
                 if(e->flag==TTFlag::Exact) return s;
                 if(e->flag==TTFlag::Lower) alpha = std::max(alpha, s);
                 else if(e->flag==TTFlag::Upper) beta = std::min(beta, s);
@@ -1047,12 +1187,26 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         }
     }
 
-    std::vector<Move> moves;
-    bd.genLegalMoves(moves);
-
-    if(depth==0){
+    if(depth <= 0){
         return quiescence(bd, ctx, alpha, beta);
     }
+
+    // Null-move pruning: aggressive cut when position is quiet enough and side has material.
+    if(depth >= 3 && !inCheck && hasNonPawnMaterial(bd, bd.stm)){
+        Board nb = bd;
+        nb.epSquare = -1;
+        nb.stm = other(nb.stm);
+        nb.recomputeHash();
+        ctx.repetition.push_back(nb.hash);
+        int reduction = 2 + depth/4;
+        int score = -negamax(nb, ctx, depth - 1 - reduction, -beta, -beta + 1, ply + 1);
+        ctx.repetition.pop_back();
+        if(ctx.stop) return 0;
+        if(score >= beta) return beta;
+    }
+
+    std::vector<Move> moves;
+    bd.genLegalMoves(moves);
 
     if(moves.empty()){
         if(bd.inCheck(bd.stm)) return -MATE + ply;
@@ -1070,6 +1224,18 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
 
     for(size_t i=0;i<moves.size();i++){
         const Move& m = moves[i];
+        bool isQuiet = !(m.isCapture || m.isEnPassant) && (m.promo==PieceType::None);
+
+        if(!inCheck && depth <= 2 && isQuiet && i >= 6){
+            int futility = staticEval + (110 * depth);
+            if(futility <= alpha){
+                continue;
+            }
+        }
+
+        if(!inCheck && depth <= 3 && isQuiet && i >= size_t(10 + depth*2)){
+            continue;
+        }
 
         Undo u{};
         if(!bd.makeMove(m,u)) continue;
@@ -1077,14 +1243,22 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         ctx.repetition.push_back(bd.hash);
 
         int newDepth = depth - 1;
-        if(bd.inCheck(bd.stm)){
+        bool givesCheck = bd.inCheck(bd.stm);
+        if(givesCheck){
           newDepth++;
         }
         int score=0;
 
-        bool isQuiet = !(m.isCapture || m.isEnPassant) && (m.promo==PieceType::None);
-        if(newDepth >= 3 && i >= 4 && isQuiet && !bd.inCheck(bd.stm)){
-            score = -negamax(bd, ctx, newDepth-1, -alpha-1, -alpha, ply+1);
+        int reduction = 0;
+        if(newDepth >= 3 && i >= 3 && isQuiet && !givesCheck){
+            reduction = 1;
+            if(newDepth >= 5) reduction++;
+            if(i >= 8) reduction++;
+            reduction = std::min(reduction, std::max(0, newDepth - 1));
+        }
+
+        if(reduction > 0){
+            score = -negamax(bd, ctx, newDepth - reduction, -alpha-1, -alpha, ply+1);
             if(score > alpha){
                 score = -negamax(bd, ctx, newDepth, -beta, -alpha, ply+1);
             }
@@ -1119,7 +1293,7 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     TTFlag flag = TTFlag::Exact;
     if(best <= originalAlpha) flag = TTFlag::Upper;
     else if(best >= beta) flag = TTFlag::Lower;
-    ctx.tt.store(bd.hash, depth, best, flag, bestM);
+    ctx.tt.store(bd.hash, depth, scoreToTT(best, ply), flag, bestM);
 
     return best;
 }
@@ -1129,6 +1303,14 @@ static Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int time
     ctx.start = std::chrono::steady_clock::now();
     ctx.timeLimitMs = timeLimitMs;
     ctx.stop = false;
+
+    for(int s=0; s<2; s++){
+        for(int from=0; from<64; from++){
+            for(int to=0; to<64; to++){
+                ctx.history[s][from][to] = (ctx.history[s][from][to] * 7) / 8;
+            }
+        }
+    }
 
     ctx.repetition.clear();
     ctx.repetition.push_back(bd.hash);
@@ -1162,13 +1344,22 @@ static Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int time
         int localBest=-INF;
         Move localMove = rootMoves[0];
 
-        for(const auto& m : rootMoves){
+        for(size_t i=0; i<rootMoves.size(); i++){
+            const Move& m = rootMoves[i];
             if(timeUp(ctx)) break;
             Undo u{};
             if(!bd.makeMove(m,u)) continue;
 
             ctx.repetition.push_back(bd.hash);
-            int score = -negamax(bd, ctx, d-1, -beta, -alpha, 1);
+            int score = 0;
+            if(i == 0){
+                score = -negamax(bd, ctx, d-1, -beta, -alpha, 1);
+            } else {
+                score = -negamax(bd, ctx, d-1, -alpha-1, -alpha, 1);
+                if(score > alpha && score < beta){
+                    score = -negamax(bd, ctx, d-1, -beta, -alpha, 1);
+                }
+            }
             ctx.repetition.pop_back();
 
             bd.undoMove(u);
@@ -1179,18 +1370,6 @@ static Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int time
                 localBest = score;
                 localMove = m;
             }
-            
-            // discourage repitition at root  
-            if(score == 0){
-              bool repeats=false;
-              for(u64 h : ctx.repetition){
-                if(h == bd.hash){
-                  repeats=true;
-                  break;
-                }
-              }
-            }
-
             alpha = std::max(alpha, score);
 
             if(alpha >= beta){
@@ -1243,7 +1422,7 @@ static float drawWrappedText(sf::RenderTarget& target,
     auto flushLine = [&](const std::string& line){
         if(line.empty()) return;
         t.setString(line);
-        t.setPosition(snap(sf::Vector2f(pos.x, y)));
+        setCrispTextPosition(t, sf::Vector2f(pos.x, y));
         target.draw(t);
         y += lineSpacing;
     };
@@ -1371,8 +1550,16 @@ static std::string modeStr(GameMode m){
 
 // ======================== Main ========================
 int main(){
-    constexpr unsigned windowW=1240, windowH=880;
-    sf::RenderWindow window(sf::VideoMode(windowW, windowH), "Chess Engine (SFML 2.6) - NEA Build");
+    constexpr unsigned windowW=1320, windowH=880;
+    sf::ContextSettings ctx;
+    ctx.antialiasingLevel = 0;
+    sf::RenderWindow window(
+        sf::VideoMode(windowW, windowH),
+        "Chess Engine (SFML 2.6) - NEA Build",
+        sf::Style::Titlebar | sf::Style::Close,
+        ctx
+    );
+    window.setVerticalSyncEnabled(true);
     window.setFramerateLimit(60);
 
     const float tile = 96.f;
@@ -1380,7 +1567,11 @@ int main(){
 
     // SFML2: don't use FloatRect.position/size – use explicit vectors.
     const sf::Vector2f panelPos(boardOrigin.x + 8.f*tile + 30.f, boardOrigin.y);
-    const sf::Vector2f panelSize(420.f, 8.f*tile);
+    const sf::Vector2f panelSize(440.f, 8.f*tile);
+    const float gameCardY = panelPos.y + 74.f;
+    const float engineCardY = panelPos.y + 236.f;
+    const float statusCardY = panelPos.y + 494.f;
+    const float moveLogCardY = panelPos.y + 618.f;
 
     // Font: include Linux candidates (and keep your mac ones harmless)
     sf::Font font;
@@ -1392,14 +1583,19 @@ int main(){
           "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
           "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf",
           // macOS (harmless on Linux)
-          "/System/Library/Fonts/Supplemental/Arial.ttf",
           "/System/Library/Fonts/Supplemental/Verdana.ttf",
-          "/System/Library/Fonts/Supplemental/Trebuchet MS.ttf"
+          "/System/Library/Fonts/Supplemental/Arial.ttf",
+          "/System/Library/Fonts/Supplemental/Trebuchet MS.ttf",
+          "/System/Library/Fonts/SFNS.ttf",
+          "/System/Library/Fonts/Helvetica.ttc"
         };
         for(const auto& p : candidates){
             if(std::filesystem::exists(p)){
                 hasFont = font.loadFromFile(p);
-                if(hasFont) break;
+                if(hasFont){
+                    font.setSmooth(true);
+                    break;
+                }
             }
         }
     }
@@ -1413,17 +1609,21 @@ int main(){
     board.reset();
 
     // UI thread never calls search now; search runs in a worker thread.
-    SearchContext search;
-    search.tt.resizeMB(64);
+    const int ttSizeMB = 256;
+    SearchContext aiSearchCtx;
+    aiSearchCtx.tt.resizeMB(ttSizeMB);
 
     std::vector<Undo> undoStack;
     std::vector<std::string> moveListUCI;
+    std::vector<std::string> moveListSAN;
 
     auto pushMove = [&](const Move& m)->bool{
+        const std::string san = moveToSAN(board, m);
         Undo u{};
         if(board.makeMove(m, u)){
             undoStack.push_back(u);
             moveListUCI.push_back(moveToUCI(m));
+            moveListSAN.push_back(san);
             return true;
         }
         return false;
@@ -1434,6 +1634,146 @@ int main(){
         undoStack.pop_back();
         board.undoMove(u);
         if(!moveListUCI.empty()) moveListUCI.pop_back();
+        if(!moveListSAN.empty()) moveListSAN.pop_back();
+    };
+    auto getBookMove = [&]()->std::optional<Move>{
+        if(moveListUCI.size() >= 18) return std::nullopt;
+
+        static const std::vector<std::vector<std::string>> openings = {
+            {"e2e4","c7c5","g1f3","d7d6","d2d4","c5d4","f3d4","g8f6","b1c3","a7a6"},
+            {"e2e4","e7e5","g1f3","b8c6","f1b5","a7a6","b5a4","g8f6","e1g1"},
+            {"e2e4","e7e5","g1f3","b8c6","f1c4","g8f6","d2d3","f8c5","c2c3"},
+            {"d2d4","d7d5","c2c4","e7e6","b1c3","g8f6","c1g5","f8e7"},
+            {"d2d4","g8f6","c2c4","e7e6","g1f3","d7d5","b1c3","f8e7"},
+            {"d2d4","g8f6","c2c4","g7g6","b1c3","f8g7","e2e4","d7d6"},
+            {"c2c4","e7e5","b1c3","g8f6","g2g3","d7d5","c4d5","f6d5"},
+            {"g1f3","d7d5","g2g3","g8f6","f1g2","c7c6","e1g1"},
+            {"e2e4","c7c6","d2d4","d7d5","b1c3","d5e4","c3e4","c8f5"},
+            {"e2e4","e7e6","d2d4","d7d5","b1c3","g8f6","c1g5","f8e7"}
+        };
+
+        std::vector<Move> legal;
+        board.genLegalMoves(legal);
+        if(legal.empty()) return std::nullopt;
+
+        std::vector<std::string> candidates;
+        for(const auto& line : openings){
+            if(moveListUCI.size() >= line.size()) continue;
+            bool prefix = true;
+            for(size_t i=0; i<moveListUCI.size(); i++){
+                if(moveListUCI[i] != line[i]){
+                    prefix = false;
+                    break;
+                }
+            }
+            if(prefix){
+                candidates.push_back(line[moveListUCI.size()]);
+            }
+        }
+
+        if(candidates.empty()) return std::nullopt;
+        for(const auto& uci : candidates){
+            auto it = std::find_if(legal.begin(), legal.end(), [&](const Move& m){
+                return moveToUCI(m) == uci;
+            });
+            if(it != legal.end()){
+                return *it;
+            }
+        }
+        return std::nullopt;
+    };
+    auto writeMovesFile = [&](const std::filesystem::path& outPath)->bool{
+        Board replay;
+        replay.setZobrist(board.z);
+        replay.reset();
+
+        std::vector<std::string> sanMoves;
+        sanMoves.reserve(undoStack.size());
+        for(const auto& u : undoStack){
+            const Move& m = u.m;
+            sanMoves.push_back(moveToSAN(replay, m));
+            Undo replayUndo{};
+            if(!replay.makeMove(m, replayUndo)){
+                sanMoves.back() = moveToUCI(m);
+                break;
+            }
+        }
+
+        std::string result = "*";
+        std::string termination = "Game in progress";
+        {
+            std::vector<Move> legal;
+            replay.genLegalMoves(legal);
+            if(legal.empty()){
+                if(replay.inCheck(replay.stm)){
+                    result = (replay.stm == Color::White) ? "0-1" : "1-0";
+                    termination = "Checkmate";
+                } else {
+                    result = "1/2-1/2";
+                    termination = "Stalemate";
+                }
+            } else if(replay.insufficientMaterial()){
+                result = "1/2-1/2";
+                termination = "Insufficient material";
+            } else if(replay.halfmoveClock >= 100){
+                result = "1/2-1/2";
+                termination = "50-move rule";
+            }
+        }
+
+        std::ofstream out(outPath);
+        if(!out) return false;
+
+        out << "[Event \"Local Game\"]\n";
+        out << "[Result \"" << result << "\"]\n";
+        out << "[Termination \"" << termination << "\"]\n\n";
+
+        if(sanMoves.empty()){
+            out << "{No moves played}\n";
+            return true;
+        }
+
+        for(size_t i=0; i<sanMoves.size(); i+=2){
+            out << (i/2 + 1) << ". " << sanMoves[i];
+            if(i + 1 < sanMoves.size()) out << " " << sanMoves[i + 1];
+            out << "\n";
+        }
+        return true;
+    };
+    auto askOpenMovesFile = [&]()->bool{
+#ifdef __APPLE__
+        const std::string cmd =
+            "osascript -e \"button returned of (display dialog \\\"Moves saved to moves.txt. Open now?\\\" "
+            "buttons {\\\"Don't Open\\\",\\\"Open\\\"} default button \\\"Open\\\")\"";
+        FILE* p = popen(cmd.c_str(), "r");
+        if(p){
+            char buf[256];
+            std::string out;
+            while(fgets(buf, sizeof(buf), p)) out += buf;
+            int rc = pclose(p);
+            if(rc == 0){
+                return trim(out) == "Open";
+            }
+        }
+#endif
+        std::cout << "Moves saved to moves.txt. Open now? [y/N]: " << std::flush;
+        std::string ans;
+        std::getline(std::cin, ans);
+        if(ans.empty()) return false;
+        char c = ans[0];
+        return c=='y' || c=='Y';
+    };
+    auto openMovesFile = [&](const std::filesystem::path& outPath){
+#ifdef __APPLE__
+        std::string cmd = "open " + shellQuote(outPath.string());
+        std::system(cmd.c_str());
+#elif defined(__linux__)
+        std::string cmd = "xdg-open " + shellQuote(outPath.string()) + " >/dev/null 2>&1 &";
+        std::system(cmd.c_str());
+#elif defined(_WIN32)
+        std::string cmd = "start \"\" " + shellQuote(outPath.string());
+        std::system(cmd.c_str());
+#endif
     };
 
     GameMode mode = GameMode::Menu;
@@ -1450,12 +1790,53 @@ int main(){
     std::optional<int> dragFrom;
     sf::Vector2f dragPos(0,0);
 
-    int aiMaxDepth = 15;
-    int aiTimeMs = 5000;
+    int aiMaxDepth = 20;
+    int aiTimeMs = 10000;
     int aiDelayMs = 35;
     sf::Clock aiClock;
 
     bool flipBoard=false;
+
+    auto setMenuSelection = [&](int idx){
+        if(idx==0){
+            pending = GameMode::PvP;
+            humanColor = Color::White;
+        } else if(idx==1){
+            pending = GameMode::PvAI;
+            humanColor = Color::White;
+        } else if(idx==2){
+            pending = GameMode::PvAI;
+            humanColor = Color::Black;
+        } else {
+            pending = GameMode::AIvAI;
+            humanColor = Color::White;
+        }
+    };
+    auto getMenuSelection = [&]()->int{
+        if(pending==GameMode::PvP) return 0;
+        if(pending==GameMode::PvAI && humanColor==Color::White) return 1;
+        if(pending==GameMode::PvAI && humanColor==Color::Black) return 2;
+        return 3;
+    };
+    auto moveMenuSelection = [&](int delta){
+        int idx = (getMenuSelection() + delta) % 4;
+        if(idx < 0) idx += 4;
+        setMenuSelection(idx);
+    };
+    auto getMenuCardRects = [&]()->std::array<sf::FloatRect,4>{
+        return {
+            sf::FloatRect(96.f, 234.f, 760.f, 102.f),
+            sf::FloatRect(96.f, 350.f, 760.f, 102.f),
+            sf::FloatRect(96.f, 466.f, 760.f, 102.f),
+            sf::FloatRect(96.f, 582.f, 760.f, 102.f)
+        };
+    };
+    auto getMenuStartRect = [&]()->sf::FloatRect{
+        return sf::FloatRect(908.f, 586.f, 204.f, 58.f);
+    };
+    auto getAiPauseRect = [&]()->sf::FloatRect{
+        return sf::FloatRect(panelPos.x + panelSize.x - 168.f, engineCardY + 18.f, 146.f, 30.f);
+    };
 
     auto isHumanSide = [&](Color c)->bool{
         if(mode==GameMode::PvP) return true;
@@ -1476,9 +1857,22 @@ int main(){
         selectedSq.reset();
         selectedMoves.clear();
         lastMove.reset();
+        moveListSAN.clear();
         dragging=false;
         dragFrom.reset();
         status = "Reset.";
+    };
+    auto startPendingGame = [&](){
+        mode = pending;
+        resetGame();
+
+        if(mode == GameMode::PvAI && humanColor == Color::Black){
+            flipBoard = true;
+        } else if(mode == GameMode::PvAI && humanColor == Color::White){
+            flipBoard = false;
+        }
+
+        status = "Game started: " + modeStr(mode);
     };
 
     auto tryMoveFromTo = [&](int from, int to)->bool{
@@ -1510,6 +1904,8 @@ int main(){
     // ---------------- AI threading (prevents UI freezing / Fedora "not responding") ----------------
     std::atomic<bool> aiThinking(false);
     std::atomic<bool> aiMoveReady(false);
+    std::atomic<bool> aiPaused(false);
+    std::atomic<bool> aiAbortSearch(false);
     Move aiChosenMove{};
     SearchStats lastSearchStats{};
     std::string lastPV;
@@ -1517,23 +1913,74 @@ int main(){
     sf::Clock thinkClock;
     std::thread aiThread;
 
+    struct EngineStepperRects {
+        sf::FloatRect depthMinus;
+        sf::FloatRect depthPlus;
+        sf::FloatRect timeMinus;
+        sf::FloatRect timePlus;
+    };
+    auto getEngineStepperRects = [&]()->EngineStepperRects{
+        const float btnW = 32.f;
+        const float btnH = 24.f;
+        const float plusX  = panelPos.x + panelSize.x - 56.f;
+        const float minusX = plusX - 38.f;
+        const float depthY = engineCardY + 74.f;
+        const float timeY  = engineCardY + 106.f;
+        return EngineStepperRects{
+            sf::FloatRect(minusX, depthY, btnW, btnH),
+            sf::FloatRect(plusX,  depthY, btnW, btnH),
+            sf::FloatRect(minusX, timeY,  btnW, btnH),
+            sf::FloatRect(plusX,  timeY,  btnW, btnH)
+        };
+    };
+    auto pointInRect = [](sf::Vector2f p, const sf::FloatRect& r)->bool{
+        return p.x >= r.left && p.x <= (r.left + r.width) &&
+               p.y >= r.top  && p.y <= (r.top + r.height);
+    };
+    auto adjustDepth = [&](int delta){
+        aiMaxDepth = std::clamp(aiMaxDepth + delta, 1, 150);
+        status = "AI max depth = " + std::to_string(aiMaxDepth);
+    };
+    auto adjustTime = [&](int deltaMs){
+        aiTimeMs = std::clamp(aiTimeMs + deltaMs, 100, 180000);
+        status = "AI time = " + std::to_string(aiTimeMs) + "ms";
+    };
+
     auto stopAiThread = [&](){
+        aiAbortSearch.store(true);
         if(aiThread.joinable()) aiThread.join();
         aiThinking.store(false);
         aiMoveReady.store(false);
+        aiAbortSearch.store(false);
     };
 
     auto startAiThink = [&](){
-        if(aiThinking.load()) return;
+        if(aiThinking.load() || aiPaused.load()) return;
 
         // don't search if game is over
         std::vector<Move> legal;
         board.genLegalMoves(legal);
         if(legal.empty()) return;
 
+        if(auto bm = getBookMove()){
+            {
+                std::lock_guard<std::mutex> lock(aiMutex);
+                aiChosenMove = *bm;
+                lastSearchStats = SearchStats{};
+                lastSearchStats.timeMs = 0;
+                lastSearchStats.depthReached = 0;
+                lastSearchStats.bestScore = 0;
+                lastPV = "book";
+            }
+            aiMoveReady.store(true);
+            aiThinking.store(false);
+            return;
+        }
+
         // join previous finished thread if needed
         if(aiThread.joinable()) aiThread.join();
 
+        aiAbortSearch.store(false);
         aiThinking.store(true);
         aiMoveReady.store(false);
         thinkClock.restart();
@@ -1544,22 +1991,47 @@ int main(){
         int threadTimeMs   = aiTimeMs;
 
         aiThread = std::thread([&, searchBoard, threadMaxDepth, threadTimeMs]() mutable {
-            SearchContext localCtx;
-            localCtx.tt.resizeMB(64);
+            aiSearchCtx.abortFlag = &aiAbortSearch;
+            Move m = searchBestMove(searchBoard, aiSearchCtx, threadMaxDepth, threadTimeMs);
+            std::string pv = extractPVFromTT(searchBoard, aiSearchCtx, 12);
 
-            Move m = searchBestMove(searchBoard, localCtx, threadMaxDepth, threadTimeMs);
-            std::string pv = extractPVFromTT(searchBoard, localCtx, 12);
+            if(aiAbortSearch.load() || aiPaused.load()){
+                aiMoveReady.store(false);
+                aiThinking.store(false);
+                return;
+            }
 
             {
                 std::lock_guard<std::mutex> lock(aiMutex);
                 aiChosenMove = m;
-                lastSearchStats = localCtx.stats;
+                lastSearchStats = aiSearchCtx.stats;
                 lastPV = pv;
             }
 
             aiMoveReady.store(true);
             aiThinking.store(false);
         });
+    };
+    auto toggleAiPause = [&](){
+        bool pausedNow = !aiPaused.load();
+        aiPaused.store(pausedNow);
+        if(pausedNow){
+            stopAiThread();
+            status = "AI paused.";
+        } else {
+            status = "AI resumed.";
+        }
+    };
+    auto runUndo = [&](){
+        stopAiThread();
+        popUndo();
+        selectedSq.reset();
+        selectedMoves.clear();
+        dragging=false;
+        dragFrom.reset();
+        if(undoStack.empty()) lastMove.reset();
+        else lastMove = undoStack.back().m;
+        status = "Undo.";
     };
 
     while(window.isOpen()){
@@ -1574,40 +2046,43 @@ int main(){
 
                 if(mode==GameMode::Menu){
                     if(code == sf::Keyboard::Num1){
-                        pending = GameMode::PvP;
+                        setMenuSelection(0);
                     }
 
                     // NEW: choose side for PvAI
                     if(code == sf::Keyboard::Num2){
-                        pending = GameMode::PvAI;
-                        humanColor = Color::White;
+                        setMenuSelection(1);
                     }
                     if(code == sf::Keyboard::Num3){
-                        pending = GameMode::PvAI;
-                        humanColor = Color::Black;
+                        setMenuSelection(2);
                     }
 
                     // AI vs AI moved to 4
                     if(code == sf::Keyboard::Num4){
-                        pending = GameMode::AIvAI;
+                        setMenuSelection(3);
+                    }
+
+                    if(code == sf::Keyboard::Up || code == sf::Keyboard::Left){
+                        moveMenuSelection(-1);
+                    }
+                    if(code == sf::Keyboard::Down || code == sf::Keyboard::Right){
+                        moveMenuSelection(+1);
                     }
 
                     if(code == sf::Keyboard::Enter){
-                        mode = pending;
-                        resetGame();
-
-                        // NEW: auto-flip when playing as Black
-                        if(mode == GameMode::PvAI && humanColor == Color::Black){
-                            flipBoard = true;
-                        } else if(mode == GameMode::PvAI && humanColor == Color::White){
-                            flipBoard = false;
-                        }
-
-                        status = "Game started: " + modeStr(mode);
+                        startPendingGame();
                     }
                 } else {
-                    if(code == sf::Keyboard::R) resetGame();
-                    if(code == sf::Keyboard::U) { popUndo(); status = "Undo."; }
+                    if(code == sf::Keyboard::R){
+                        stopAiThread();
+                        resetGame();
+                    }
+                    if(code == sf::Keyboard::U){
+                        runUndo();
+                    }
+                    if(code == sf::Keyboard::P){
+                        toggleAiPause();
+                    }
 
                     if(code == sf::Keyboard::F){
                         flipBoard = !flipBoard;
@@ -1616,27 +2091,50 @@ int main(){
 
                     // depth
                     if(code == sf::Keyboard::Equal || code == sf::Keyboard::Add){
-                        aiMaxDepth = std::min(100, aiMaxDepth+1);
-                        status = "AI max depth = " + std::to_string(aiMaxDepth);
+                        adjustDepth(+1);
                     }
                     if(code == sf::Keyboard::Hyphen || code == sf::Keyboard::Subtract){
-                        aiMaxDepth = std::max(1, aiMaxDepth-1);
-                        status = "AI max depth = " + std::to_string(aiMaxDepth);
+                        adjustDepth(-1);
                     }
 
                     // time per move (let it go big if you want)
                     if(code == sf::Keyboard::T){
-                        aiTimeMs = std::min(30000, aiTimeMs + 250);
-                        status = "AI time = " + std::to_string(aiTimeMs) + "ms";
+                        adjustTime(+250);
                     }
                     if(code == sf::Keyboard::Y){
-                        aiTimeMs = std::max(100, aiTimeMs - 250);
-                        status = "AI time = " + std::to_string(aiTimeMs) + "ms";
+                        adjustTime(-250);
+                    }
+                }
+            }
+
+            if(mode==GameMode::Menu){
+                if(e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left){
+                    sf::Vector2f mp(float(e.mouseButton.x), float(e.mouseButton.y));
+                    if(getMenuStartRect().contains(mp)){
+                        startPendingGame();
+                        continue;
+                    }
+                    auto menuRects = getMenuCardRects();
+                    for(int i=0;i<4;i++){
+                        if(menuRects[size_t(i)].contains(mp)){
+                            setMenuSelection(i);
+                            break;
+                        }
                     }
                 }
             }
 
             if(mode!=GameMode::Menu){
+                if(e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left){
+                    sf::Vector2f mp(float(e.mouseButton.x), float(e.mouseButton.y));
+                    if(getAiPauseRect().contains(mp)){ toggleAiPause(); continue; }
+                    const EngineStepperRects step = getEngineStepperRects();
+                    if(pointInRect(mp, step.depthMinus)){ adjustDepth(-1); continue; }
+                    if(pointInRect(mp, step.depthPlus)){  adjustDepth(+1); continue; }
+                    if(pointInRect(mp, step.timeMinus)){  adjustTime(-250); continue; }
+                    if(pointInRect(mp, step.timePlus)){   adjustTime(+250); continue; }
+                }
+
                 // Only allow human input if it's human side AND we aren't mid-AI-search (prevents weirdness in PvAI)
                 if(isHumanSide(board.stm) && !aiThinking.load()){
                     if(e.type == sf::Event::MouseButtonPressed){
@@ -1645,6 +2143,20 @@ int main(){
                             auto sq = pixelToSquare(mp, tile, boardOrigin, flipBoard);
                             if(!sq) continue;
                             int idx = sqToIndex(*sq);
+
+                            // Click-to-move: if a piece is already selected, a second click
+                            // on a legal destination plays that move immediately.
+                            if(selectedSq){
+                                int from = *selectedSq;
+                                Piece sel = board.at(from);
+                                if(!isNone(sel) && sel.c==board.stm && idx != from){
+                                    if(tryMoveFromTo(from, idx)){
+                                        dragging=false;
+                                        dragFrom.reset();
+                                        continue;
+                                    }
+                                }
+                            }
 
                             selectedSq = idx;
                             refreshSelection();
@@ -1669,8 +2181,10 @@ int main(){
                                 auto sq = pixelToSquare(mp, tile, boardOrigin, flipBoard);
                                 if(sq){
                                     int to = sqToIndex(*sq);
-                                    bool ok = tryMoveFromTo(*dragFrom, to);
-                                    if(!ok) status = "Illegal move.";
+                                    if(to != *dragFrom){
+                                        bool ok = tryMoveFromTo(*dragFrom, to);
+                                        if(!ok) status = "Illegal move.";
+                                    }
                                 }
                             }
                             dragging=false;
@@ -1682,7 +2196,7 @@ int main(){
         }
 
         // AI turn (NON-BLOCKING)
-        if(mode!=GameMode::Menu && !isHumanSide(board.stm)){
+        if(mode!=GameMode::Menu && !isHumanSide(board.stm) && !aiPaused.load()){
             bool shouldMove = true;
             if(mode==GameMode::AIvAI){
                 shouldMove = (aiClock.getElapsedTime().asMilliseconds() >= aiDelayMs);
@@ -1713,47 +2227,147 @@ int main(){
             }
         }
 
-        window.clear(sf::Color(15,15,18));
+        window.clear(sf::Color(10,12,20));
 
         // -------- Menu --------
         if(mode==GameMode::Menu){
             if(hasFont){
-                sf::Text t;
-                t.setFont(font);
-                t.setCharacterSize(30);
-                t.setFillColor(sf::Color(240,240,240));
-                t.setString(
-                  "Choose mode:\n\n"
-                  "1) Player vs Player\n"
-                  "2) Player vs AI (Play as White)\n"
-                  "3) Player vs AI (Play as Black)\n"
-                  "4) Watch AI vs AI\n\n"
-                  "Press Enter to start"
-                );                
-                t.setPosition(snap(sf::Vector2f(60.f, 80.f)));
-                window.draw(t);
+                auto drawText = [&](float x, float y, unsigned size, sf::Color col, const std::string& str, sf::Uint32 style = sf::Text::Regular){
+                    sf::Text t;
+                    t.setFont(font);
+                    t.setCharacterSize(size);
+                    t.setFillColor(col);
+                    t.setStyle(style);
+                    t.setString(str);
+                    setCrispTextPosition(t, sf::Vector2f(x, y));
+                    window.draw(t);
+                };
 
-                sf::Text s;
-                s.setFont(font);
-                s.setCharacterSize(22);
-                s.setFillColor(sf::Color(230,230,230));
-                s.setString("Selected: " + modeStr(pending));
-                s.setPosition(snap(sf::Vector2f(60.f, 380.f)));
-                window.draw(s);
+                auto isModeSelected = [&](int id)->bool{
+                    if(id==1) return pending==GameMode::PvP;
+                    if(id==2) return pending==GameMode::PvAI && humanColor==Color::White;
+                    if(id==3) return pending==GameMode::PvAI && humanColor==Color::Black;
+                    return pending==GameMode::AIvAI;
+                };
 
-                sf::Text a;
-                a.setFont(font);
-                a.setCharacterSize(18);
-                a.setFillColor(sf::Color(200,200,200));
-                a.setString(std::string("Icons: ") + (hasIcons ? "loaded" : "missing (assets/pieces_png)"));
-                a.setPosition(snap(sf::Vector2f(60.f, 430.f)));
-                window.draw(a);
+                auto selectionLabel = [&]()->std::string{
+                    if(pending==GameMode::PvP) return "Player vs Player";
+                    if(pending==GameMode::AIvAI) return "Watch AI vs AI";
+                    return (humanColor==Color::White)
+                        ? "Player vs AI (Play as White)"
+                        : "Player vs AI (Play as Black)";
+                };
+
+                sf::RectangleShape shell(sf::Vector2f(windowW - 120.f, windowH - 120.f));
+                shell.setPosition(snap(sf::Vector2f(60.f, 60.f)));
+                shell.setFillColor(sf::Color(12,14,24));
+                shell.setOutlineThickness(2.f);
+                shell.setOutlineColor(sf::Color(52,60,88));
+                window.draw(shell);
+
+                sf::RectangleShape accent(sf::Vector2f(shell.getSize().x, 8.f));
+                accent.setPosition(shell.getPosition());
+                accent.setFillColor(sf::Color(58,132,255));
+                window.draw(accent);
+
+                drawText(96.f, 95.f, 22, sf::Color(130,160,220), "CHESS ENGINE", sf::Text::Bold);
+                drawText(96.f, 134.f, 48, sf::Color(240,244,255), "Choose Your Match");
+                drawText(96.f, 184.f, 18, sf::Color(160,170,200), "Use arrows, click a card, or press 1-4, then Enter to start.");
+
+                sf::Vector2i mousePixel = sf::Mouse::getPosition(window);
+                sf::Vector2f mousePos(float(mousePixel.x), float(mousePixel.y));
+
+                auto drawModeCard = [&](float y, int key, const std::string& title, const std::string& subtitle){
+                    const bool selected = isModeSelected(key);
+                    const sf::FloatRect cardRect(96.f, y, 760.f, 102.f);
+                    const bool hover = cardRect.contains(mousePos);
+
+                    sf::RectangleShape card(sf::Vector2f(760.f, 102.f));
+                    card.setPosition(snap(sf::Vector2f(96.f, y)));
+                    card.setFillColor(selected ? sf::Color(30,74,150) : (hover ? sf::Color(28,35,56) : sf::Color(20,24,36)));
+                    card.setOutlineThickness(2.f);
+                    card.setOutlineColor(selected ? sf::Color(120,190,255) : (hover ? sf::Color(92,126,188) : sf::Color(50,58,82)));
+                    window.draw(card);
+
+                    sf::RectangleShape keyChip(sf::Vector2f(46.f, 46.f));
+                    keyChip.setPosition(snap(sf::Vector2f(114.f, y + 28.f)));
+                    keyChip.setFillColor(selected ? sf::Color(150,210,255) : sf::Color(36,42,62));
+                    keyChip.setOutlineThickness(1.f);
+                    keyChip.setOutlineColor(selected ? sf::Color(215,240,255) : sf::Color(70,80,110));
+                    window.draw(keyChip);
+
+                    drawText(130.f, y + 38.f, 24, selected ? sf::Color(16,26,40) : sf::Color(220,228,245), std::to_string(key), sf::Text::Bold);
+                    drawText(178.f, y + 26.f, 30, sf::Color(238,242,255), title);
+                    drawText(178.f, y + 62.f, 18, selected ? sf::Color(210,228,255) : sf::Color(160,174,206), subtitle);
+
+                    if(selected){
+                        sf::RectangleShape tag(sf::Vector2f(106.f, 34.f));
+                        tag.setPosition(snap(sf::Vector2f(730.f, y + 34.f)));
+                        tag.setFillColor(sf::Color(215,240,255));
+                        tag.setOutlineThickness(1.f);
+                        tag.setOutlineColor(sf::Color(140,190,230));
+                        window.draw(tag);
+                        drawText(744.f, y + 41.f, 16, sf::Color(16,36,56), "Selected", sf::Text::Bold);
+                    }
+                };
+
+                drawModeCard(234.f, 1, "Player vs Player", "Two humans on one board.");
+                drawModeCard(350.f, 2, "Player vs AI (White)", "You move first, AI responds.");
+                drawModeCard(466.f, 3, "Player vs AI (Black)", "AI opens, you defend and counter.");
+                drawModeCard(582.f, 4, "Watch AI vs AI", "Let both engines play automatically.");
+
+                sf::RectangleShape side(sf::Vector2f(244.f, 450.f));
+                side.setPosition(snap(sf::Vector2f(888.f, 234.f)));
+                side.setFillColor(sf::Color(18,22,34));
+                side.setOutlineThickness(2.f);
+                side.setOutlineColor(sf::Color(45,54,80));
+                window.draw(side);
+
+                drawText(908.f, 262.f, 24, sf::Color(232,238,252), "Session");
+                drawText(908.f, 300.f, 18, sf::Color(165,178,210), "Current:");
+                drawText(908.f, 326.f, 19, sf::Color(220,230,250), selectionLabel());
+                drawText(908.f, 376.f, 18, sf::Color(165,178,210), "Controls:");
+                drawText(908.f, 404.f, 18, sf::Color(220,230,250), "Arrows / click mode");
+                drawText(908.f, 430.f, 18, sf::Color(220,230,250), "Enter start game");
+                drawText(908.f, 456.f, 18, sf::Color(220,230,250), "Esc   quit");
+                drawText(908.f, 506.f, 18, sf::Color(165,178,210), "Assets:");
+                drawText(908.f, 534.f, 18, hasIcons ? sf::Color(145,220,170) : sf::Color(255,180,180),
+                         hasIcons ? "Piece icons loaded" : "Piece icons missing");
+
+                const sf::FloatRect startRect = getMenuStartRect();
+                const bool startHover = startRect.contains(mousePos);
+                sf::RectangleShape startBtn(sf::Vector2f(startRect.width, startRect.height));
+                startBtn.setPosition(snap(sf::Vector2f(startRect.left, startRect.top)));
+                startBtn.setFillColor(startHover ? sf::Color(62,134,255) : sf::Color(46,108,214));
+                startBtn.setOutlineThickness(2.f);
+                startBtn.setOutlineColor(startHover ? sf::Color(184,220,255) : sf::Color(112,170,240));
+                window.draw(startBtn);
+                drawText(startRect.left + 36.f, startRect.top + 10.f, 23, sf::Color(236,246,255), "Start Game", sf::Text::Bold);
+                drawText(startRect.left + 77.f, startRect.top + 35.f, 14, sf::Color(210,230,255), "Enter");
+
+                drawText(96.f, 752.f, 18, sf::Color(138,152,188), "Tip: press 2 or 3 to play against AI as White or Black.");
             }
             window.display();
             continue;
         }
 
         // -------- Draw board --------
+        const float boardPadL = 20.f;
+        const float boardPadR = 14.f;
+        const float boardPadT = 20.f;
+        const float boardPadB = 30.f;
+        sf::RectangleShape boardShell(sf::Vector2f(8.f*tile + boardPadL + boardPadR, 8.f*tile + boardPadT + boardPadB));
+        boardShell.setPosition(snap(sf::Vector2f(boardOrigin.x - boardPadL, boardOrigin.y - boardPadT)));
+        boardShell.setFillColor(sf::Color(16,20,32));
+        boardShell.setOutlineThickness(2.f);
+        boardShell.setOutlineColor(sf::Color(52,60,88));
+        window.draw(boardShell);
+
+        sf::RectangleShape boardAccent(sf::Vector2f(boardShell.getSize().x, 6.f));
+        boardAccent.setPosition(boardShell.getPosition());
+        boardAccent.setFillColor(sf::Color(58,132,255));
+        window.draw(boardAccent);
+
         for(int r=0;r<8;r++){
             for(int f=0;f<8;f++){
                 Square s{f,r};
@@ -1763,9 +2377,14 @@ int main(){
                 rect.setPosition(snap(squareToPixel(s, tile, boardOrigin, flipBoard)));
 
                 bool dark = ((f+r)%2)==1;
-                sf::Color base = dark ? sf::Color(70,70,82) : sf::Color(210,210,220);
+                sf::Color base = dark ? sf::Color(78,83,108) : sf::Color(214,219,233);
 
-                if(lastMove && (idx==lastMove->from || idx==lastMove->to)) base = lighten(base, 30);
+                if(lastMove && idx==lastMove->from){
+                    base = dark ? sf::Color(205,110,35) : sf::Color(245,150,70);
+                }
+                if(lastMove && idx==lastMove->to){
+                    base = dark ? sf::Color(50,145,225) : sf::Color(120,195,250);
+                }
                 if(selectedSq && idx==*selectedSq) base = lighten(base, 55);
 
                 rect.setFillColor(base);
@@ -1776,7 +2395,7 @@ int main(){
         for(const auto& m : selectedMoves){
             sf::RectangleShape hl(sf::Vector2f(tile,tile));
             hl.setPosition(snap(squareToPixel(indexToSq(m.to), tile, boardOrigin, flipBoard)));
-            hl.setFillColor(sf::Color(80,180,120,90));
+            hl.setFillColor(sf::Color(88,208,164,116));
             window.draw(hl);
         }
 
@@ -1786,32 +2405,33 @@ int main(){
                 if(k>=0){
                     sf::RectangleShape red(sf::Vector2f(tile,tile));
                     red.setPosition(snap(squareToPixel(indexToSq(k), tile, boardOrigin, flipBoard)));
-                    red.setFillColor(sf::Color(220,60,60,90));
+                    red.setFillColor(sf::Color(228,76,76,124));
                     window.draw(red);
                 }
             }
         }
 
         if(hasFont){
+            const float fileLabelY = flipBoard ? (boardOrigin.y - 7.f) : (boardOrigin.y + 8.f*tile + 10.f);
+            const float rankLabelX = boardOrigin.x - 12.f;
             for(int f=0; f<8; f++){
                 sf::Text t;
                 t.setFont(font);
                 t.setCharacterSize(14);
-                t.setFillColor(sf::Color(30,30,30));
+                t.setFillColor(sf::Color(126,138,170));
                 t.setString(std::string(1, char('a'+f)));
-                float y = flipBoard ? (boardOrigin.y + 0.f*tile + 6.f) : (boardOrigin.y + 8.f*tile + 6.f);
-                t.setPosition(snap(sf::Vector2f(boardOrigin.x + (flipBoard?(7-f):f)*tile + 4.f, y)));
+                setCrispTextPosition(t, sf::Vector2f(boardOrigin.x + (flipBoard?(7-f):f)*tile + 6.f, fileLabelY));
                 window.draw(t);
             }
             for(int r=0; r<8; r++){
                 sf::Text t;
                 t.setFont(font);
                 t.setCharacterSize(14);
-                t.setFillColor(sf::Color(30,30,30));
+                t.setFillColor(sf::Color(126,138,170));
                 t.setString(std::to_string(r+1));
                 int rr = flipBoard ? (7-r) : r;
                 auto pos = squareToPixel(Square{0,rr}, tile, boardOrigin, flipBoard);
-                t.setPosition(snap(sf::Vector2f(boardOrigin.x - 18.f, pos.y + 4.f)));
+                setCrispTextPosition(t, sf::Vector2f(rankLabelX, pos.y + 6.f));
                 window.draw(t);
             }
         }
@@ -1844,49 +2464,59 @@ int main(){
         // panel
         sf::RectangleShape panelBg(panelSize);
         panelBg.setPosition(panelPos);
-        panelBg.setFillColor(sf::Color(25,25,30));
+        panelBg.setFillColor(sf::Color(14,18,30));
+        panelBg.setOutlineThickness(2.f);
+        panelBg.setOutlineColor(sf::Color(52,60,88));
         window.draw(panelBg);
 
+        sf::RectangleShape panelAccent(sf::Vector2f(panelSize.x, 6.f));
+        panelAccent.setPosition(panelPos);
+        panelAccent.setFillColor(sf::Color(58,132,255));
+        window.draw(panelAccent);
+
         if(hasFont){
-            auto WRAP = [&](float y, const std::string& txt, int size=14, sf::Color col=sf::Color(230,230,230)){
-                return drawWrappedText(window, font, txt, (unsigned)size,
-                                      sf::Vector2f(panelPos.x + 14.f, panelPos.y + y),
-                                      panelSize.x - 28.f,
-                                      col);
+            auto drawText = [&](float x, float y, unsigned size, sf::Color col, const std::string& str, sf::Uint32 style = sf::Text::Regular){
+                sf::Text t;
+                t.setFont(font);
+                t.setCharacterSize(size);
+                t.setFillColor(col);
+                t.setStyle(style);
+                t.setString(str);
+                setCrispTextPosition(t, sf::Vector2f(x, y));
+                window.draw(t);
             };
 
-            float y = 16.f;
+            auto WRAPAT = [&](float x, float y, float w, const std::string& txt, int size=14, sf::Color col=sf::Color(220,228,245)){
+                return drawWrappedText(window, font, txt, (unsigned)size, sf::Vector2f(x, y), w, col);
+            };
 
-            y += WRAP(y, "Mode: " + modeStr(mode), 18) + 6.f;
-            y += WRAP(y, std::string("Turn: ") + (board.stm==Color::White ? "White" : "Black"), 14) + 6.f;
+            auto drawCard = [&](float y, float h, const sf::Color& fill = sf::Color(20,24,36)){
+                sf::RectangleShape card(sf::Vector2f(panelSize.x - 22.f, h));
+                card.setPosition(snap(sf::Vector2f(panelPos.x + 11.f, y)));
+                card.setFillColor(fill);
+                card.setOutlineThickness(1.f);
+                card.setOutlineColor(sf::Color(50,58,82));
+                window.draw(card);
+            };
 
-            {
-                std::ostringstream oss;
-                oss << "AI: maxDepth " << aiMaxDepth << " (+/-), time " << aiTimeMs << "ms (T/Y)";
-                y += WRAP(y, oss.str(), 14, sf::Color(210,210,210)) + 4.f;
+            std::vector<Move> legalMoves;
+            board.genLegalMoves(legalMoves);
+
+            std::string stateLabel = "State: NORMAL";
+            sf::Color stateColor(170,184,218);
+            if(legalMoves.empty()){
+                if(board.inCheck(board.stm)){
+                    stateLabel = "State: CHECKMATE";
+                    stateColor = sf::Color(255,175,175);
+                } else {
+                    stateLabel = "State: STALEMATE";
+                    stateColor = sf::Color(255,220,170);
+                }
+            } else if(board.inCheck(board.stm)){
+                stateLabel = "State: CHECK";
+                stateColor = sf::Color(255,205,155);
             }
-            y += WRAP(y, "R reset   U undo   F flip   Esc quit", 14, sf::Color(200,200,200)) + 10.f;
 
-            std::vector<Move> moves;
-            board.genLegalMoves(moves);
-            if(moves.empty()){
-                if(board.inCheck(board.stm)) y += WRAP(y, "State: CHECKMATE", 18, sf::Color(255,180,180)) + 6.f;
-                else y += WRAP(y, "State: STALEMATE", 18, sf::Color(255,220,180)) + 6.f;
-            } else {
-                if(board.inCheck(board.stm)) y += WRAP(y, "State: CHECK", 18, sf::Color(255,200,160)) + 6.f;
-            }
-            if(board.insufficientMaterial()){
-                y += WRAP(y, "Note: insufficient material draw likely", 14, sf::Color(200,200,200)) + 6.f;
-            }
-
-            if(aiThinking.load()){
-                int ms = thinkClock.getElapsedTime().asMilliseconds();
-                std::ostringstream oss;
-                oss << "AI thinking... " << ms << "ms / " << aiTimeMs << "ms";
-                y += WRAP(y, oss.str(), 14, sf::Color(255,210,170)) + 8.f;
-            }
-
-            // search stats (more detailed)
             SearchStats s;
             std::string pv;
             {
@@ -1899,14 +2529,133 @@ int main(){
             double qPct = (s.nodes > 0) ? (100.0 * double(s.qnodes) / double(s.nodes)) : 0.0;
             double pawns = double(s.bestScore) / 100.0;
 
-            y += WRAP(y, "Last AI search:", 16, sf::Color(220,220,220)) + 2.f;
+            drawText(panelPos.x + 16.f, panelPos.y + 18.f, 27, sf::Color(236,242,255), "Match Dashboard");
+            drawText(panelPos.x + 16.f, panelPos.y + 48.f, 16, sf::Color(142,156,190), "Live mode, engine and game-state telemetry.");
 
+            const float cardX = panelPos.x + 24.f;
+            const float cardW = panelSize.x - 48.f;
+            const float cardTextX = cardX + 12.f;
+            const float gameCardH = 150.f;
+            const float engineCardH = 246.f;
+            const float statusCardH = 112.f;
+            const float moveLogCardH = panelSize.y - (moveLogCardY - panelPos.y) - 12.f;
+
+            drawCard(gameCardY, gameCardH);
+            drawText(cardTextX, gameCardY + 20.f, 18, sf::Color(190,204,236), "Game");
+            drawText(cardTextX, gameCardY + 48.f, 16, sf::Color(224,232,249), "Mode: " + modeStr(mode));
+            drawText(cardTextX, gameCardY + 72.f, 16, sf::Color(224,232,249),
+                     std::string("Turn: ") + (board.stm==Color::White ? "White" : "Black"));
+            drawText(cardTextX, gameCardY + 96.f, 16, stateColor, stateLabel, sf::Text::Bold);
+            drawText(cardTextX, gameCardY + 120.f, 14, sf::Color(168,182,215), "R reset  U undo  F flip  P pause  Esc quit");
+
+            drawCard(engineCardY, engineCardH);
+            drawText(cardTextX, engineCardY + 20.f, 18, sf::Color(190,204,236), "Engine");
+
+            std::ostringstream evalText;
+            if(std::abs(s.bestScore) > MATE/2){
+                int matePly = std::max(1, MATE - std::abs(s.bestScore));
+                int mateMoves = std::max(1, (matePly + 1) / 2);
+                evalText << "Eval: " << (s.bestScore >= 0 ? "M" : "-M") << mateMoves;
+            } else {
+                evalText << "Eval: " << std::showpos << std::fixed << std::setprecision(2) << pawns;
+            }
+            drawText(cardTextX, engineCardY + 44.f, 13, sf::Color(174,194,236), evalText.str());
+            drawText(cardTextX + 162.f, engineCardY + 44.f, 13, sf::Color(124,146,192),
+                     "TT " + std::to_string(ttSizeMB) + "MB");
+            {
+                float evalNorm = 0.5f;
+                if(std::abs(s.bestScore) > MATE/2){
+                    evalNorm = (s.bestScore >= 0) ? 1.f : 0.f;
+                } else {
+                    double cp = std::clamp(double(s.bestScore), -1200.0, 1200.0);
+                    evalNorm = float(0.5 + 0.5 * std::tanh(cp / 300.0));
+                }
+                evalNorm = std::clamp(evalNorm, 0.f, 1.f);
+
+                const float barX = cardTextX;
+                const float barY = engineCardY + 60.f;
+                const float barW = cardW - 24.f;
+                const float barH = 10.f;
+
+                sf::RectangleShape barBg(sf::Vector2f(barW, barH));
+                barBg.setPosition(snap(sf::Vector2f(barX, barY)));
+                barBg.setFillColor(sf::Color(32,40,62));
+                barBg.setOutlineThickness(1.f);
+                barBg.setOutlineColor(sf::Color(62,84,124));
+                window.draw(barBg);
+
+                sf::RectangleShape barFill(sf::Vector2f(std::max(2.f, barW * evalNorm), barH));
+                barFill.setPosition(snap(sf::Vector2f(barX, barY)));
+                barFill.setFillColor(sf::Color(74,174,255));
+                window.draw(barFill);
+
+                sf::RectangleShape mid(sf::Vector2f(1.f, barH + 2.f));
+                mid.setPosition(snap(sf::Vector2f(barX + barW * 0.5f, barY - 1.f)));
+                mid.setFillColor(sf::Color(212,224,250,180));
+                window.draw(mid);
+            }
+
+            const EngineStepperRects step = getEngineStepperRects();
+            sf::Vector2i mousePixel = sf::Mouse::getPosition(window);
+            sf::Vector2f mousePos(float(mousePixel.x), float(mousePixel.y));
+            const sf::FloatRect pauseRect = getAiPauseRect();
+            auto drawStepperButton = [&](const sf::FloatRect& r, const std::string& label){
+                const bool hover = pointInRect(mousePos, r);
+                sf::RectangleShape btn(sf::Vector2f(r.width, r.height));
+                btn.setPosition(snap(sf::Vector2f(r.left, r.top)));
+                btn.setFillColor(hover ? sf::Color(56,80,130) : sf::Color(34,44,70));
+                btn.setOutlineThickness(1.f);
+                btn.setOutlineColor(hover ? sf::Color(150,200,255) : sf::Color(96,128,192));
+                window.draw(btn);
+                drawText(r.left + 9.f, r.top + 2.f, 18, sf::Color(228,236,255), label, sf::Text::Bold);
+            };
+            {
+                const bool pauseHover = pauseRect.contains(mousePos);
+                sf::RectangleShape pauseBtn(sf::Vector2f(pauseRect.width, pauseRect.height));
+                pauseBtn.setPosition(snap(sf::Vector2f(pauseRect.left, pauseRect.top)));
+                pauseBtn.setFillColor(aiPaused.load()
+                    ? (pauseHover ? sf::Color(92,132,84) : sf::Color(68,110,62))
+                    : (pauseHover ? sf::Color(126,96,72) : sf::Color(102,76,58)));
+                pauseBtn.setOutlineThickness(1.f);
+                pauseBtn.setOutlineColor(aiPaused.load()
+                    ? sf::Color(176,228,160)
+                    : sf::Color(235,196,164));
+                window.draw(pauseBtn);
+                drawText(pauseRect.left + 10.f, pauseRect.top + 7.f, 14, sf::Color(236,244,255),
+                         aiPaused.load() ? "Resume AI (P)" : "Pause AI (P)", sf::Text::Bold);
+            }
+
+            {
+                drawText(cardTextX, engineCardY + 74.f, 16, sf::Color(220,228,245),
+                         "Depth: " + std::to_string(aiMaxDepth));
+                drawText(cardTextX, engineCardY + 106.f, 16, sf::Color(220,228,245),
+                         "Time budget: " + std::to_string(aiTimeMs) + "ms");
+                drawStepperButton(step.depthMinus, "-");
+                drawStepperButton(step.depthPlus, "+");
+                drawStepperButton(step.timeMinus, "-");
+                drawStepperButton(step.timePlus, "+");
+                drawText(cardTextX, engineCardY + 134.f, 13, sf::Color(158,176,215),
+                         "Click +/- or use (+/-), (T/Y) | Book + TT on");
+            }
+
+            float statsY = engineCardY + 158.f;
+            if(aiThinking.load()){
+                int ms = thinkClock.getElapsedTime().asMilliseconds();
+                std::ostringstream oss;
+                oss << "Thinking... " << ms << "ms / " << aiTimeMs << "ms";
+                drawText(cardTextX, statsY, 15, sf::Color(255,210,170), oss.str(), sf::Text::Bold);
+            } else if(aiPaused.load()){
+                drawText(cardTextX, statsY, 15, sf::Color(192,232,180), "Paused", sf::Text::Bold);
+            } else {
+                drawText(cardTextX, statsY, 15, sf::Color(150,220,168), "Idle");
+            }
+            statsY += 24.f;
             {
                 std::ostringstream oss;
                 oss << "Depth " << s.depthReached
-                    << " | Score " << std::fixed << std::setprecision(2) << pawns << " pawns"
+                    << " | Score " << std::fixed << std::setprecision(2) << pawns
                     << " | Time " << s.timeMs << "ms";
-                y += WRAP(y, oss.str(), 14, sf::Color(200,200,200)) + 2.f;
+                statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, oss.str(), 14, sf::Color(200,214,242));
             }
             {
                 std::ostringstream oss;
@@ -1914,37 +2663,49 @@ int main(){
                     << " | Q " << s.qnodes
                     << " (" << std::fixed << std::setprecision(1) << qPct << "%)"
                     << " | NPS " << (long long)nps;
-                y += WRAP(y, oss.str(), 14, sf::Color(200,200,200)) + 6.f;
+                statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, oss.str(), 14, sf::Color(180,196,232));
             }
-            if(!pv.empty()){
-                y += WRAP(y, "PV: " + pv, 14, sf::Color(200,220,255)) + 8.f;
-            }
-
-            // position meta (useful for debugging / writeup)
             {
                 std::ostringstream meta;
                 meta << "Pos: halfmove " << board.halfmoveClock
                      << " | ep " << (board.epSquare>=0 ? sqName(indexToSq(board.epSquare)) : "-")
                      << " | castling " << int(board.castling);
-                y += WRAP(y, meta.str(), 14, sf::Color(190,190,190)) + 8.f;
+                statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, meta.str(), 14, sf::Color(160,178,210));
+            }
+            if(!pv.empty()){
+                std::string pvCompact = "PV: " + pv;
+                if(pvCompact.size() > 64) pvCompact = pvCompact.substr(0, 61) + "...";
+                if(statsY + font.getLineSpacing(14) <= (engineCardY + engineCardH - 12.f)){
+                    drawText(cardTextX, statsY, 14, sf::Color(168,214,255), pvCompact);
+                }
             }
 
-            y += WRAP(y, "Status:", 16) + 2.f;
-            y += WRAP(y, status, 14, sf::Color(220,220,220)) + 8.f;
-
+            drawCard(statusCardY, statusCardH);
+            drawText(cardTextX, statusCardY + 20.f, 18, sf::Color(190,204,236), "Status");
+            float statusY = statusCardY + 50.f;
+            statusY += WRAPAT(cardTextX, statusY, cardW - 24.f, status, 14, sf::Color(225,232,248));
             if(selectedSq){
-                y += WRAP(y, "Selected: " + sqName(indexToSq(*selectedSq)), 16) + 2.f;
-                y += WRAP(y, "Legal moves: " + std::to_string((int)selectedMoves.size()), 14, sf::Color(200,200,200)) + 8.f;
+                if(statusY + font.getLineSpacing(14) <= statusCardY + statusCardH - 10.f){
+                    drawText(cardTextX, statusY, 14, sf::Color(178,196,232),
+                             "Selected " + sqName(indexToSq(*selectedSq)) + " | legal " + std::to_string((int)selectedMoves.size()));
+                    statusY += font.getLineSpacing(14);
+                }
+            }
+            if(board.insufficientMaterial()){
+                if(statusY + font.getLineSpacing(14) <= statusCardY + statusCardH - 10.f){
+                    drawText(cardTextX, statusY, 14, sf::Color(220,212,170), "Likely draw: insufficient material");
+                }
             }
 
-            y += WRAP(y, "Moves:", 16) + 2.f;
-            float listY = y;
-            int start = std::max(0, (int)moveListUCI.size()-18);
-            for(int i=start; i<(int)moveListUCI.size(); i++){
+            drawCard(moveLogCardY, moveLogCardH);
+            drawText(cardTextX, moveLogCardY + 20.f, 18, sf::Color(190,204,236), "Move Log");
+            float listY = moveLogCardY + 46.f;
+            int start = std::max(0, (int)moveListSAN.size()-16);
+            for(int i=start; i<(int)moveListSAN.size(); i++){
                 std::string prefix = (i%2==0) ? (std::to_string(i/2 + 1) + ". ") : "   ";
-                float used = WRAP(listY, prefix + moveListUCI[i], 14, sf::Color(210,210,210));
+                float used = WRAPAT(cardTextX, listY, cardW - 24.f, prefix + moveListSAN[i], 14, sf::Color(208,220,246));
                 listY += used;
-                if(listY > (panelPos.y + panelSize.y - 20.f)) break;
+                if(listY > (moveLogCardY + moveLogCardH - 18.f)) break;
             }
         }
 
@@ -1952,5 +2713,15 @@ int main(){
     }
 
     stopAiThread();
+
+    const std::filesystem::path movesPath = std::filesystem::current_path() / "moves.txt";
+    if(writeMovesFile(movesPath)){
+        if(askOpenMovesFile()){
+            openMovesFile(movesPath);
+        }
+    } else {
+        std::cerr << "Failed to write moves file: " << movesPath << "\n";
+    }
+
     return 0;
 }

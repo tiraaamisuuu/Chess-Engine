@@ -20,7 +20,7 @@ Recommended setup
 Build SFML 2.6.2 locally into ~/.local/sfml-2.6.2
 #### Compile command
 ```bash
-clang++ -O2 -std=c++17 main.cpp -o gui -I"$HOME/.local/sfml-2.6.2/include" -L"$HOME/.local/sfml-2.6.2/lib" -lsfml-graphics -lsfml-window -lsfml-system -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo -pthread -Wl,-rpath,"$HOME/.local/sfml-2.6.2/lib"
+clang++ -O2 -std=c++17 main.cpp -o gui -I"$HOME/.local/sfml-2.6.2/include" -L"$HOME/.local/sfml-2.6.2/lib" -lsfml-graphics -lsfml-window -lsfml-system -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo -pthread -Wl,-rpath,"$HOME/.local/sfml-2.6.2/lib" -Wl,-sectcreate,__TEXT,__info_plist,macos/Info.plist
 ```
 Run
 ```bash
@@ -64,4 +64,3 @@ assets/pieces_png/black_.png
 
 Fonts are loaded dynamically from common Linux/macOS paths.
 If no font loads, text will not render but the game will still run.
-
