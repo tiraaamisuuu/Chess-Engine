@@ -9,6 +9,36 @@ Source files:
 - `src/ui.cpp` / `src/ui.hpp` (UI assets + mode helpers)
 - `src/chess_core.hpp` (umbrella include)
 - `src/chess_types.hpp`, `src/board.hpp`, `src/search.hpp` (core chess modules)
+- `CMakeLists.txt` (cross-platform build, including Windows)
+
+## BUILDING ON WINDOWS (MSVC + CMake)
+
+### Requirements
+
+Windows 10/11
+Visual Studio 2022 (Desktop development with C++)
+CMake 3.21+
+SFML 2.6.x (not 3.x)
+
+### Configure and build
+
+Set `SFML_DIR` to SFML's CMake package folder (example path shown below), then run:
+```bat
+set SFML_DIR=C:\libs\SFML-2.6.2\lib\cmake\SFML
+cmake -S . -B build-windows -G "Visual Studio 17 2022" -A x64 -DSFML_DIR="%SFML_DIR%"
+cmake --build build-windows --config Release
+```
+
+Run:
+```bat
+build-windows\Release\gui.exe
+```
+
+You can also use:
+```bat
+scripts\build_windows.bat
+```
+after setting `SFML_DIR`.
 
 ## BUILDING ON macOS (Apple Silicon / Intel)
 
@@ -68,5 +98,5 @@ Assets required:
 assets/pieces_png/white_.png
 assets/pieces_png/black_.png
 
-Fonts are loaded dynamically from common Linux/macOS paths.
+Fonts are loaded dynamically from common Windows/Linux/macOS paths.
 If no font loads, text will not render but the game will still run.

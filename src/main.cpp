@@ -30,6 +30,10 @@ int main(){
     {
         std::vector<std::string> candidates = {
           "assets/fonts/Inter-Regular.ttf",
+          // Windows
+          "C:/Windows/Fonts/segoeui.ttf",
+          "C:/Windows/Fonts/arial.ttf",
+          "C:/Windows/Fonts/calibri.ttf",
           // Fedora / Linux (DejaVu)
           "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
           "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf",
@@ -222,7 +226,7 @@ int main(){
         std::string cmd = "xdg-open " + shellQuote(outPath.string()) + " >/dev/null 2>&1 &";
         std::system(cmd.c_str());
 #elif defined(_WIN32)
-        std::string cmd = "start \"\" " + shellQuote(outPath.string());
+        std::string cmd = "cmd /C start \"\" " + windowsCmdQuote(outPath.string());
         std::system(cmd.c_str());
 #endif
     };

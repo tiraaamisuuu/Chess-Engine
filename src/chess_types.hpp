@@ -51,6 +51,15 @@ static std::string shellQuote(const std::string& s){
     out.push_back('\'');
     return out;
 }
+static std::string windowsCmdQuote(const std::string& s){
+    std::string out = "\"";
+    for(char c : s){
+        if(c=='"') out += "\"\"";
+        else out.push_back(c);
+    }
+    out.push_back('"');
+    return out;
+}
 
 // ======================== Squares / Coords ========================
 struct Square { int file=0, rank=0; }; // 0..7
