@@ -4,7 +4,11 @@
 This project is a C++ chess engine with an SFML 2.6.x GUI.
 It will NOT compile against SFML 3.x.
 Make sure you are using SFML 2.6.x on all platforms.
-Source files: `src/main.cpp`, `src/ui.cpp`, `src/chess_core.hpp`.
+Source files:
+- `src/main.cpp` (app entrypoint)
+- `src/ui.cpp` / `src/ui.hpp` (UI assets + mode helpers)
+- `src/chess_core.hpp` (umbrella include)
+- `src/chess_types.hpp`, `src/board.hpp`, `src/search.hpp` (core chess modules)
 
 ## BUILDING ON macOS (Apple Silicon / Intel)
 
@@ -52,8 +56,9 @@ Run
 ```
 ## NOTES
 
-Default AI search depth is defined in main():
-int aiMaxDepth = 8;
+Default AI search depth is defined in `src/main.cpp`.
+Current default:
+`int aiMaxDepth = 20;`
 
 AI search runs on a worker thread to avoid UI freezes.
 
