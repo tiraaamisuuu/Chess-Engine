@@ -4,6 +4,7 @@ gui
 *.out
 build/
 cmake-build-*/
+moves.txt
 
 # OS junk
 .DS_Store
@@ -11,4 +12,3 @@ cmake-build-*/
 # editor junk
 .vscode/
 .idea/
-
