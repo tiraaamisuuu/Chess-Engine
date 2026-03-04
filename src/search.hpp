@@ -212,6 +212,7 @@ struct SearchContext {
 
     Move killer[128][2]{};
     int history[2][64][64]{};
+    std::vector<u64> gameHistory; // position hashes from actual game (includes current root)
     std::vector<u64> repetition;
 };
 
@@ -286,6 +287,23 @@ static bool hasNonPawnMaterial(const Board& bd, Color side){
     return false;
 }
 
+static bool isThreefoldRepetition(const Board& bd, const SearchContext& ctx){
+    if(ctx.repetition.empty()) return false;
+
+    const size_t n = ctx.repetition.size();
+    const size_t maxBack = std::min<size_t>(size_t(std::max(0, bd.halfmoveClock)), n - 1);
+
+    int seen = 0;
+    for(size_t back = 0; back <= maxBack; back++){
+        const size_t idx = n - 1 - back;
+        if(ctx.repetition[idx] == bd.hash){
+            seen++;
+            if(seen >= 3) return true;
+        }
+    }
+    return false;
+}
+
 static int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta){
     if(timeUp(ctx)) return 0;
     ctx.stats.qnodes++;
@@ -337,12 +355,7 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
 
     if(bd.insufficientMaterial()) return 0;
     if(bd.halfmoveClock >= 100) return 0;
-
-    int repCount=0;
-    for(u64 h : ctx.repetition){
-        if(h==bd.hash) repCount++;
-    }
-    if(repCount>=3) return 0;
+    if(isThreefoldRepetition(bd, ctx)) return 0;
 
     bool inCheck = bd.inCheck(bd.stm);
     int staticEval = 0;
@@ -478,6 +491,7 @@ static Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int time
     ctx.start = std::chrono::steady_clock::now();
     ctx.timeLimitMs = timeLimitMs;
     ctx.stop = false;
+    ctx.tt.newSearch();
 
     for(int s=0; s<2; s++){
         for(int from=0; from<64; from++){
@@ -487,8 +501,10 @@ static Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int time
         }
     }
 
-    ctx.repetition.clear();
-    ctx.repetition.push_back(bd.hash);
+    ctx.repetition = ctx.gameHistory;
+    if(ctx.repetition.empty() || ctx.repetition.back() != bd.hash){
+        ctx.repetition.push_back(bd.hash);
+    }
 
     std::vector<Move> rootMoves;
     bd.genLegalMoves(rootMoves);

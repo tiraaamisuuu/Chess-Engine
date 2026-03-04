@@ -207,8 +207,9 @@ enum class TTFlag : u8 { Exact=0, Lower=1, Upper=2 };
 
 struct TTEntry {
     u64 key=0;
-    int16_t score=0;
+    int32_t score=0;
     int8_t depth=0;
+    u8 generation=0;
     TTFlag flag=TTFlag::Exact;
     Move best{};
 };
@@ -216,6 +217,7 @@ struct TTEntry {
 struct TranspositionTable {
     std::vector<TTEntry> table;
     size_t mask=0;
+    u8 generation=0;
 
     void resizeMB(size_t mb){
         size_t bytes = mb*1024ull*1024ull;
@@ -224,6 +226,7 @@ struct TranspositionTable {
         while(p < n) p<<=1;
         table.assign(p, TTEntry{});
         mask = p-1;
+        generation = 0;
     }
 
     TTEntry* probe(u64 key){
@@ -231,13 +234,32 @@ struct TranspositionTable {
         return &table[size_t(key) & mask];
     }
 
+    void newSearch(){
+        generation = static_cast<u8>(generation + 1);
+    }
+
+    static int ageOf(u8 currentGen, u8 entryGen){
+        return int(static_cast<u8>(currentGen - entryGen));
+    }
+
     void store(u64 key, int depth, int score, TTFlag flag, const Move& best){
         if(table.empty()) return;
         TTEntry& e = table[size_t(key) & mask];
-        if(e.key==0 || e.key==key || depth >= e.depth){
+        bool replace = false;
+        if(e.key==0 || e.key==key){
+            replace = true;
+        } else {
+            // Prefer deeper entries, but age out stale data from previous searches.
+            const int existingQuality = int(e.depth) - 2 * ageOf(generation, e.generation);
+            const int incomingQuality = depth;
+            replace = incomingQuality >= existingQuality;
+        }
+
+        if(replace){
             e.key=key;
             e.depth=(int8_t)std::clamp(depth, 0, 127);
-            e.score=(int16_t)std::clamp(score, -32767, 32767);
+            e.score=score;
+            e.generation=generation;
             e.flag=flag;
             e.best=best;
         }
