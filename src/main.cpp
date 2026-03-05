@@ -1,5 +1,320 @@
 #include "ui.hpp"
 
+static bool startsWith(const std::string& s, const std::string& prefix){
+    return s.size() >= prefix.size() && s.compare(0, prefix.size(), prefix) == 0;
+}
+
+static std::string toLowerASCII(std::string s){
+    for(char& ch : s){
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return s;
+}
+
+static bool parseIntStrict(const std::string& s, int& out){
+    try{
+        size_t pos = 0;
+        int v = std::stoi(s, &pos);
+        if(pos != s.size()) return false;
+        out = v;
+        return true;
+    } catch(...){
+        return false;
+    }
+}
+
+static bool parseUCIMove(Board& board, const std::string& uci, Move& out){
+    std::vector<Move> legal;
+    board.genLegalMoves(legal);
+    auto it = std::find_if(legal.begin(), legal.end(), [&](const Move& m){
+        return moveToUCI(m) == uci;
+    });
+    if(it == legal.end()) return false;
+    out = *it;
+    return true;
+}
+
+static bool applyUCIPositionCommand(const std::string& line, Board& board, std::vector<u64>& history){
+    std::istringstream iss(line);
+    std::string token;
+    iss >> token; // "position"
+
+    std::vector<std::string> parts;
+    while(iss >> token){
+        parts.push_back(token);
+    }
+    if(parts.empty()) return false;
+
+    size_t idx = 0;
+    if(parts[idx] == "startpos"){
+        board.reset();
+        idx++;
+    } else if(parts[idx] == "fen"){
+        idx++;
+        const size_t fenStart = idx;
+        while(idx < parts.size() && parts[idx] != "moves"){
+            idx++;
+        }
+        if(idx - fenStart < 6) return false;
+
+        std::string fen;
+        for(size_t i = fenStart; i < idx; i++){
+            if(!fen.empty()) fen.push_back(' ');
+            fen += parts[i];
+        }
+        if(!board.loadFEN(fen)) return false;
+    } else {
+        return false;
+    }
+
+    history.clear();
+    history.push_back(board.hash);
+
+    if(idx >= parts.size()) return true;
+    if(parts[idx] != "moves") return false;
+    idx++;
+
+    for(; idx < parts.size(); idx++){
+        Move m{};
+        if(!parseUCIMove(board, parts[idx], m)) return false;
+        Undo u{};
+        if(!board.makeMove(m, u)) return false;
+        history.push_back(board.hash);
+    }
+    return true;
+}
+
+struct UCIGoParams {
+    int depth = -1;
+    int movetimeMs = -1;
+    int wtimeMs = -1;
+    int btimeMs = -1;
+    int wincMs = 0;
+    int bincMs = 0;
+    int movesToGo = -1;
+    bool infinite = false;
+};
+
+static UCIGoParams parseUCIGoCommand(const std::string& line){
+    UCIGoParams out;
+    std::istringstream iss(line);
+    std::string token;
+    iss >> token; // "go"
+
+    auto readInt = [&](int& dst){
+        std::string v;
+        if(!(iss >> v)) return;
+        int parsed = 0;
+        if(parseIntStrict(v, parsed)) dst = parsed;
+    };
+
+    while(iss >> token){
+        if(token == "depth") readInt(out.depth);
+        else if(token == "movetime") readInt(out.movetimeMs);
+        else if(token == "wtime") readInt(out.wtimeMs);
+        else if(token == "btime") readInt(out.btimeMs);
+        else if(token == "winc") readInt(out.wincMs);
+        else if(token == "binc") readInt(out.bincMs);
+        else if(token == "movestogo") readInt(out.movesToGo);
+        else if(token == "infinite") out.infinite = true;
+        else if(token == "ponder"){
+            // Supported as a token but treated the same as normal search.
+        } else if(token == "searchmoves"){
+            // Skip explicit move list for now.
+            while(iss >> token){
+                if(token.size() < 4 || token.size() > 5) break;
+            }
+            break;
+        }
+    }
+    return out;
+}
+
+static int pickUCITimeMs(const Board& board, const UCIGoParams& p){
+    if(p.movetimeMs > 0) return p.movetimeMs;
+    if(p.infinite) return 24 * 60 * 60 * 1000;
+
+    const bool white = (board.stm == Color::White);
+    const int sideTime = white ? p.wtimeMs : p.btimeMs;
+    const int sideInc = white ? p.wincMs : p.bincMs;
+    if(sideTime <= 0) return 1000;
+
+    const int moves = (p.movesToGo > 0) ? p.movesToGo : 30;
+    const int slice = sideTime / std::max(1, moves);
+    int budget = slice + (sideInc * 3) / 4;
+    budget = std::max(20, budget);
+    const int cap = std::max(30, sideTime - 20);
+    return std::min(budget, cap);
+}
+
+static int runUCILoop(){
+    Zobrist zob;
+    Board board;
+    board.setZobrist(&zob);
+    board.reset();
+
+    std::vector<u64> positionHistory{board.hash};
+
+    int hashMB = 256;
+    SearchContext searchCtx;
+    searchCtx.tt.resizeMB(static_cast<size_t>(hashMB));
+
+    std::atomic<bool> abortSearch(false);
+    std::atomic<bool> thinking(false);
+    std::mutex ioMutex;
+    std::thread worker;
+
+    auto stopSearch = [&](){
+        abortSearch.store(true);
+        if(worker.joinable()) worker.join();
+        thinking.store(false);
+        abortSearch.store(false);
+    };
+
+    auto resetSearchState = [&](){
+        stopSearch();
+        searchCtx = SearchContext{};
+        searchCtx.tt.resizeMB(static_cast<size_t>(hashMB));
+    };
+
+    auto launchSearch = [&](int depth, int timeMs){
+        stopSearch();
+
+        Board root = board;
+        std::vector<u64> rootHistory = positionHistory;
+        thinking.store(true);
+        abortSearch.store(false);
+
+        worker = std::thread([&, root, rootHistory, depth, timeMs]() mutable {
+            searchCtx.abortFlag = &abortSearch;
+            searchCtx.gameHistory = rootHistory;
+
+            Move best = searchBestMove(root, searchCtx, depth, timeMs);
+
+            std::vector<Move> legal;
+            root.genLegalMoves(legal);
+            auto legalIt = std::find_if(legal.begin(), legal.end(), [&](const Move& m){
+                return sameMove(m, best);
+            });
+            if(legalIt == legal.end()){
+                if(!legal.empty()) best = legal.front();
+                else best = Move{};
+            }
+
+            const u64 nodes = searchCtx.stats.nodes + searchCtx.stats.qnodes;
+            const long long nps = (searchCtx.stats.timeMs > 0)
+                ? static_cast<long long>((nodes * 1000ULL) / static_cast<u64>(searchCtx.stats.timeMs))
+                : 0LL;
+
+            const std::string pv = extractPVFromTT(root, searchCtx, 16);
+            const std::string bestUCI = (legal.empty()) ? "0000" : moveToUCI(best);
+
+            {
+                std::lock_guard<std::mutex> lock(ioMutex);
+                std::cout << "info depth " << searchCtx.stats.depthReached
+                          << " score cp " << searchCtx.stats.bestScore
+                          << " nodes " << nodes
+                          << " nps " << nps
+                          << " time " << searchCtx.stats.timeMs;
+                if(!pv.empty()) std::cout << " pv " << pv;
+                std::cout << "\n";
+                std::cout << "bestmove " << bestUCI << "\n" << std::flush;
+            }
+
+            thinking.store(false);
+            abortSearch.store(false);
+        });
+    };
+
+    std::string line;
+    while(std::getline(std::cin, line)){
+        line = trim(line);
+        if(line.empty()) continue;
+
+        const std::string lower = toLowerASCII(line);
+
+        if(lower == "uci"){
+            std::lock_guard<std::mutex> lock(ioMutex);
+            std::cout << "id name TiramisuChess v0.3.0-dev\n";
+            std::cout << "id author Alfie + Codex\n";
+            std::cout << "option name Hash type spin default 256 min 1 max 4096\n";
+            std::cout << "option name Threads type spin default 1 min 1 max 1\n";
+            std::cout << "uciok\n" << std::flush;
+            continue;
+        }
+
+        if(lower == "isready"){
+            std::lock_guard<std::mutex> lock(ioMutex);
+            std::cout << "readyok\n" << std::flush;
+            continue;
+        }
+
+        if(startsWith(lower, "setoption")){
+            if(lower.find("name hash") != std::string::npos){
+                const size_t valuePos = lower.find(" value ");
+                if(valuePos != std::string::npos){
+                    const std::string value = trim(line.substr(valuePos + 7));
+                    int mb = 0;
+                    if(parseIntStrict(value, mb)){
+                        mb = std::clamp(mb, 1, 4096);
+                        hashMB = mb;
+                        resetSearchState();
+                    }
+                }
+            } else if(lower.find("name threads") != std::string::npos){
+                // Placeholder to stay protocol-compatible while search remains single-threaded.
+            } else if(lower.find("name clear hash") != std::string::npos){
+                resetSearchState();
+            }
+            continue;
+        }
+
+        if(lower == "ucinewgame"){
+            board.reset();
+            positionHistory = {board.hash};
+            resetSearchState();
+            continue;
+        }
+
+        if(startsWith(lower, "position ")){
+            stopSearch();
+            if(!applyUCIPositionCommand(line, board, positionHistory)){
+                std::lock_guard<std::mutex> lock(ioMutex);
+                std::cout << "info string invalid position command\n" << std::flush;
+            }
+            continue;
+        }
+
+        if(startsWith(lower, "go")){
+            const UCIGoParams go = parseUCIGoCommand(line);
+            const int depth = (go.depth > 0) ? go.depth : 64;
+            const int timeMs = std::clamp(pickUCITimeMs(board, go), 1, 24 * 60 * 60 * 1000);
+            launchSearch(depth, timeMs);
+            continue;
+        }
+
+        if(lower == "stop"){
+            stopSearch();
+            continue;
+        }
+
+        if(lower == "quit"){
+            stopSearch();
+            return 0;
+        }
+
+        if(lower == "ponderhit" || lower == "d" || lower == "debug on" || lower == "debug off"){
+            continue;
+        }
+
+        std::lock_guard<std::mutex> lock(ioMutex);
+        std::cout << "info string unknown command: " << line << "\n" << std::flush;
+    }
+
+    stopSearch();
+    return 0;
+}
+
 int main(int argc, char** argv){
     Zobrist zob;
     Board board;
@@ -22,6 +337,7 @@ int main(int argc, char** argv){
     bool perftDivideMode = false;
     bool runPerftTests = false;
     bool runBench = false;
+    bool runUci = false;
     int perftSuiteMaxDepth = 4;
     int benchDepth = 8;
     int benchTimeMs = 4000;
@@ -45,6 +361,7 @@ int main(int argc, char** argv){
                 << "  gui --perft <depth> [--fen \"...\"]\n"
                 << "  gui --divide <depth> [--fen \"...\"]\n"
                 << "  gui --perft-tests [--max-depth <n>]\n"
+                << "  gui --uci\n"
                 << "  gui --bench [--bench-depth <n>] [--bench-time <ms>] [--bench-tt <mb>]\n";
             return 0;
         } else if(a == "--perft"){
@@ -76,6 +393,8 @@ int main(int argc, char** argv){
             }
         } else if(a == "--bench"){
             runBench = true;
+        } else if(a == "--uci"){
+            runUci = true;
         } else if(a == "--bench-depth"){
             const char* v = needValue("--bench-depth");
             if(!v || !parseInt(v, benchDepth) || benchDepth < 1){
@@ -140,6 +459,10 @@ int main(int argc, char** argv){
 
     if(runBench){
         return runSearchBenchmark(zob, benchDepth, benchTimeMs, benchTTMB);
+    }
+
+    if(runUci){
+        return runUCILoop();
     }
 
     constexpr unsigned windowW=1320, windowH=880;
