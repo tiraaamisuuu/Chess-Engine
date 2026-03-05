@@ -8,6 +8,7 @@ GAMES="${GAMES:-200}"
 CONCURRENCY="${CONCURRENCY:-2}"
 TC="${TC:-10+0.1}"
 HASH_MB="${HASH_MB:-256}"
+THREADS="${THREADS:-1}"
 OUT_DIR="${OUT_DIR:-artifacts/elo}"
 
 if ! command -v cutechess-cli >/dev/null 2>&1; then
@@ -35,7 +36,7 @@ CMD=(
   cutechess-cli
   -engine "name=Candidate" "cmd=$CANDIDATE_BIN" "arg=--uci"
   -engine "name=Baseline" "cmd=$BASELINE_BIN" "arg=--uci"
-  -each "proto=uci" "tc=$TC" "option.Hash=$HASH_MB"
+  -each "proto=uci" "tc=$TC" "option.Hash=$HASH_MB" "option.Threads=$THREADS"
   -games "$GAMES"
   -repeat
   -recover
@@ -60,6 +61,7 @@ echo "Candidate: $CANDIDATE_BIN"
 echo "Baseline : $BASELINE_BIN"
 echo "Games    : $GAMES"
 echo "TC       : $TC"
+echo "Threads  : $THREADS"
 echo "Log      : $LOG"
 echo "PGN      : $PGN"
 

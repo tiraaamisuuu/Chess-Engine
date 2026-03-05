@@ -97,6 +97,7 @@ After building, you can run engine-only tools from the CLI:
 ./build/gui --divide 3
 ./build/gui --perft-tests --max-depth 4
 ./build/gui --bench --bench-depth 6 --bench-time 1500 --bench-tt 128
+./build/gui --bench --bench-depth 6 --bench-time 1500 --bench-tt 128 --threads 4
 ```
 
 Automated regression runner:
@@ -109,6 +110,16 @@ UCI protocol smoke test:
 
 ```bash
 scripts/run_uci_smoke.sh ./build/gui
+```
+
+Example interactive UCI session with threads:
+
+```text
+uci
+setoption name Threads value 4
+isready
+position startpos
+go movetime 1000
 ```
 
 One-command quality gate (regression + UCI smoke):
@@ -136,12 +147,13 @@ Useful environment overrides:
 - `CONCURRENCY` (default `2`)
 - `TC` (default `10+0.1`)
 - `HASH_MB` (default `256`)
+- `THREADS` (default `1`, passed as UCI `option.Threads`)
 - `SPRT=1` (enables SPRT mode; configure with `ELO0`, `ELO1`, `ALPHA`, `BETA`)
 
 Example:
 
 ```bash
-GAMES=400 CONCURRENCY=4 TC=40/10+0.1 scripts/run_elo_match.sh ./build/gui ./build/gui
+GAMES=400 CONCURRENCY=4 TC=40/10+0.1 THREADS=4 scripts/run_elo_match.sh ./build/gui ./build/gui
 ```
 
 ## NOTES
