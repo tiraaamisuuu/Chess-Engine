@@ -4,6 +4,7 @@
 This project is a C++ chess engine with an SFML 2.6.x GUI.
 It will NOT compile against SFML 3.x.
 Make sure you are using SFML 2.6.x on all platforms.
+The same binary also supports a UCI mode (`--uci`) for engine-vs-engine testing.
 Source files:
 - `src/main.cpp` (app entrypoint)
 - `src/ui.cpp` / `src/ui.hpp` (UI assets + mode helpers)
@@ -91,6 +92,7 @@ After building, you can run engine-only tools from the CLI:
 
 ```bash
 ./build/gui --help
+./build/gui --uci
 ./build/gui --perft 4
 ./build/gui --divide 3
 ./build/gui --perft-tests --max-depth 4
@@ -101,6 +103,45 @@ Automated regression runner:
 
 ```bash
 scripts/run_regression.sh ./build/gui
+```
+
+UCI protocol smoke test:
+
+```bash
+scripts/run_uci_smoke.sh ./build/gui
+```
+
+One-command quality gate (regression + UCI smoke):
+
+```bash
+scripts/run_quality_gate.sh ./build/gui
+```
+
+Optional: include an Elo match in the quality gate (requires `cutechess-cli`):
+
+```bash
+RUN_ELO=1 BASELINE_BIN=./build/gui scripts/run_quality_gate.sh ./build/gui
+```
+
+## ELO MATCH RUNNER (CUTECHESS)
+
+Standalone Elo/SPRT script:
+
+```bash
+scripts/run_elo_match.sh <candidate_bin> <baseline_bin>
+```
+
+Useful environment overrides:
+- `GAMES` (default `200`)
+- `CONCURRENCY` (default `2`)
+- `TC` (default `10+0.1`)
+- `HASH_MB` (default `256`)
+- `SPRT=1` (enables SPRT mode; configure with `ELO0`, `ELO1`, `ALPHA`, `BETA`)
+
+Example:
+
+```bash
+GAMES=400 CONCURRENCY=4 TC=40/10+0.1 scripts/run_elo_match.sh ./build/gui ./build/gui
 ```
 
 ## NOTES
