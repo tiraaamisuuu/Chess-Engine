@@ -296,6 +296,7 @@ struct SearchContext {
     Move countermove[2][64][64]{};
     Move plyMove[128]{};
     int history[2][64][64]{};
+    int captureHistory[2][7][64]{};
     int staticEvalByPly[128]{};
     std::vector<u64> gameHistory; // position hashes from actual game (includes current root)
     std::vector<u64> repetition;
@@ -328,8 +329,21 @@ static int mvvLvaScore(const Board& bd, const Move& m){
 static int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const Move& ttMove, int ply, const Move& prevMove){
     if(ttMove.from==m.from && ttMove.to==m.to && ttMove.promo==m.promo) return 1000000;
 
+    const int side = (bd.stm==Color::White)?0:1;
+    const Piece attacker = bd.at(m.from);
+    const int attackerType = std::clamp(int(attacker.t), 0, 6);
+
+    if(m.promo != PieceType::None){
+        int s = 140000 + pieceValue(m.promo) * 4;
+        if(m.isCapture || m.isEnPassant){
+            s += mvvLvaScore(bd, m);
+            s += ctx.captureHistory[side][attackerType][m.to];
+        }
+        return s;
+    }
+
     if(m.isCapture || m.isEnPassant){
-        return 100000 + mvvLvaScore(bd, m);
+        return 100000 + mvvLvaScore(bd, m) + ctx.captureHistory[side][attackerType][m.to];
     }
 
     if(ply<128){
@@ -337,7 +351,6 @@ static int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const M
         if(sameMove(m, ctx.killer[ply][1])) return 80000;
     }
 
-    int side = (bd.stm==Color::White)?0:1;
     if(prevMove.from < 64 && prevMove.to < 64){
         const Move& cm = ctx.countermove[side][prevMove.from][prevMove.to];
         if(sameMove(m, cm)) return 85000;
@@ -579,7 +592,9 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     int originalAlpha = alpha;
     const int side = (bd.stm==Color::White)?0:1;
     std::vector<Move> quietTried;
+    std::vector<Move> tacticalTried;
     quietTried.reserve(moves.size());
+    tacticalTried.reserve(moves.size());
 
     for(size_t i=0;i<moves.size();i++){
         const Move& m = moves[i];
@@ -600,6 +615,7 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         }
 
         if(isQuiet) quietTried.push_back(m);
+        else tacticalTried.push_back(m);
 
         Undo u{};
         if(!bd.makeMove(m,u)) continue;
@@ -666,6 +682,20 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
                 if(prevMove.from < 64 && prevMove.to < 64){
                     ctx.countermove[side][prevMove.from][prevMove.to] = m;
                 }
+            } else if(ply < 128){
+                const Piece attacker = bd.at(m.from);
+                const int attackerType = std::clamp(int(attacker.t), 0, 6);
+                const int bonus = depth * depth * 20;
+                int& slot = ctx.captureHistory[side][attackerType][m.to];
+                slot = std::min(90000, slot + bonus);
+
+                for(const Move& tm : tacticalTried){
+                    if(sameMove(tm, m)) continue;
+                    const Piece triedPiece = bd.at(tm.from);
+                    const int triedType = std::clamp(int(triedPiece.t), 0, 6);
+                    int& penaltySlot = ctx.captureHistory[side][triedType][tm.to];
+                    penaltySlot = std::max(-90000, penaltySlot - (bonus / 3));
+                }
             }
             break;
         }
@@ -691,6 +721,11 @@ static Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int time
         for(int from=0; from<64; from++){
             for(int to=0; to<64; to++){
                 ctx.history[s][from][to] = (ctx.history[s][from][to] * 7) / 8;
+            }
+        }
+        for(int pt=0; pt<7; pt++){
+            for(int to=0; to<64; to++){
+                ctx.captureHistory[s][pt][to] = (ctx.captureHistory[s][pt][to] * 7) / 8;
             }
         }
     }
