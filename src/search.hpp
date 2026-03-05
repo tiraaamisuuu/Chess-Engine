@@ -327,7 +327,7 @@ static int mvvLvaScore(const Board& bd, const Move& m){
 }
 
 static int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const Move& ttMove, int ply, const Move& prevMove){
-    if(ttMove.from==m.from && ttMove.to==m.to && ttMove.promo==m.promo) return 1000000;
+    if(ttMove.from < 64 && ttMove.from==m.from && ttMove.to==m.to && ttMove.promo==m.promo) return 1000000;
 
     const int side = (bd.stm==Color::White)?0:1;
     const Piece attacker = bd.at(m.from);
@@ -394,6 +394,15 @@ static bool hasNonPawnMaterial(const Board& bd, Color side){
         if(p.t != PieceType::King && p.t != PieceType::Pawn) return true;
     }
     return false;
+}
+
+static int nonKingPieceCount(const Board& bd, Color side){
+    int count = 0;
+    for(const auto& p : bd.b){
+        if(isNone(p) || p.c != side || p.t == PieceType::King) continue;
+        count++;
+    }
+    return count;
 }
 
 static bool isThreefoldRepetition(const Board& bd, const SearchContext& ctx){
@@ -503,6 +512,7 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     alpha = std::max(alpha, -MATE + ply);
     beta = std::min(beta, MATE - ply - 1);
     if(alpha >= beta) return alpha;
+    const bool pvNode = (beta - alpha) > 1;
 
     if(bd.insufficientMaterial()) return 0;
     if(bd.halfmoveClock >= 100) return 0;
@@ -529,7 +539,7 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         }
     }
 
-    Move ttMove{};
+    Move ttMove = invalidMove();
     if(auto* e = ctx.tt.probe(bd.hash)){
         if(e->key==bd.hash){
             ttMove = e->best;
@@ -543,18 +553,41 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         }
     }
 
+    if(!inCheck && depth >= 6 && ttMove.from >= 64){
+        const int iidDepth = std::max(1, depth - 2);
+        (void)negamax(bd, ctx, iidDepth, alpha, beta, ply, prevMove, false);
+        if(ctx.stop) return 0;
+        if(auto* e = ctx.tt.probe(bd.hash)){
+            if(e->key == bd.hash){
+                ttMove = e->best;
+            }
+        }
+    }
+
     if(depth <= 0){
         return quiescence(bd, ctx, alpha, beta, ply);
     }
 
+    if(!inCheck && !pvNode && depth <= 2){
+        const int razorMargin = 180 + 120 * depth;
+        if(staticEval + razorMargin <= alpha){
+            return quiescence(bd, ctx, alpha, beta, ply);
+        }
+    }
+
     // Null-move pruning: aggressive cut when position is quiet enough and side has material.
-    if(allowNullMove && depth >= 3 && !inCheck && hasNonPawnMaterial(bd, bd.stm)){
+    if(allowNullMove && !pvNode && depth >= 3 && !inCheck &&
+       hasNonPawnMaterial(bd, bd.stm) && nonKingPieceCount(bd, bd.stm) >= 2){
         Board nb = bd;
         nb.epSquare = -1;
         nb.stm = other(nb.stm);
         nb.recomputeHash();
         ctx.repetition.push_back(nb.hash);
-        int reduction = 2 + depth/4;
+        int reduction = 2 + depth / 4;
+        if(depth >= 7) reduction++;
+        if(!improving) reduction++;
+        if(staticEval >= beta + 120) reduction++;
+        reduction = std::clamp(reduction, 2, std::max(2, depth - 2));
         int score = -negamax(nb, ctx, depth - 1 - reduction, -beta, -beta + 1, ply + 1, invalidMove(), false);
         ctx.repetition.pop_back();
         if(ctx.stop) return 0;
@@ -600,17 +633,20 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         const Move& m = moves[i];
         bool isQuiet = !(m.isCapture || m.isEnPassant) && (m.promo==PieceType::None);
 
-        if(!inCheck && depth <= 2 && isQuiet && i >= 6){
-            int futility = staticEval + (110 * depth);
-            if(futility <= alpha){
-                continue;
+        if(!inCheck && !pvNode && isQuiet){
+            if(depth <= 3){
+                const size_t futilitySkipAfter = size_t(4 + depth * 3);
+                const int futilityMargin = 90 + 120 * depth + (improving ? 20 : 0);
+                if(i >= futilitySkipAfter && staticEval + futilityMargin <= alpha){
+                    continue;
+                }
             }
-        }
 
-        if(!inCheck && depth <= 3 && isQuiet){
-            size_t lmpThreshold = size_t(6 + depth * 3 + (improving ? 2 : 0));
-            if(i >= lmpThreshold){
-                continue;
+            if(depth <= 4){
+                const size_t lmpThreshold = size_t(3 + depth * depth + (improving ? 2 : 0));
+                if(i >= lmpThreshold){
+                    continue;
+                }
             }
         }
 
@@ -633,10 +669,15 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         int reduction = 0;
         if(newDepth >= 3 && i >= 3 && isQuiet && !givesCheck){
             reduction = 1;
-            if(newDepth >= 5) reduction++;
+            if(i >= 4) reduction++;
             if(i >= 8) reduction++;
+            if(newDepth >= 5) reduction++;
+            if(newDepth >= 8 && i >= 12) reduction++;
             if(!improving) reduction++;
-            if(ctx.history[side][m.from][m.to] > 12000) reduction--;
+            if(pvNode) reduction--;
+            if(sameMove(m, ctx.killer[ply][0])) reduction--;
+            if(ctx.history[side][m.from][m.to] > 18000) reduction -= 2;
+            else if(ctx.history[side][m.from][m.to] > 9000) reduction--;
             reduction = std::clamp(reduction, 0, std::max(0, newDepth - 1));
         }
 
@@ -768,7 +809,7 @@ static Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int time
                 beta = bestScore + window;
             }
 
-            Move ttMove{};
+            Move ttMove = noMove;
             if(auto* e = ctx.tt.probe(bd.hash)){
                 if(e->key==bd.hash) ttMove = e->best;
             }
