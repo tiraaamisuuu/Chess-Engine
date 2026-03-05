@@ -147,7 +147,7 @@ static int pickUCITimeMs(const Board& board, const UCIGoParams& p){
     return std::min(budget, cap);
 }
 
-static int runUCILoop(){
+static int runUCILoop(int defaultThreads = 1){
     Zobrist zob;
     Board board;
     board.setZobrist(&zob);
@@ -155,6 +155,8 @@ static int runUCILoop(){
 
     std::vector<u64> positionHistory{board.hash};
 
+    const int maxThreads = std::max(1, int(std::thread::hardware_concurrency()));
+    int searchThreads = std::clamp(defaultThreads, 1, maxThreads);
     int hashMB = 256;
     SearchContext searchCtx;
     searchCtx.tt.resizeMB(static_cast<size_t>(hashMB));
@@ -182,14 +184,15 @@ static int runUCILoop(){
 
         Board root = board;
         std::vector<u64> rootHistory = positionHistory;
+        const int threadsThisSearch = searchThreads;
         thinking.store(true);
         abortSearch.store(false);
 
-        worker = std::thread([&, root, rootHistory, depth, timeMs]() mutable {
+        worker = std::thread([&, root, rootHistory, depth, timeMs, threadsThisSearch]() mutable {
             searchCtx.abortFlag = &abortSearch;
             searchCtx.gameHistory = rootHistory;
 
-            Move best = searchBestMove(root, searchCtx, depth, timeMs);
+            Move best = searchBestMove(root, searchCtx, depth, timeMs, threadsThisSearch);
 
             std::vector<Move> legal;
             root.genLegalMoves(legal);
@@ -235,10 +238,11 @@ static int runUCILoop(){
 
         if(lower == "uci"){
             std::lock_guard<std::mutex> lock(ioMutex);
-            std::cout << "id name TiramisuChess v0.3.0-dev\n";
+            std::cout << "id name TiramisuChess v0.5.0-dev\n";
             std::cout << "id author Alfie + Codex\n";
             std::cout << "option name Hash type spin default 256 min 1 max 4096\n";
-            std::cout << "option name Threads type spin default 1 min 1 max 1\n";
+            std::cout << "option name Threads type spin default " << searchThreads
+                      << " min 1 max " << maxThreads << "\n";
             std::cout << "uciok\n" << std::flush;
             continue;
         }
@@ -262,7 +266,14 @@ static int runUCILoop(){
                     }
                 }
             } else if(lower.find("name threads") != std::string::npos){
-                // Placeholder to stay protocol-compatible while search remains single-threaded.
+                const size_t valuePos = lower.find(" value ");
+                if(valuePos != std::string::npos){
+                    const std::string value = trim(line.substr(valuePos + 7));
+                    int t = 1;
+                    if(parseIntStrict(value, t)){
+                        searchThreads = std::clamp(t, 1, maxThreads);
+                    }
+                }
             } else if(lower.find("name clear hash") != std::string::npos){
                 resetSearchState();
             }
@@ -338,6 +349,7 @@ int main(int argc, char** argv){
     bool runPerftTests = false;
     bool runBench = false;
     bool runUci = false;
+    int cliThreads = 1;
     int perftSuiteMaxDepth = 4;
     int benchDepth = 8;
     int benchTimeMs = 4000;
@@ -362,7 +374,7 @@ int main(int argc, char** argv){
                 << "  gui --divide <depth> [--fen \"...\"]\n"
                 << "  gui --perft-tests [--max-depth <n>]\n"
                 << "  gui --uci\n"
-                << "  gui --bench [--bench-depth <n>] [--bench-time <ms>] [--bench-tt <mb>]\n";
+                << "  gui --bench [--bench-depth <n>] [--bench-time <ms>] [--bench-tt <mb>] [--threads <n>]\n";
             return 0;
         } else if(a == "--perft"){
             const char* v = needValue("--perft");
@@ -413,6 +425,12 @@ int main(int argc, char** argv){
                 std::cerr << "Invalid --bench-tt value\n";
                 return 1;
             }
+        } else if(a == "--threads"){
+            const char* v = needValue("--threads");
+            if(!v || !parseInt(v, cliThreads) || cliThreads < 1 || cliThreads > 64){
+                std::cerr << "Invalid --threads value (1..64)\n";
+                return 1;
+            }
         } else {
             std::cerr << "Unknown argument: " << a << "\n";
             std::cerr << "Use --help for CLI options.\n";
@@ -458,11 +476,11 @@ int main(int argc, char** argv){
     }
 
     if(runBench){
-        return runSearchBenchmark(zob, benchDepth, benchTimeMs, benchTTMB);
+        return runSearchBenchmark(zob, benchDepth, benchTimeMs, benchTTMB, cliThreads);
     }
 
     if(runUci){
-        return runUCILoop();
+        return runUCILoop(cliThreads);
     }
 
     constexpr unsigned windowW=1320, windowH=880;
@@ -710,6 +728,7 @@ int main(int argc, char** argv){
 
     int aiMaxDepth = 20;
     int aiTimeMs = 10000;
+    int aiThreads = std::clamp(cliThreads, 1, 64);
     int aiDelayMs = 35;
     sf::Clock aiClock;
 
@@ -909,12 +928,13 @@ int main(int argc, char** argv){
         Board searchBoard = board;
         int threadMaxDepth = aiMaxDepth;
         int threadTimeMs   = aiTimeMs;
+        int threadThreads  = aiThreads;
         std::vector<u64> threadHistory = positionHistory;
 
-        aiThread = std::thread([&, searchBoard, threadMaxDepth, threadTimeMs, threadHistory]() mutable {
+        aiThread = std::thread([&, searchBoard, threadMaxDepth, threadTimeMs, threadThreads, threadHistory]() mutable {
             aiSearchCtx.abortFlag = &aiAbortSearch;
             aiSearchCtx.gameHistory = threadHistory;
-            Move m = searchBestMove(searchBoard, aiSearchCtx, threadMaxDepth, threadTimeMs);
+            Move m = searchBestMove(searchBoard, aiSearchCtx, threadMaxDepth, threadTimeMs, threadThreads);
             std::string pv = extractPVFromTT(searchBoard, aiSearchCtx, 12);
 
             if(aiAbortSearch.load() || aiPaused.load()){
