@@ -282,6 +282,9 @@ struct SearchStats {
     int depthReached=0;
     int bestScore=0;
     int timeMs=0;
+    int configuredThreads=1;
+    int workersUsed=1;
+    int hardwareThreads=1;
 };
 
 struct SearchContext {
@@ -752,6 +755,9 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
 
 static Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, int timeLimitMs){
     ctx.stats = {};
+    ctx.stats.configuredThreads = 1;
+    ctx.stats.workersUsed = 1;
+    ctx.stats.hardwareThreads = std::max(1, int(std::thread::hardware_concurrency()));
     ctx.start = std::chrono::steady_clock::now();
     ctx.timeLimitMs = timeLimitMs;
     ctx.stop = false;
@@ -892,6 +898,8 @@ static Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
 
 static Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, int timeLimitMs, int threadCount){
     ctx.stats = {};
+    ctx.stats.configuredThreads = std::max(1, threadCount);
+    ctx.stats.hardwareThreads = std::max(1, int(std::thread::hardware_concurrency()));
     ctx.start = std::chrono::steady_clock::now();
     ctx.timeLimitMs = timeLimitMs;
     ctx.stop = false;
@@ -930,6 +938,7 @@ static Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
     std::vector<int> rootScores(rootMoves.size(), 0);
 
     const int workers = std::max(1, std::min<int>(std::clamp(threadCount, 1, 64), int(rootMoves.size())));
+    ctx.stats.workersUsed = workers;
     const size_t ttBytes = std::max<size_t>(sizeof(TTEntry), ctx.tt.table.size() * sizeof(TTEntry));
     const size_t ttPerThreadMB = std::max<size_t>(16, (ttBytes / size_t(workers)) / (1024ull * 1024ull));
 

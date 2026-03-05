@@ -1546,9 +1546,25 @@ int main(int argc, char** argv){
                 pv = lastPV;
             }
 
-            double nps = (s.timeMs > 0) ? (double(s.nodes) * 1000.0 / double(s.timeMs)) : 0.0;
-            double qPct = (s.nodes > 0) ? (100.0 * double(s.qnodes) / double(s.nodes)) : 0.0;
+            const u64 totalNodes = s.nodes + s.qnodes;
+            double nps = (s.timeMs > 0) ? (double(totalNodes) * 1000.0 / double(s.timeMs)) : 0.0;
+            double qPct = (totalNodes > 0) ? (100.0 * double(s.qnodes) / double(totalNodes)) : 0.0;
             double pawns = double(s.bestScore) / 100.0;
+            const double cpuCoresUsed = runtimeResources.cpuPercent / 100.0;
+
+            auto compactCount = [](u64 v)->std::string{
+                std::ostringstream oss;
+                if(v >= 1000000000ULL){
+                    oss << std::fixed << std::setprecision(2) << (double(v) / 1000000000.0) << "B";
+                } else if(v >= 1000000ULL){
+                    oss << std::fixed << std::setprecision(2) << (double(v) / 1000000.0) << "M";
+                } else if(v >= 1000ULL){
+                    oss << std::fixed << std::setprecision(1) << (double(v) / 1000.0) << "K";
+                } else {
+                    oss << v;
+                }
+                return oss.str();
+            };
 
             drawText(panelPos.x + 16.f, panelPos.y + 18.f, 27, sf::Color(236,242,255), "Match Dashboard");
             drawText(panelPos.x + 16.f, panelPos.y + 48.f, 16, sf::Color(142,156,190), "Live mode, engine and game-state telemetry.");
@@ -1582,7 +1598,8 @@ int main(int argc, char** argv){
             }
             drawText(cardTextX, engineCardY + 44.f, 13, sf::Color(174,194,236), evalText.str());
             drawText(cardTextX + 162.f, engineCardY + 44.f, 13, sf::Color(124,146,192),
-                     "TT " + std::to_string(ttSizeMB) + "MB");
+                     "TT " + std::to_string(ttSizeMB) + "MB | Thr " +
+                     std::to_string(s.workersUsed) + "/" + std::to_string(aiThreads));
             {
                 float evalNorm = 0.5f;
                 if(std::abs(s.bestScore) > MATE/2){
@@ -1680,19 +1697,26 @@ int main(int argc, char** argv){
             }
             {
                 std::ostringstream oss;
-                oss << "Nodes " << s.nodes
-                    << " | Q " << s.qnodes
+                oss << "Nodes " << compactCount(s.nodes)
+                    << " | Q " << compactCount(s.qnodes)
                     << " (" << std::fixed << std::setprecision(1) << qPct << "%)"
-                    << " | NPS " << (long long)nps;
+                    << " | NPS " << compactCount(static_cast<u64>(std::max(0.0, nps)));
                 statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, oss.str(), 14, sf::Color(180,196,232));
             }
             {
                 const double rssMb = double(runtimeResources.rssBytes) / (1024.0 * 1024.0);
                 std::ostringstream oss;
-                oss << "Resources CPU " << std::fixed << std::setprecision(1) << runtimeResources.cpuPercent
-                    << "% | RSS " << std::setprecision(1) << rssMb << " MB"
-                    << " | Search threads " << aiThreads;
+                oss << "Res CPU " << std::fixed << std::setprecision(1) << runtimeResources.cpuPercent
+                    << "% (~" << std::setprecision(1) << cpuCoresUsed << "c)"
+                    << " | RAM " << std::setprecision(1) << rssMb << "MB";
                 statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, oss.str(), 14, sf::Color(166,216,236));
+            }
+            {
+                std::ostringstream thr;
+                thr << "Threads used " << s.workersUsed
+                    << " | set " << aiThreads
+                    << " | hw " << s.hardwareThreads;
+                statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, thr.str(), 14, sf::Color(164,208,232));
             }
             {
                 std::ostringstream meta;
