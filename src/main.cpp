@@ -1,5 +1,80 @@
 #include "ui.hpp"
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <psapi.h>
+#elif defined(__APPLE__)
+#include <mach/mach.h>
+#elif defined(__linux__)
+#include <unistd.h>
+#endif
+
+struct RuntimeResources {
+    double cpuPercent = 0.0;
+    size_t rssBytes = 0;
+};
+
+static size_t readProcessRSSBytes(){
+#if defined(_WIN32)
+    PROCESS_MEMORY_COUNTERS_EX pmc{};
+    if(GetProcessMemoryInfo(GetCurrentProcess(),
+                            reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc),
+                            sizeof(pmc))){
+        return static_cast<size_t>(pmc.WorkingSetSize);
+    }
+    return 0;
+#elif defined(__APPLE__)
+    mach_task_basic_info info{};
+    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+    if(task_info(mach_task_self(),
+                 MACH_TASK_BASIC_INFO,
+                 reinterpret_cast<task_info_t>(&info),
+                 &count) == KERN_SUCCESS){
+        return static_cast<size_t>(info.resident_size);
+    }
+    return 0;
+#elif defined(__linux__)
+    std::ifstream in("/proc/self/statm");
+    long totalPages = 0;
+    long rssPages = 0;
+    if(!(in >> totalPages >> rssPages)) return 0;
+    const long pageSize = sysconf(_SC_PAGESIZE);
+    if(pageSize <= 0 || rssPages <= 0) return 0;
+    return static_cast<size_t>(rssPages) * static_cast<size_t>(pageSize);
+#else
+    return 0;
+#endif
+}
+
+class RuntimeResourceTracker {
+public:
+    RuntimeResourceTracker()
+    : lastWall(std::chrono::steady_clock::now()), lastCpu(std::clock()){}
+
+    void tick(RuntimeResources& out){
+        const auto now = std::chrono::steady_clock::now();
+        const double wallSec = std::chrono::duration<double>(now - lastWall).count();
+        if(wallSec < 0.25) return;
+
+        const std::clock_t cpuNow = std::clock();
+        const double cpuSec = double(cpuNow - lastCpu) / double(CLOCKS_PER_SEC);
+        if(wallSec > 0.0 && cpuSec >= 0.0){
+            out.cpuPercent = std::max(0.0, (cpuSec / wallSec) * 100.0);
+        }
+        out.rssBytes = readProcessRSSBytes();
+
+        lastWall = now;
+        lastCpu = cpuNow;
+    }
+
+private:
+    std::chrono::steady_clock::time_point lastWall;
+    std::clock_t lastCpu{};
+};
+
 static bool startsWith(const std::string& s, const std::string& prefix){
     return s.size() >= prefix.size() && s.compare(0, prefix.size(), prefix) == 0;
 }
@@ -845,6 +920,8 @@ int main(int argc, char** argv){
     std::atomic<bool> aiMoveReady(false);
     std::atomic<bool> aiPaused(false);
     std::atomic<bool> aiAbortSearch(false);
+    RuntimeResourceTracker resourceTracker;
+    RuntimeResources runtimeResources{};
     Move aiChosenMove{};
     SearchStats lastSearchStats{};
     std::string lastPV;
@@ -977,6 +1054,8 @@ int main(int argc, char** argv){
     };
 
     while(window.isOpen()){
+        resourceTracker.tick(runtimeResources);
+
         sf::Event e;
         while(window.pollEvent(e)){
             if(e.type == sf::Event::Closed) window.close();
@@ -1606,6 +1685,14 @@ int main(int argc, char** argv){
                     << " (" << std::fixed << std::setprecision(1) << qPct << "%)"
                     << " | NPS " << (long long)nps;
                 statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, oss.str(), 14, sf::Color(180,196,232));
+            }
+            {
+                const double rssMb = double(runtimeResources.rssBytes) / (1024.0 * 1024.0);
+                std::ostringstream oss;
+                oss << "Resources CPU " << std::fixed << std::setprecision(1) << runtimeResources.cpuPercent
+                    << "% | RSS " << std::setprecision(1) << rssMb << " MB"
+                    << " | Search threads " << aiThreads;
+                statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, oss.str(), 14, sf::Color(166,216,236));
             }
             {
                 std::ostringstream meta;
