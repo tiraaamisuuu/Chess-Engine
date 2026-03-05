@@ -3,7 +3,12 @@ gui
 *.o
 *.out
 build/
+build-win64/
 cmake-build-*/
+dist/
+artifacts/
+*.pgn
+*.log
 moves.txt
 
 # OS junk
