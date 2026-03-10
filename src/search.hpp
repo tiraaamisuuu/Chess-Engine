@@ -282,6 +282,10 @@ struct SearchStats {
     int depthReached=0;
     int bestScore=0;
     int timeMs=0;
+    int softTimeLimitMs=0;
+    int hardTimeLimitMs=0;
+    int bestMoveChanges=0;
+    int aspirationResearches=0;
     int configuredThreads=1;
     int workersUsed=1;
     int hardwareThreads=1;
@@ -291,7 +295,8 @@ struct SearchContext {
     TranspositionTable tt;
     SearchStats stats;
     std::chrono::steady_clock::time_point start;
-    int timeLimitMs=1000;
+    int softTimeLimitMs=1000;
+    int hardTimeLimitMs=1000;
     bool stop=false;
     const std::atomic<bool>* abortFlag=nullptr;
 
@@ -369,11 +374,20 @@ static inline bool timeUp(SearchContext& ctx){
     }
     auto now = std::chrono::steady_clock::now();
     int ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - ctx.start).count();
-    if(ms >= ctx.timeLimitMs){
+    if(ms >= ctx.hardTimeLimitMs){
         ctx.stop=true;
         return true;
     }
     return false;
+}
+
+static inline int elapsedTimeMs(const SearchContext& ctx){
+    auto now = std::chrono::steady_clock::now();
+    return (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - ctx.start).count();
+}
+
+static inline bool softTimeUp(const SearchContext& ctx){
+    return elapsedTimeMs(ctx) >= ctx.softTimeLimitMs;
 }
 
 static const int INF = 100000000;
@@ -753,13 +767,16 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     return best;
 }
 
-static Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, int timeLimitMs){
+static Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, int softTimeLimitMs, int hardTimeLimitMs){
     ctx.stats = {};
+    ctx.stats.softTimeLimitMs = softTimeLimitMs;
+    ctx.stats.hardTimeLimitMs = hardTimeLimitMs;
     ctx.stats.configuredThreads = 1;
     ctx.stats.workersUsed = 1;
     ctx.stats.hardwareThreads = std::max(1, int(std::thread::hardware_concurrency()));
     ctx.start = std::chrono::steady_clock::now();
-    ctx.timeLimitMs = timeLimitMs;
+    ctx.softTimeLimitMs = softTimeLimitMs;
+    ctx.hardTimeLimitMs = std::max(softTimeLimitMs, hardTimeLimitMs);
     ctx.stop = false;
     ctx.tt.newSearch();
     const Move noMove = invalidMove();
@@ -792,9 +809,13 @@ static Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
 
     Move bestMove = rootMoves[0];
     int bestScore = 0;
+    int bestMoveChanges = 0;
+    int aspirationResearches = 0;
+    int dynamicSoftLimitMs = ctx.softTimeLimitMs;
 
     for(int d=1; d<=maxDepth; d++){
         if(timeUp(ctx)) break;
+        if(d > 1 && d >= 4 && softTimeUp(ctx)) break;
 
         int window = INF;
         if(d >= 3 && std::abs(bestScore) < MATE / 2){
@@ -870,6 +891,7 @@ static Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
             const bool failLow = aspiration && (localBest <= alpha);
             const bool failHigh = aspiration && (localBest >= beta);
             if(failLow || failHigh){
+                aspirationResearches++;
                 if(window >= INF / 4){
                     window = INF;
                 } else {
@@ -884,10 +906,30 @@ static Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
         }
 
         if(!ctx.stop && acceptedScore != -INF){
+            const Move previousBest = bestMove;
+            const int previousScore = bestScore;
             bestScore = acceptedScore;
             bestMove = acceptedMove;
+            if(d > 1 && !sameMove(previousBest, bestMove)) bestMoveChanges++;
             ctx.stats.depthReached = d;
             ctx.stats.bestScore = bestScore;
+            ctx.stats.bestMoveChanges = bestMoveChanges;
+            ctx.stats.aspirationResearches = aspirationResearches;
+
+            const int scoreSwing = std::abs(bestScore - previousScore);
+            int extraTime = 0;
+            if(bestMoveChanges > 0){
+                extraTime += std::min(ctx.softTimeLimitMs / 3, bestMoveChanges * std::max(20, ctx.softTimeLimitMs / 12));
+            }
+            if(aspirationResearches > 0){
+                extraTime += std::min(ctx.softTimeLimitMs / 4, aspirationResearches * std::max(15, ctx.softTimeLimitMs / 20));
+            }
+            if(scoreSwing >= 80){
+                extraTime += std::max(25, ctx.softTimeLimitMs / 8);
+            }
+            dynamicSoftLimitMs = std::min(ctx.hardTimeLimitMs, ctx.softTimeLimitMs + extraTime);
+            ctx.softTimeLimitMs = dynamicSoftLimitMs;
+            ctx.stats.softTimeLimitMs = ctx.softTimeLimitMs;
         }
     }
 
@@ -896,12 +938,15 @@ static Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
     return bestMove;
 }
 
-static Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, int timeLimitMs, int threadCount){
+static Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, int softTimeLimitMs, int hardTimeLimitMs, int threadCount){
     ctx.stats = {};
+    ctx.stats.softTimeLimitMs = softTimeLimitMs;
+    ctx.stats.hardTimeLimitMs = hardTimeLimitMs;
     ctx.stats.configuredThreads = std::max(1, threadCount);
     ctx.stats.hardwareThreads = std::max(1, int(std::thread::hardware_concurrency()));
     ctx.start = std::chrono::steady_clock::now();
-    ctx.timeLimitMs = timeLimitMs;
+    ctx.softTimeLimitMs = softTimeLimitMs;
+    ctx.hardTimeLimitMs = std::max(softTimeLimitMs, hardTimeLimitMs);
     ctx.stop = false;
     ctx.tt.newSearch();
     const Move noMove = invalidMove();
@@ -936,6 +981,8 @@ static Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
     Move bestMove = rootMoves[0];
     int bestScore = 0;
     std::vector<int> rootScores(rootMoves.size(), 0);
+    int bestMoveChanges = 0;
+    int dynamicSoftLimitMs = ctx.softTimeLimitMs;
 
     const int workers = std::max(1, std::min<int>(std::clamp(threadCount, 1, 64), int(rootMoves.size())));
     ctx.stats.workersUsed = workers;
@@ -956,6 +1003,7 @@ static Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
 
     for(int d=1; d<=maxDepth; d++){
         if(timeUp(ctx)) break;
+        if(d > 1 && d >= 4 && softTimeUp(ctx)) break;
 
         std::vector<size_t> order(rootMoves.size());
         for(size_t i=0; i<rootMoves.size(); i++) order[i] = i;
@@ -980,7 +1028,8 @@ static Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
             threads.emplace_back([&, w](){
                 SearchContext& local = workerCtx[size_t(w)];
                 local.start = ctx.start;
-                local.timeLimitMs = ctx.timeLimitMs;
+                local.softTimeLimitMs = ctx.softTimeLimitMs;
+                local.hardTimeLimitMs = ctx.hardTimeLimitMs;
                 local.stop = false;
                 local.abortFlag = ctx.abortFlag;
                 local.tt.newSearch();
@@ -1041,18 +1090,34 @@ static Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
         auto now = std::chrono::steady_clock::now();
         const int elapsedMs = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - ctx.start).count();
         const bool externalAbort = ctx.abortFlag && ctx.abortFlag->load(std::memory_order_relaxed);
-        const bool timedOut = elapsedMs >= ctx.timeLimitMs;
+        const bool timedOut = elapsedMs >= ctx.hardTimeLimitMs;
         if((timedOut || externalAbort) && incomplete){
             ctx.stop = true;
             break;
         }
 
         if(localBest != -INF){
+            const Move previousBest = bestMove;
+            const int previousScore = bestScore;
             bestScore = localBest;
             bestMove = rootMoves[localBestIdx];
             bestWorker = localBestWorker;
+            if(d > 1 && !sameMove(previousBest, bestMove)) bestMoveChanges++;
             ctx.stats.depthReached = d;
             ctx.stats.bestScore = bestScore;
+            ctx.stats.bestMoveChanges = bestMoveChanges;
+
+            const int scoreSwing = std::abs(bestScore - previousScore);
+            int extraTime = 0;
+            if(bestMoveChanges > 0){
+                extraTime += std::min(ctx.softTimeLimitMs / 3, bestMoveChanges * std::max(20, ctx.softTimeLimitMs / 12));
+            }
+            if(scoreSwing >= 80){
+                extraTime += std::max(25, ctx.softTimeLimitMs / 8);
+            }
+            dynamicSoftLimitMs = std::min(ctx.hardTimeLimitMs, ctx.stats.softTimeLimitMs + extraTime);
+            ctx.softTimeLimitMs = dynamicSoftLimitMs;
+            ctx.stats.softTimeLimitMs = ctx.softTimeLimitMs;
         }
 
         if(timedOut || externalAbort){
@@ -1072,11 +1137,11 @@ static Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
     return bestMove;
 }
 
-static Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int timeLimitMs, int threadCount=1){
+static Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int softTimeLimitMs, int hardTimeLimitMs, int threadCount=1){
     if(threadCount <= 1){
-        return searchBestMoveSingle(bd, ctx, maxDepth, timeLimitMs);
+        return searchBestMoveSingle(bd, ctx, maxDepth, softTimeLimitMs, hardTimeLimitMs);
     }
-    return searchBestMoveParallel(bd, ctx, maxDepth, timeLimitMs, threadCount);
+    return searchBestMoveParallel(bd, ctx, maxDepth, softTimeLimitMs, hardTimeLimitMs, threadCount);
 }
 
 static float drawWrappedText(sf::RenderTarget& target,
@@ -1318,7 +1383,7 @@ static int runSearchBenchmark(const Zobrist& zob, int depth, int perPositionTime
         ctx.tt.resizeMB(static_cast<size_t>(ttSizeMB));
         ctx.gameHistory = {bd.hash};
 
-        const Move best = searchBestMove(bd, ctx, depth, perPositionTimeMs, threads);
+        const Move best = searchBestMove(bd, ctx, depth, perPositionTimeMs, perPositionTimeMs, threads);
         const double nps = (ctx.stats.timeMs > 0)
             ? (double(ctx.stats.nodes) * 1000.0 / double(ctx.stats.timeMs))
             : 0.0;

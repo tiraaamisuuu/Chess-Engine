@@ -170,6 +170,11 @@ struct UCIGoParams {
     bool infinite = false;
 };
 
+struct TimeBudget {
+    int softMs = 1000;
+    int hardMs = 1000;
+};
+
 static UCIGoParams parseUCIGoCommand(const std::string& line){
     UCIGoParams out;
     std::istringstream iss(line);
@@ -205,21 +210,51 @@ static UCIGoParams parseUCIGoCommand(const std::string& line){
     return out;
 }
 
-static int pickUCITimeMs(const Board& board, const UCIGoParams& p){
-    if(p.movetimeMs > 0) return p.movetimeMs;
-    if(p.infinite) return 24 * 60 * 60 * 1000;
+static int countNonKingPieces(const Board& board){
+    int pieces = 0;
+    for(const Piece& p : board.b){
+        if(isNone(p) || p.t == PieceType::King) continue;
+        pieces++;
+    }
+    return pieces;
+}
+
+static TimeBudget pickUCITimeBudget(const Board& board, const UCIGoParams& p){
+    if(p.movetimeMs > 0) return TimeBudget{p.movetimeMs, p.movetimeMs};
+    if(p.infinite) return TimeBudget{24 * 60 * 60 * 1000, 24 * 60 * 60 * 1000};
 
     const bool white = (board.stm == Color::White);
     const int sideTime = white ? p.wtimeMs : p.btimeMs;
     const int sideInc = white ? p.wincMs : p.bincMs;
-    if(sideTime <= 0) return 1000;
+    if(sideTime <= 0) return TimeBudget{1000, 1500};
 
-    const int moves = (p.movesToGo > 0) ? p.movesToGo : 30;
-    const int slice = sideTime / std::max(1, moves);
-    int budget = slice + (sideInc * 3) / 4;
-    budget = std::max(20, budget);
-    const int cap = std::max(30, sideTime - 20);
-    return std::min(budget, cap);
+    int movesToGo = p.movesToGo;
+    if(movesToGo <= 0){
+        const int pieces = countNonKingPieces(board);
+        if(pieces >= 22) movesToGo = 32;
+        else if(pieces >= 12) movesToGo = 24;
+        else movesToGo = 16;
+    }
+
+    const int reserve = std::max(25, std::min(250, sideTime / 50));
+    const int safeTime = std::max(20, sideTime - reserve);
+    const int baseSlice = safeTime / std::max(1, movesToGo + 3);
+    int soft = baseSlice + (sideInc * 3) / 4;
+    if(movesToGo <= 8) soft += baseSlice / 3;
+    if(sideTime < 2000) soft = std::max(15, baseSlice + sideInc / 2);
+    soft = std::clamp(soft, 15, std::max(15, safeTime / 2));
+
+    int hard = std::max(soft + 40, soft + soft / 2);
+    hard = std::max(hard, baseSlice * 3 + sideInc);
+    if(sideTime < 1000) hard = std::max(soft + 20, soft * 2);
+    hard = std::clamp(hard, soft, safeTime);
+    return TimeBudget{soft, hard};
+}
+
+static TimeBudget pickGuiTimeBudget(int requestedMs){
+    const int soft = std::clamp(requestedMs, 100, 180000);
+    const int hard = std::clamp(soft + std::max(250, soft / 4), soft, 180000);
+    return TimeBudget{soft, hard};
 }
 
 static int runUCILoop(int defaultThreads = 1){
@@ -254,7 +289,7 @@ static int runUCILoop(int defaultThreads = 1){
         searchCtx.tt.resizeMB(static_cast<size_t>(hashMB));
     };
 
-    auto launchSearch = [&](int depth, int timeMs){
+    auto launchSearch = [&](int depth, TimeBudget budget){
         stopSearch();
 
         Board root = board;
@@ -263,11 +298,11 @@ static int runUCILoop(int defaultThreads = 1){
         thinking.store(true);
         abortSearch.store(false);
 
-        worker = std::thread([&, root, rootHistory, depth, timeMs, threadsThisSearch]() mutable {
+        worker = std::thread([&, root, rootHistory, depth, budget, threadsThisSearch]() mutable {
             searchCtx.abortFlag = &abortSearch;
             searchCtx.gameHistory = rootHistory;
 
-            Move best = searchBestMove(root, searchCtx, depth, timeMs, threadsThisSearch);
+            Move best = searchBestMove(root, searchCtx, depth, budget.softMs, budget.hardMs, threadsThisSearch);
 
             std::vector<Move> legal;
             root.genLegalMoves(legal);
@@ -374,8 +409,10 @@ static int runUCILoop(int defaultThreads = 1){
         if(startsWith(lower, "go")){
             const UCIGoParams go = parseUCIGoCommand(line);
             const int depth = (go.depth > 0) ? go.depth : 64;
-            const int timeMs = std::clamp(pickUCITimeMs(board, go), 1, 24 * 60 * 60 * 1000);
-            launchSearch(depth, timeMs);
+            TimeBudget budget = pickUCITimeBudget(board, go);
+            budget.softMs = std::clamp(budget.softMs, 1, 24 * 60 * 60 * 1000);
+            budget.hardMs = std::clamp(budget.hardMs, budget.softMs, 24 * 60 * 60 * 1000);
+            launchSearch(depth, budget);
             continue;
         }
 
@@ -1011,7 +1048,8 @@ int main(int argc, char** argv){
         aiThread = std::thread([&, searchBoard, threadMaxDepth, threadTimeMs, threadThreads, threadHistory]() mutable {
             aiSearchCtx.abortFlag = &aiAbortSearch;
             aiSearchCtx.gameHistory = threadHistory;
-            Move m = searchBestMove(searchBoard, aiSearchCtx, threadMaxDepth, threadTimeMs, threadThreads);
+            const TimeBudget budget = pickGuiTimeBudget(threadTimeMs);
+            Move m = searchBestMove(searchBoard, aiSearchCtx, threadMaxDepth, budget.softMs, budget.hardMs, threadThreads);
             std::string pv = extractPVFromTT(searchBoard, aiSearchCtx, 12);
 
             if(aiAbortSearch.load() || aiPaused.load()){
