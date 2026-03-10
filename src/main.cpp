@@ -219,6 +219,24 @@ static int countNonKingPieces(const Board& board){
     return pieces;
 }
 
+static int positionComplexityScale(const Board& board, int legalMoves){
+    if(legalMoves <= 1) return 35;
+
+    int scale = 100;
+    const int pieces = countNonKingPieces(board);
+    if(board.inCheck(board.stm)) scale += 20;
+
+    if(legalMoves >= 36) scale += 18;
+    else if(legalMoves >= 28) scale += 10;
+    else if(legalMoves <= 6) scale -= 18;
+    else if(legalMoves <= 10) scale -= 10;
+
+    if(pieces >= 20) scale += 8;
+    else if(pieces <= 8) scale -= 8;
+
+    return std::clamp(scale, 35, 145);
+}
+
 static TimeBudget pickUCITimeBudget(const Board& board, const UCIGoParams& p){
     if(p.movetimeMs > 0) return TimeBudget{p.movetimeMs, p.movetimeMs};
     if(p.infinite) return TimeBudget{24 * 60 * 60 * 1000, 24 * 60 * 60 * 1000};
@@ -227,6 +245,12 @@ static TimeBudget pickUCITimeBudget(const Board& board, const UCIGoParams& p){
     const int sideTime = white ? p.wtimeMs : p.btimeMs;
     const int sideInc = white ? p.wincMs : p.bincMs;
     if(sideTime <= 0) return TimeBudget{1000, 1500};
+
+    Board probe = board;
+    std::vector<Move> legal;
+    probe.genLegalMoves(legal);
+    const int legalMoves = int(legal.size());
+    const int complexityScale = positionComplexityScale(board, legalMoves);
 
     int movesToGo = p.movesToGo;
     if(movesToGo <= 0){
@@ -242,17 +266,30 @@ static TimeBudget pickUCITimeBudget(const Board& board, const UCIGoParams& p){
     int soft = baseSlice + (sideInc * 3) / 4;
     if(movesToGo <= 8) soft += baseSlice / 3;
     if(sideTime < 2000) soft = std::max(15, baseSlice + sideInc / 2);
+    soft = (soft * complexityScale) / 100;
+    if(legalMoves <= 1) soft = std::min(soft, std::max(15, std::min(80, safeTime / 20)));
     soft = std::clamp(soft, 15, std::max(15, safeTime / 2));
 
     int hard = std::max(soft + 40, soft + soft / 2);
     hard = std::max(hard, baseSlice * 3 + sideInc);
     if(sideTime < 1000) hard = std::max(soft + 20, soft * 2);
+    hard = (hard * std::max(100, complexityScale + 10)) / 100;
+    if(legalMoves <= 1) hard = std::min(hard, std::max(soft, std::min(120, safeTime / 12)));
     hard = std::clamp(hard, soft, safeTime);
     return TimeBudget{soft, hard};
 }
 
-static TimeBudget pickGuiTimeBudget(int requestedMs){
-    const int soft = std::clamp(requestedMs, 100, 180000);
+static TimeBudget pickGuiTimeBudget(const Board& board, int requestedMs){
+    Board probe = board;
+    std::vector<Move> legal;
+    probe.genLegalMoves(legal);
+    const int legalMoves = int(legal.size());
+    const int complexityScale = positionComplexityScale(board, legalMoves);
+
+    const int base = std::clamp(requestedMs, 100, 180000);
+    int soft = (base * complexityScale) / 100;
+    soft = std::clamp(soft, std::max(100, base / 3), std::min(180000, base + base / 2));
+    if(legalMoves <= 1) soft = std::min(soft, std::max(60, base / 5));
     const int hard = std::clamp(soft + std::max(250, soft / 4), soft, 180000);
     return TimeBudget{soft, hard};
 }
@@ -1048,7 +1085,7 @@ int main(int argc, char** argv){
         aiThread = std::thread([&, searchBoard, threadMaxDepth, threadTimeMs, threadThreads, threadHistory]() mutable {
             aiSearchCtx.abortFlag = &aiAbortSearch;
             aiSearchCtx.gameHistory = threadHistory;
-            const TimeBudget budget = pickGuiTimeBudget(threadTimeMs);
+            const TimeBudget budget = pickGuiTimeBudget(searchBoard, threadTimeMs);
             Move m = searchBestMove(searchBoard, aiSearchCtx, threadMaxDepth, budget.softMs, budget.hardMs, threadThreads);
             std::string pv = extractPVFromTT(searchBoard, aiSearchCtx, 12);
 
@@ -1625,6 +1662,7 @@ int main(int argc, char** argv){
 
             drawCard(engineCardY, engineCardH);
             drawText(cardTextX, engineCardY + 20.f, 18, sf::Color(190,204,236), "Engine");
+            const TimeBudget liveBudget = pickGuiTimeBudget(board, aiTimeMs);
 
             std::ostringstream evalText;
             if(std::abs(s.bestScore) > MATE/2){
@@ -1718,7 +1756,8 @@ int main(int argc, char** argv){
             if(aiThinking.load()){
                 int ms = thinkClock.getElapsedTime().asMilliseconds();
                 std::ostringstream oss;
-                oss << "Thinking... " << ms << "ms / " << aiTimeMs << "ms";
+                oss << "Thinking... " << ms << "ms / " << liveBudget.softMs << "ms"
+                    << " (hard " << liveBudget.hardMs << "ms)";
                 drawText(cardTextX, statsY, 15, sf::Color(255,210,170), oss.str(), sf::Text::Bold);
             } else if(aiPaused.load()){
                 drawText(cardTextX, statsY, 15, sf::Color(192,232,180), "Paused", sf::Text::Bold);
@@ -1732,6 +1771,15 @@ int main(int argc, char** argv){
                     << " | Score " << std::fixed << std::setprecision(2) << pawns
                     << " | Time " << s.timeMs << "ms";
                 statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, oss.str(), 14, sf::Color(200,214,242));
+            }
+            {
+                const int softBudget = s.softTimeLimitMs > 0 ? s.softTimeLimitMs : liveBudget.softMs;
+                const int hardBudget = s.hardTimeLimitMs > 0 ? s.hardTimeLimitMs : liveBudget.hardMs;
+                std::ostringstream oss;
+                oss << "Budget soft " << softBudget
+                    << "ms | hard " << hardBudget
+                    << "ms | BM changes " << s.bestMoveChanges;
+                statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, oss.str(), 14, sf::Color(184,208,246));
             }
             {
                 std::ostringstream oss;
