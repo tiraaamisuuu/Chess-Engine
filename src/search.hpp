@@ -422,6 +422,15 @@ static int nonKingPieceCount(const Board& bd, Color side){
     return count;
 }
 
+static int practicalDrawScore(const Board& bd, int staticEval){
+    const int totalPieces = nonKingPieceCount(bd, Color::White) + nonKingPieceCount(bd, Color::Black);
+    if(totalPieces <= 4) return 0;
+
+    int contempt = std::clamp(staticEval / 10, -24, 24);
+    if(totalPieces <= 8) contempt = (contempt * 2) / 3;
+    return -contempt;
+}
+
 static bool isThreefoldRepetition(const Board& bd, const SearchContext& ctx){
     if(ctx.repetition.empty()) return false;
 
@@ -447,7 +456,7 @@ static int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int pl
     beta = std::min(beta, MATE - ply - 1);
     if(alpha >= beta) return alpha;
 
-    if(isThreefoldRepetition(bd, ctx)) return 0;
+    if(isThreefoldRepetition(bd, ctx)) return practicalDrawScore(bd, evaluate(bd));
 
     const bool inCheck = bd.inCheck(bd.stm);
     if(inCheck){
@@ -533,7 +542,7 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
 
     if(bd.insufficientMaterial()) return 0;
     if(bd.halfmoveClock >= 100) return 0;
-    if(isThreefoldRepetition(bd, ctx)) return 0;
+    if(isThreefoldRepetition(bd, ctx)) return practicalDrawScore(bd, evaluate(bd));
 
     bool inCheck = bd.inCheck(bd.stm);
     int staticEval = 0;
