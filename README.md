@@ -17,7 +17,7 @@ Source files:
 ### Requirements
 
 Windows 10/11
-Visual Studio 2022 (Desktop development with C++)
+Visual Studio 2022 or later (Desktop development with C++)
 CMake 3.21+
 SFML 2.6.x (not 3.x)
 
@@ -28,6 +28,13 @@ Set `SFML_DIR` to SFML's CMake package folder (example path shown below), then r
 set SFML_DIR=C:\libs\SFML-2.6.2\lib\cmake\SFML
 cmake -S . -B build-windows -G "Visual Studio 17 2022" -A x64 -DSFML_DIR="%SFML_DIR%"
 cmake --build build-windows --config Release
+```
+
+If you have Visual Studio 18 / 2026 installed instead of VS2022, use the matching generator and instance path:
+```bat
+set SFML_DIR=C:\libs\SFML-2.6.2\lib\cmake\SFML
+cmake -S . -B build-vs18 -G "Visual Studio 18 2026" -A x64 -DCMAKE_GENERATOR_INSTANCE="C:\Program Files\Microsoft Visual Studio\18\Community" -DSFML_DIR="%SFML_DIR%"
+cmake --build build-vs18 --config Release
 ```
 
 Run:
@@ -61,6 +68,7 @@ clang++ -O2 -std=c++17 src/main.cpp src/ui.cpp -o gui -I"$HOME/.local/sfml-2.6.2
 Run
 ```bash
 ./gui
+./gui --threads 8
 ```
 
 If you get missing dylib or freetype errors, it means the runtime linker cannot find SFML’s bundled frameworks. Re-check the rpath and that SFML was installed correctly.
@@ -93,6 +101,7 @@ After building, you can run engine-only tools from the CLI:
 ```bash
 ./build/gui --help
 ./build/gui --uci
+./build/gui --uci --threads 4
 ./build/gui --perft 4
 ./build/gui --divide 3
 ./build/gui --perft-tests --max-depth 4
@@ -163,6 +172,22 @@ Current default:
 `int aiMaxDepth = 20;`
 
 AI search runs on a worker thread to avoid UI freezes.
+
+GUI and UCI searches now use adaptive soft/hard time budgets:
+- the configured move time is treated as a base budget
+- obvious positions spend less time
+- sharp or unstable positions can spend more time up to the hard limit
+
+GUI thread count can be set at launch:
+```bash
+./gui --threads 8
+```
+
+UCI thread count can be set either at launch or via UCI:
+```text
+./build/gui --uci --threads 8
+setoption name Threads value 8
+```
 
 Board flipping is visual only and does not affect game logic.
 
