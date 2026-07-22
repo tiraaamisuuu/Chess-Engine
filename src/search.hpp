@@ -102,8 +102,8 @@ inline int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const M
     return ctx.history[side][m.from][m.to];
 }
 
-template<typename Scorer>
-inline void sortMovesByScore(std::vector<Move>& moves, Scorer scorer){
+template<typename MoveContainer, typename Scorer>
+inline void sortMovesByScore(MoveContainer& moves, Scorer scorer){
     struct ScoredMove { int score; Move move; };
     thread_local std::vector<ScoredMove> scored;
     scored.clear();
@@ -198,7 +198,7 @@ inline int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int pl
 
     const bool inCheck = bd.inCheck(bd.stm);
     if(inCheck){
-        std::vector<Move> evasions;
+        MoveList evasions;
         bd.genLegalMoves(evasions);
         if(evasions.empty()) return -MATE + ply;
 
@@ -224,10 +224,10 @@ inline int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int pl
     if(stand >= beta) return stand;
     if(stand > alpha) alpha = stand;
 
-    std::vector<Move> pseudo;
+    MoveList pseudo;
     bd.genPseudoMoves(pseudo);
 
-    std::vector<Move> moves;
+    MoveList moves;
     moves.reserve(pseudo.size());
     for(const Move& m : pseudo){
         if(!(m.isCapture || m.isEnPassant || m.promo != PieceType::None)) continue;
@@ -281,7 +281,7 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     if(ruleDraw){
         // Checkmate ends the game before a draw claim can be made.
         if(bd.inCheck(bd.stm)){
-            std::vector<Move> evasions;
+            MoveList evasions;
             bd.genLegalMoves(evasions);
             if(evasions.empty()) return -MATE + ply;
         }
@@ -374,7 +374,7 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         }
     }
 
-    std::vector<Move> moves;
+    MoveList moves;
     bd.genLegalMoves(moves);
 
     if(moves.empty()){
@@ -395,8 +395,8 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
 
     int originalAlpha = alpha;
     const int side = (bd.stm==Color::White)?0:1;
-    std::vector<Move> quietTried;
-    std::vector<Move> tacticalTried;
+    MoveList quietTried;
+    MoveList tacticalTried;
     quietTried.reserve(moves.size());
     tacticalTried.reserve(moves.size());
 
@@ -937,7 +937,7 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
             if(!entry || entry->key != pvBoard.hash) break;
             ctx.tt.store(entry->key, entry->depth, entry->score, entry->flag, entry->best);
 
-            std::vector<Move> legal;
+            MoveList legal;
             pvBoard.genLegalMoves(legal);
             const auto next = std::find_if(legal.begin(), legal.end(), [&](const Move& move){
                 return sameMove(move, entry->best);
@@ -975,7 +975,7 @@ inline std::string extractPVFromTT(Board bd, SearchContext& ctx, int maxPlies=12
 
         Move m = e->best;
 
-        std::vector<Move> leg;
+        MoveList leg;
         bd.genLegalMoves(leg);
 
         auto it = std::find_if(leg.begin(), leg.end(), [&](const Move& x){
@@ -995,7 +995,7 @@ inline std::string extractPVFromTT(Board bd, SearchContext& ctx, int maxPlies=12
 inline u64 perft(Board& bd, int depth){
     if(depth <= 0) return 1;
 
-    std::vector<Move> legal;
+    MoveList legal;
     bd.genLegalMoves(legal);
     if(depth == 1) return static_cast<u64>(legal.size());
 
@@ -1013,7 +1013,7 @@ inline std::vector<std::pair<std::string, u64>> perftDivide(Board& bd, int depth
     std::vector<std::pair<std::string, u64>> out;
     if(depth <= 0) return out;
 
-    std::vector<Move> legal;
+    MoveList legal;
     bd.genLegalMoves(legal);
     out.reserve(legal.size());
     for(const Move& m : legal){

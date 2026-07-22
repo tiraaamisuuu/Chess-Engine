@@ -114,6 +114,40 @@ struct Move {
     bool isCastle=false;
 };
 
+template<typename T, size_t Capacity>
+class FixedList {
+public:
+    using iterator = typename std::array<T, Capacity>::iterator;
+    using const_iterator = typename std::array<T, Capacity>::const_iterator;
+
+    void clear(){ size_ = 0; }
+    void reserve(size_t requested) const {
+        if(requested > Capacity) std::abort();
+    }
+    void push_back(const T& value){
+        if(size_ >= Capacity) std::abort();
+        storage_[size_++] = value;
+    }
+
+    [[nodiscard]] bool empty() const { return size_ == 0; }
+    [[nodiscard]] size_t size() const { return size_; }
+    [[nodiscard]] constexpr size_t capacity() const { return Capacity; }
+    T& operator[](size_t index){ return storage_[index]; }
+    const T& operator[](size_t index) const { return storage_[index]; }
+    iterator begin(){ return storage_.begin(); }
+    iterator end(){ return storage_.begin() + static_cast<std::ptrdiff_t>(size_); }
+    const_iterator begin() const { return storage_.begin(); }
+    const_iterator end() const { return storage_.begin() + static_cast<std::ptrdiff_t>(size_); }
+
+private:
+    std::array<T, Capacity> storage_{};
+    size_t size_ = 0;
+};
+
+// The maximum number of legal moves in a chess position is 218. Leave generous
+// extra room for pseudo-legal generation while keeping hot lists on the stack.
+using MoveList = FixedList<Move, 320>;
+
 struct Undo {
     Move m{};
     Piece captured{};

@@ -31,6 +31,13 @@ counter searched the identical tree in 2,268 ms (258,054 NPS): an 11.8%
 throughput increase on the same host. Time-limited results still require paired
 matches because greater NPS alone is not an Elo claim.
 
+The next pass moved recursive pseudo/legal, quiescence, tried-move, and perft
+lists from heap-backed vectors to a bounded 320-entry stack container. The
+known legal-move maximum is 218, and the existing perft suite exercises the
+same container. Three interleaved depth-11 comparisons against the mobility-only
+revision kept an identical 391,564-node tree; median runtime fell from 2,427 ms
+to 2,147 ms, an additional 11.5% reduction on the profiled host.
+
 ## Root parallelism
 
 The original four-thread implementation searched every root move independently

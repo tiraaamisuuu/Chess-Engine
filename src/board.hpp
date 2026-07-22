@@ -311,7 +311,8 @@ struct Board {
         return isSquareAttacked(k, other(c));
     }
 
-    void genPseudoMoves(std::vector<Move>& out) const {
+    template<typename MoveContainer>
+    void genPseudoMoves(MoveContainer& out) const {
         out.clear();
         Color us = stm;
 
@@ -637,9 +638,9 @@ struct Board {
         }
     }
 
-    void genLegalMoves(std::vector<Move>& legal){
-        thread_local std::vector<Move> pseudo;
-        if(pseudo.capacity() < 256) pseudo.reserve(256);
+    template<typename MoveContainer>
+    void genLegalMoves(MoveContainer& legal){
+        MoveList pseudo;
         genPseudoMoves(pseudo);
         legal.clear();
         legal.reserve(pseudo.size());
