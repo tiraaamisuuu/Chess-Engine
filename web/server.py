@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Local HTTP bridge between TiramisuChess engine profiles and its web UI."""
+"""Local HTTP bridge between chess engine profiles and the web UI."""
 
 from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -19,6 +20,7 @@ from urllib.parse import urlparse
 
 import chess
 import chess.engine
+import chess.pgn
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,7 +81,7 @@ class EngineProfile:
 
 
 def find_built_engine(build: Path) -> Path | None:
-    preferred = ("tiramisu-uci", "tiramisu-uci.exe", "gui", "gui.exe")
+    preferred = ("chess-engine-uci", "chess-engine-uci.exe", "gui", "gui.exe")
     candidates = [path for name in preferred for path in build.rglob(name) if path.is_file()]
     return candidates[0].resolve() if candidates else None
 
@@ -244,6 +246,7 @@ class GameService:
         self.sessions: dict[str, EngineSession] = {}
         self.board = chess.Board()
         self.start_fen = self.board.fen()
+        self.game_started_at = datetime.now().astimezone()
         self.mode = "pvc"
         self.player_color: chess.Color | None = chess.WHITE
         self.controllers: dict[chess.Color, str | None] = {
@@ -251,7 +254,7 @@ class GameService:
             chess.BLACK: self.default_profile_id,
         }
         self.engine_time_ms = 650
-        self.analysis_time_ms = 180
+        self.analysis_time_ms = 500
         self.last_engine_info: dict[str, Any] = {}
         self.last_analysis: dict[str, Any] = {}
         self.game_tokens: dict[str, object] = {}
@@ -309,13 +312,14 @@ class GameService:
                 }
 
             self.engine_time_ms = bounded_int(payload.get("engineTimeMs"), 50, 10_000, 650)
-            self.analysis_time_ms = bounded_int(payload.get("analysisTimeMs"), 50, 2_000, 180)
+            self.analysis_time_ms = bounded_int(payload.get("analysisTimeMs"), 50, 5_000, 500)
             fen = str(payload.get("fen", "")).strip()
             try:
                 self.board = chess.Board(fen) if fen else chess.Board()
             except ValueError as error:
                 raise ValueError(f"Invalid FEN: {error}") from error
             self.start_fen = self.board.fen()
+            self.game_started_at = datetime.now().astimezone()
             self.last_engine_info = {}
             self.last_analysis = {}
             self.game_tokens = {}
@@ -417,6 +421,95 @@ class GameService:
     def state(self) -> dict[str, Any]:
         with self.lock:
             return self._serialize()
+
+    def export_game(self, payload: dict[str, Any]) -> dict[str, str]:
+        with self.lock:
+            export_format = str(payload.get("format", "pgn")).strip().lower()
+            timestamp = self.game_started_at.strftime("%Y%m%d-%H%M%S")
+            if export_format == "pgn":
+                content = self._pgn(payload)
+                extension = "pgn"
+                mime_type = "application/x-chess-pgn"
+            elif export_format == "fen":
+                content = self.board.fen(en_passant="fen") + "\n"
+                extension = "fen"
+                mime_type = "text/plain"
+            elif export_format == "json":
+                content = json.dumps(self._game_log(), indent=2, ensure_ascii=False) + "\n"
+                extension = "json"
+                mime_type = "application/json"
+            else:
+                raise ValueError("Export format must be PGN, FEN, or JSON")
+            return {
+                "format": export_format,
+                "filename": f"chess-game-{timestamp}.{extension}",
+                "mimeType": mime_type,
+                "content": content,
+            }
+
+    @staticmethod
+    def _header(payload: dict[str, Any], key: str, fallback: str) -> str:
+        raw_value = payload.get(key, "")
+        value = ("" if raw_value is None else str(raw_value)) \
+            .replace("\r", " ").replace("\n", " ").strip()
+        return value[:120] or fallback
+
+    def _pgn(self, payload: dict[str, Any]) -> str:
+        game = chess.pgn.Game()
+        starting_board = chess.Board(self.start_fen)
+        if self.start_fen != chess.STARTING_FEN:
+            game.setup(starting_board)
+
+        outcome = self.board.outcome(claim_draw=True)
+        result = outcome.result() if outcome else "*"
+        white = self._controller(chess.WHITE)["name"]
+        black = self._controller(chess.BLACK)["name"]
+        game.headers.update({
+            "Event": self._header(payload, "event", "Local Game"),
+            "Site": self._header(payload, "site", "Local"),
+            "Date": self.game_started_at.strftime("%Y.%m.%d"),
+            "Round": self._header(payload, "round", "-"),
+            "White": self._header(payload, "white", white),
+            "Black": self._header(payload, "black", black),
+            "Result": result,
+        })
+        if outcome:
+            game.headers["Termination"] = outcome.termination.name.replace("_", " ").title()
+
+        node: chess.pgn.GameNode = game
+        for move in self.board.move_stack:
+            node = node.add_variation(move)
+        exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=False,
+                                            columns=None)
+        return game.accept(exporter).strip() + "\n"
+
+    def _game_log(self) -> dict[str, Any]:
+        replay = chess.Board(self.start_fen)
+        moves: list[dict[str, Any]] = []
+        for ply, move in enumerate(self.board.move_stack, start=1):
+            moves.append({
+                "ply": ply,
+                "moveNumber": replay.fullmove_number,
+                "color": color_name(replay.turn),
+                "uci": move.uci(),
+                "san": replay.san(move),
+                "fenAfter": None,
+            })
+            replay.push(move)
+            moves[-1]["fenAfter"] = replay.fen(en_passant="fen")
+        outcome = self.board.outcome(claim_draw=True)
+        return {
+            "formatVersion": 1,
+            "startedAt": self.game_started_at.isoformat(timespec="seconds"),
+            "mode": self.mode,
+            "white": self._controller(chess.WHITE),
+            "black": self._controller(chess.BLACK),
+            "startFen": self.start_fen,
+            "currentFen": self.board.fen(en_passant="fen"),
+            "result": outcome.result() if outcome else "*",
+            "termination": outcome.termination.name if outcome else None,
+            "moves": moves,
+        }
 
     def _engine_info(self, information: dict[str, Any], board: chess.Board) -> dict[str, Any]:
         score = information.get("score")
@@ -551,7 +644,7 @@ class GameService:
 
 class WebHandler(BaseHTTPRequestHandler):
     service: GameService
-    server_version = "TiramisuWeb/2.0"
+    server_version = "ChessEngineWeb/2.0"
 
     def log_message(self, format_string: str, *args: object) -> None:
         print(f"[web] {self.address_string()} {format_string % args}")
@@ -578,6 +671,8 @@ class WebHandler(BaseHTTPRequestHandler):
                 response = self.service.engine_move()
             elif path == "/api/analyse":
                 response = self.service.analyse()
+            elif path == "/api/export":
+                response = self.service.export_game(payload)
             elif path == "/api/undo":
                 response = self.service.undo()
             else:
@@ -642,8 +737,8 @@ class WebHandler(BaseHTTPRequestHandler):
 
 
 def parse_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the local TiramisuChess web interface")
-    parser.add_argument("--engine", type=Path, default=ROOT / "build" / "tiramisu-uci")
+    parser = argparse.ArgumentParser(description="Run the local chess engine web interface")
+    parser.add_argument("--engine", type=Path, default=ROOT / "build" / "chess-engine-uci")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--threads", type=int, default=1)
@@ -659,7 +754,7 @@ def main() -> int:
     WebHandler.service = service
     server = ThreadingHTTPServer((args.host, args.port), WebHandler)
     url = f"http://{args.host}:{server.server_address[1]}"
-    print(f"TiramisuChess web GUI: {url}", flush=True)
+    print(f"Chess engine web GUI: {url}", flush=True)
     default_session = service.sessions.get(service.default_profile_id)
     if default_session and default_session.error:
         print(f"Engine unavailable; PvP remains enabled: {default_session.error}", flush=True)

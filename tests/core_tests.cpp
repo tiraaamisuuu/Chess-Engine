@@ -199,7 +199,7 @@ void testTranspositionClusters(){
 }
 
 void testNnueFormat(const Zobrist& zobrist){
-    const std::filesystem::path path = std::filesystem::temp_directory_path() / "tiramisu-nnue-format-test.nnue";
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "chess-engine-nnue-format-test.nnue";
     {
         std::ofstream output(path, std::ios::binary);
         const std::array<char, 8> magic{{'T','N','N','U','E','1','\0','\0'}};

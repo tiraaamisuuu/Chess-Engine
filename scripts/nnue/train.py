@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train and export the TiramisuChess HalfKP-v1 NNUE network."""
+"""Train and export the chess engine's HalfKP-v1 NNUE network."""
 
 from __future__ import annotations
 

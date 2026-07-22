@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CANDIDATE_BIN="${1:-./build/tiramisu-uci}"
-BASELINE_BIN="${2:-./build/tiramisu-uci}"
+CANDIDATE_BIN="${1:-./build/chess-engine-uci}"
+BASELINE_BIN="${2:-./build/chess-engine-uci}"
 
 GAMES="${GAMES:-200}"
 CONCURRENCY="${CONCURRENCY:-2}"

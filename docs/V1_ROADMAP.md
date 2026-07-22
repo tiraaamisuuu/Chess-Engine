@@ -1,4 +1,4 @@
-# TiramisuChess v1 Roadmap
+# Chess Engine v1 Roadmap
 
 v1 is an incremental internal rebuild in the existing repository. The current
 engine remains the correctness and playing-strength baseline while components
@@ -19,4 +19,3 @@ are replaced behind tests.
 
 Release criteria are clean builds, passing CI and quality gates, no known rule
 correctness regressions, and measured strength improvement over the baseline.
-

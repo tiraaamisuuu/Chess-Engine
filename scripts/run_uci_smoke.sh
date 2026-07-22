@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ENGINE_BIN="${1:-./build/tiramisu-uci}"
+ENGINE_BIN="${1:-./build/chess-engine-uci}"
 
 if [[ ! -x "$ENGINE_BIN" ]]; then
   echo "Error: engine binary not found or not executable: $ENGINE_BIN" >&2

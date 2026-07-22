@@ -15,6 +15,7 @@ const elements = {
   analysisScore: document.querySelector("#analysis-score"),
   analysisDepth: document.querySelector("#analysis-depth"),
   analysisPv: document.querySelector("#analysis-pv"),
+  runAnalysis: document.querySelector("#run-analysis"),
   metricDepth: document.querySelector("#metric-depth"),
   metricNodes: document.querySelector("#metric-nodes"),
   metricNps: document.querySelector("#metric-nps"),
@@ -42,6 +43,14 @@ const elements = {
   autoPlay: document.querySelector("#auto-play"),
   promotionModal: document.querySelector("#promotion-modal"),
   promotionOptions: document.querySelector("#promotion-options"),
+  exportModal: document.querySelector("#export-modal"),
+  exportForm: document.querySelector("#export-form"),
+  exportMetadata: document.querySelector("#export-metadata"),
+  exportHelp: document.querySelector("#export-help"),
+  exportPreview: document.querySelector("#export-preview"),
+  exportWhite: document.querySelector("#export-white"),
+  exportBlack: document.querySelector("#export-black"),
+  downloadExport: document.querySelector("#download-export"),
   toast: document.querySelector("#toast"),
 };
 
@@ -59,6 +68,10 @@ let engineTimer = null;
 let autoPlay = true;
 let profileOptionsKey = "";
 let toastTimer = null;
+let analysisBusy = false;
+let analysisError = "";
+let exportPayload = null;
+let exportSequence = 0;
 
 async function request(path, options = {}) {
   const response = await fetch(path, {
@@ -281,6 +294,8 @@ function cancelScheduledEnginePlay() {
 async function submitMove(uci) {
   selectedSquare = null;
   cancelScheduledEnginePlay();
+  analysisSequence += 1;
+  analysisError = "";
   setBusy(true, "Applying your move");
   try {
     state = await request("/api/move", { method: "POST", body: JSON.stringify({ uci }) });
@@ -335,16 +350,28 @@ async function performEngineMove(token) {
 function scheduleAnalysis() {
   if (!state || state.gameOver || !state.engine.connected || (state.mode === "cvc" && autoPlay)) return;
   const sequence = ++analysisSequence;
-  window.setTimeout(async () => {
-    try {
-      const analysis = await request("/api/analyse", { method: "POST", body: "{}" });
-      if (sequence !== analysisSequence || !state) return;
-      state.engine.analysis = analysis;
-      renderAnalysis();
-    } catch (error) {
-      console.warn(error);
-    }
-  }, 80);
+  window.setTimeout(() => runAnalysis(false, sequence), 80);
+}
+
+async function runAnalysis(showFailure = true, sequence = ++analysisSequence) {
+  if (!state || state.gameOver || !state.engine.connected || analysisBusy) return;
+  analysisBusy = true;
+  analysisError = "";
+  renderAnalysis();
+  try {
+    const analysis = await request("/api/analyse", { method: "POST", body: "{}" });
+    if (sequence !== analysisSequence || !state) return;
+    state.engine.analysis = analysis;
+  } catch (error) {
+    if (sequence !== analysisSequence) return;
+    analysisError = error.message;
+    if (showFailure) showToast(`Analysis failed: ${error.message}`);
+  } finally {
+    const stale = sequence !== analysisSequence;
+    analysisBusy = false;
+    if (state) renderAnalysis();
+    if (stale) scheduleAnalysis();
+  }
 }
 
 function setBusy(value, detail = "Searching the position") {
@@ -361,7 +388,6 @@ function setBusy(value, detail = "Searching the position") {
 }
 
 function initials(name, isEngine) {
-  if (isEngine && name.startsWith("Current")) return "TC";
   const words = name.match(/[A-Za-z0-9]+/g) || [];
   return words.slice(0, 2).map((word) => word[0]).join("").toUpperCase() || "—";
 }
@@ -419,16 +445,26 @@ function renderAnalysis() {
   const cp = Math.max(-1200, Math.min(1200, analysis.scoreCp || 0));
   const whitePercent = 50 + 48 * Math.tanh(cp / 420);
   elements.evaluationFill.style.height = `${whitePercent}%`;
-  elements.analysisDepth.textContent = analysis.depth
-    ? `Depth ${analysis.depth} · White perspective`
-    : "Waiting for a position";
-  elements.analysisPv.textContent = analysis.pv?.length
-    ? analysis.pv.join("  ")
-    : "Analysis begins after the first move.";
+  if (analysisBusy) {
+    elements.analysisDepth.textContent = `Analysing with ${state.engine.name}…`;
+    elements.analysisPv.textContent = "Searching candidate moves and evaluating the position.";
+  } else if (analysisError) {
+    elements.analysisDepth.textContent = "Analysis unavailable";
+    elements.analysisPv.textContent = analysisError;
+  } else {
+    elements.analysisDepth.textContent = analysis.depth
+      ? `Depth ${analysis.depth} · ${analysis.profileName || state.engine.name} · White perspective`
+      : "Ready to analyse this position";
+    elements.analysisPv.textContent = analysis.pv?.length
+      ? analysis.pv.join("  ")
+      : "Press Analyse position to calculate a principal variation.";
+  }
   elements.metricDepth.textContent = analysis.depth ?? "—";
   elements.metricNodes.textContent = formatNumber(analysis.nodes);
   elements.metricNps.textContent = formatNumber(analysis.nps);
   elements.metricTime.textContent = analysis.timeMs ? `${analysis.timeMs} ms` : "—";
+  elements.runAnalysis.disabled = analysisBusy || state.gameOver || !state.engine.connected;
+  elements.runAnalysis.textContent = analysisBusy ? "Analysing…" : "Analyse position";
 }
 
 function renderAutoPlay() {
@@ -532,12 +568,13 @@ async function newGameFromForm() {
     whiteProfile: form.get("white-profile"),
     blackProfile: form.get("black-profile"),
     engineTimeMs: Number(form.get("engine-time")),
-    analysisTimeMs: 180,
+    analysisTimeMs: 500,
   };
   orientationPreference = form.get("orientation");
   autoPlay = mode === "cvc";
   cancelScheduledEnginePlay();
   analysisSequence += 1;
+  analysisError = "";
   setBusy(true, "Preparing a new board");
   try {
     state = await request("/api/new", { method: "POST", body: JSON.stringify(payload) });
@@ -596,6 +633,7 @@ document.querySelector("#undo").addEventListener("click", async () => {
   cancelScheduledEnginePlay();
   if (state?.mode === "cvc") autoPlay = false;
   analysisSequence += 1;
+  analysisError = "";
   try {
     state = await request("/api/undo", { method: "POST", body: "{}" });
     selectedSquare = null;
@@ -621,14 +659,84 @@ elements.autoPlay.addEventListener("click", () => {
   else scheduleAnalysis();
 });
 
-document.querySelector("#copy-fen").addEventListener("click", async () => {
-  if (!state) return;
+elements.runAnalysis.addEventListener("click", () => runAnalysis(true));
+
+function exportRequestBody() {
+  const form = new FormData(elements.exportForm);
+  return {
+    format: form.get("export-format"),
+    event: form.get("event"),
+    white: form.get("white"),
+    black: form.get("black"),
+  };
+}
+
+async function refreshExport() {
+  const sequence = ++exportSequence;
+  const format = exportRequestBody().format;
+  elements.exportMetadata.hidden = format !== "pgn";
+  elements.exportHelp.textContent = {
+    pgn: "Standard PGN for Chessigma and other game-analysis tools.",
+    fen: "The current position only; move history is not included.",
+    json: "A structured log with moves, engine profiles, and every resulting FEN.",
+  }[format];
+  elements.exportPreview.value = "Preparing export…";
+  elements.downloadExport.disabled = true;
   try {
-    await navigator.clipboard.writeText(state.fen);
-    showToast("FEN copied");
+    const payload = await request("/api/export", {
+      method: "POST",
+      body: JSON.stringify(exportRequestBody()),
+    });
+    if (sequence !== exportSequence) return;
+    exportPayload = payload;
+    elements.exportPreview.value = payload.content;
+    elements.downloadExport.textContent = `Download .${payload.format}`;
+    elements.downloadExport.disabled = false;
+  } catch (error) {
+    if (sequence !== exportSequence) return;
+    exportPayload = null;
+    elements.exportPreview.value = `Export failed: ${error.message}`;
+    showToast(error.message);
+  }
+}
+
+document.querySelector("#export-game").addEventListener("click", () => {
+  if (!state) return;
+  elements.exportWhite.value = state.controllers.white.name;
+  elements.exportBlack.value = state.controllers.black.name;
+  elements.exportModal.showModal();
+  refreshExport();
+});
+
+document.querySelector("#close-export").addEventListener("click", () => elements.exportModal.close());
+elements.exportForm.addEventListener("submit", (event) => event.preventDefault());
+elements.exportForm.addEventListener("change", refreshExport);
+for (const input of elements.exportForm.querySelectorAll('input[type="text"], input:not([type])')) {
+  input.addEventListener("input", refreshExport);
+}
+
+document.querySelector("#copy-export").addEventListener("click", async () => {
+  if (!exportPayload) return;
+  try {
+    await navigator.clipboard.writeText(exportPayload.content);
+    showToast(`${exportPayload.format.toUpperCase()} copied`);
   } catch {
     showToast("Could not access the clipboard");
   }
+});
+
+elements.downloadExport.addEventListener("click", () => {
+  if (!exportPayload) return;
+  const blob = new Blob([exportPayload.content], { type: exportPayload.mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = exportPayload.filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+  showToast(`${exportPayload.filename} downloaded`);
 });
 
 for (const tab of document.querySelectorAll(".tab")) {

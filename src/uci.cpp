@@ -272,7 +272,7 @@ int runUCILoop(int defaultThreads){
 
         if(lower == "uci"){
             std::lock_guard<std::mutex> lock(outputMutex);
-            std::cout << "id name TiramisuChess v1.0-dev\n"
+            std::cout << "id name Chess Engine v1.0-dev\n"
                       << "id author Alfie Corthine\n"
                       << "option name Hash type spin default 256 min 1 max 4096\n"
                       << "option name Threads type spin default " << searchThreads

@@ -22,7 +22,7 @@ jobs:
         run: ctest --test-dir build -C Release --output-on-failure
       - name: UCI smoke test
         if: runner.os != 'Windows'
-        run: scripts/run_uci_smoke.sh ./build/tiramisu-uci
+        run: scripts/run_uci_smoke.sh ./build/chess-engine-uci
 
   sanitizers:
     runs-on: ubuntu-latest
@@ -49,4 +49,4 @@ jobs:
       - name: Validate web interface
         run: |
           node --check web/app.js
-          python tests/web_api_smoke.py --engine ./build/tiramisu-uci
+          python tests/web_api_smoke.py --engine ./build/chess-engine-uci

@@ -1,9 +1,9 @@
-# TiramisuChess
+# Chess Engine
 
-TiramisuChess is a C++17 chess engine with independent UCI and developer-tool
-targets, a local web interface, and the legacy SFML 2.6 desktop application. The
-v1 rework prioritizes rule correctness, reproducible strength testing, efficient
-classical search, and an optional NNUE evaluation path.
+This is a C++17 chess engine with independent UCI and developer-tool targets, a
+local web interface, and the legacy SFML 2.6 desktop application. The v1 rework
+prioritizes rule correctness, reproducible strength testing, efficient classical
+search, and an optional NNUE evaluation path.
 
 ## Current engine
 
@@ -36,8 +36,10 @@ On Windows PowerShell, run `scripts\run_web_gui.ps1` instead.
 The launcher creates an isolated Python environment on first use, builds the
 headless engine when needed, starts the local bridge, and opens the interface.
 It supports click and true pointer-following drag movement, legal-move guidance,
-PvP/PvC/CvC, live evaluation and PV, move history, undo, board flipping,
-promotion, side choice, selectable engines/models, and desktop/mobile layouts.
+PvP/PvC/CvC, visible on-demand analysis and PV, move history, PGN/FEN/JSON game
+export, undo, board flipping, promotion, side choice, selectable engines/models,
+and desktop/mobile layouts. PGN exports can be pasted into or uploaded to common
+game-analysis tools.
 The setup panel automatically lists the current engine, revisions built by
 `scripts/compare_engines.py`, and any `.nnue` models placed under `networks/`.
 Role badges distinguish the newest development build, committed candidate,
@@ -55,14 +57,14 @@ ctest --test-dir build --output-on-failure
 
 Executables:
 
-- `build/tiramisu-uci` — tournament/analysis engine
-- `build/tiramisu-tools` — perft, divide, and benchmarks
+- `build/chess-engine-uci` — tournament/analysis engine
+- `build/chess-engine-tools` — perft, divide, and benchmarks
 - `build/chess-core-tests` — deterministic core test suite
 
 Example UCI session:
 
 ```text
-./build/tiramisu-uci
+./build/chess-engine-uci
 uci
 isready
 position startpos moves e2e4 e7e5 g1f3
@@ -138,7 +140,7 @@ inference backend. Classical evaluation stays active unless a network is loaded
 and explicitly enabled:
 
 ```text
-setoption name EvalFile value networks/tiramisu-v1.nnue
+setoption name EvalFile value networks/engine-v1.nnue
 setoption name Use NNUE value true
 ```
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Label sampled PGN positions with a UCI teacher for TiramisuChess NNUE."""
+"""Label sampled PGN positions with a UCI teacher for the engine's NNUE."""
 
 from __future__ import annotations
 

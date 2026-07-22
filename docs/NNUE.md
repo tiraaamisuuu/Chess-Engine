@@ -1,6 +1,6 @@
 # NNUE v1 Training and Integration
 
-TiramisuChess supports a versioned `HalfKP-v1` network as an optional evaluation
+The engine supports a versioned `HalfKP-v1` network as an optional evaluation
 backend. Classical evaluation remains the default until a network is trained and
 wins controlled matches.
 
@@ -47,7 +47,7 @@ and game result. Mate values are bounded to keep targets finite.
 .venv/bin/python scripts/nnue/train.py \
   --data data/shard-*.jsonl \
   --validation-data data/validation-*.jsonl \
-  --output networks/tiramisu-v1.nnue \
+  --output networks/engine-v1.nnue \
   --hidden 256 --batch-size 2048 --epochs 8 --workers 4
 ```
 
@@ -57,7 +57,7 @@ the C++ test suite. It also writes a `.pt` checkpoint.
 ## Use the network
 
 ```text
-setoption name EvalFile value networks/tiramisu-v1.nnue
+setoption name EvalFile value networks/engine-v1.nnue
 setoption name Use NNUE value true
 ```
 

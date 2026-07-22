@@ -405,6 +405,8 @@ button { color: inherit; }
 .metric-grid div { padding: 13px; border: 1px solid var(--line); }
 .metric-grid span { display: block; color: var(--subtle); font-size: 7px; font-weight: 800; letter-spacing: .16em; }
 .metric-grid strong { display: block; margin-top: 7px; font-size: 13px; font-weight: 520; }
+.analysis-button { width: 100%; margin-top: 14px; }
+.analysis-button:disabled, .button:disabled { opacity: .45; cursor: wait; transform: none; }
 
 .engine-card { min-height: 78px; border-top: 1px solid var(--line); padding: 16px 20px; display: grid; grid-template-columns: 36px 1fr auto; gap: 12px; align-items: center; }
 .engine-icon { width: 34px; height: 34px; border: 1px solid var(--line-strong); display: grid; place-items: center; }
@@ -492,6 +494,44 @@ legend { margin-bottom: 10px; color: var(--muted); font-size: 9px; font-weight: 
 .matchup-grid fieldset { min-width: 0; }
 .modal-submit { width: 100%; margin-top: 4px; }
 
+.export-modal { width: min(640px, calc(100vw - 32px)); }
+.export-metadata {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr;
+  gap: 9px;
+  margin: -3px 0 22px;
+}
+.export-metadata label { min-width: 0; }
+.export-metadata label > span, .export-preview-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.export-metadata input, .export-preview {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+.export-metadata input { height: 42px; padding: 0 11px; font-size: 10px; }
+.export-metadata input:focus, .export-preview:focus { outline: 1px solid var(--accent); outline-offset: 1px; }
+.export-preview {
+  height: 235px;
+  resize: vertical;
+  padding: 13px;
+  color: #d9ded9;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre;
+}
+.export-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 9px; margin-top: 13px; }
+
 .promotion-modal > div { padding: 26px; }
 .promotion-options { margin-top: 22px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .promotion-options button { aspect-ratio: 1; border: 1px solid var(--line); background: var(--surface-raised); cursor: pointer; }
@@ -538,6 +578,8 @@ legend { margin-bottom: 10px; color: var(--muted); font-size: 9px; font-weight: 
   .brand strong { font-size: 11px; }
   .brand small { font-size: 7px; }
   .matchup-grid { grid-template-columns: 1fr; gap: 0; }
+  .export-metadata { grid-template-columns: 1fr; }
+  .export-preview { height: 190px; }
   .modal form { padding: 22px; }
 }
 

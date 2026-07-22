@@ -30,7 +30,7 @@ OPENINGS_SHA256 = "a97424c5b98b42f8c27ff450f0681ad11696148548c975752350e98417ead
 
 def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Compare two TiramisuChess revisions with paired opening games."
+        description="Compare two chess engine revisions with paired opening games."
     )
     parser.add_argument("--baseline", default="v0.4.0", help="Git ref for engine A")
     parser.add_argument("--candidate", default="HEAD", help="Git ref for engine B")
@@ -96,7 +96,7 @@ def default_sfml_prefix() -> Path | None:
 
 
 def find_engine(build: Path) -> Path:
-    names = {"tiramisu-uci", "tiramisu-uci.exe", "gui", "gui.exe"}
+    names = {"chess-engine-uci", "chess-engine-uci.exe", "gui", "gui.exe"}
     candidates = [path for path in build.rglob("*") if path.is_file() and path.name in names]
     candidates.sort(key=lambda path: (path.name.startswith("gui"), len(path.parts)))
     if not candidates:

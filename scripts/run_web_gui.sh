@@ -6,10 +6,10 @@ BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build-web}"
 VENV_DIR="${WEB_VENV:-$ROOT_DIR/.venv-web}"
 if [[ -n "${ENGINE_BIN:-}" ]]; then
   ENGINE_BIN="$ENGINE_BIN"
-elif [[ -x "$ROOT_DIR/bin/tiramisu-uci" ]]; then
-  ENGINE_BIN="$ROOT_DIR/bin/tiramisu-uci"
+elif [[ -x "$ROOT_DIR/bin/chess-engine-uci" ]]; then
+  ENGINE_BIN="$ROOT_DIR/bin/chess-engine-uci"
 else
-  ENGINE_BIN="$BUILD_DIR/tiramisu-uci"
+  ENGINE_BIN="$BUILD_DIR/chess-engine-uci"
 fi
 
 if [[ ! -x "$VENV_DIR/bin/python" && ! -x "$VENV_DIR/Scripts/python.exe" ]]; then
@@ -35,8 +35,8 @@ if [[ ! -x "$ENGINE_BIN" ]]; then
     -DBUILD_TESTING=OFF \
     -DCMAKE_BUILD_TYPE=Release
   cmake --build "$BUILD_DIR" --config Release --parallel "${BUILD_JOBS:-8}"
-  if [[ -x "$BUILD_DIR/Release/tiramisu-uci.exe" ]]; then
-    ENGINE_BIN="$BUILD_DIR/Release/tiramisu-uci.exe"
+  if [[ -x "$BUILD_DIR/Release/chess-engine-uci.exe" ]]; then
+    ENGINE_BIN="$BUILD_DIR/Release/chess-engine-uci.exe"
   fi
 fi
 

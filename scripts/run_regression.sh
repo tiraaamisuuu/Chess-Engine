@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-GUI_BIN="${1:-./build/tiramisu-tools}"
+GUI_BIN="${1:-./build/chess-engine-tools}"
 PERFT_DEPTH="${PERFT_DEPTH:-4}"
 BENCH_DEPTH="${BENCH_DEPTH:-6}"
 BENCH_TIME_MS="${BENCH_TIME_MS:-1500}"

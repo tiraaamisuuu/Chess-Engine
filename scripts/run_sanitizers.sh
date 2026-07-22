@@ -13,6 +13,6 @@ cmake -S . -B "$BUILD_DIR" \
 cmake --build "$BUILD_DIR" --parallel
 
 CHESS_TEST_QUICK=1 "$BUILD_DIR/chess-core-tests"
-"$(dirname "$0")/run_uci_smoke.sh" "$BUILD_DIR/tiramisu-uci"
+"$(dirname "$0")/run_uci_smoke.sh" "$BUILD_DIR/chess-engine-uci"
 
 echo "Address/undefined sanitizer gate: PASS"

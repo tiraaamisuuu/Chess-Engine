@@ -20,11 +20,11 @@ bool parseInteger(const std::string& value, int& out){
 void printHelp(){
     std::cout
         << "Usage:\n"
-        << "  tiramisu-tools --perft DEPTH [--fen FEN]\n"
-        << "  tiramisu-tools --divide DEPTH [--fen FEN]\n"
-        << "  tiramisu-tools --perft-tests [--max-depth DEPTH]\n"
-        << "  tiramisu-tools --fen-after \"UCI MOVES...\" [--fen FEN]\n"
-        << "  tiramisu-tools --bench [--bench-depth DEPTH] [--bench-time MS]\n"
+        << "  chess-engine-tools --perft DEPTH [--fen FEN]\n"
+        << "  chess-engine-tools --divide DEPTH [--fen FEN]\n"
+        << "  chess-engine-tools --perft-tests [--max-depth DEPTH]\n"
+        << "  chess-engine-tools --fen-after \"UCI MOVES...\" [--fen FEN]\n"
+        << "  chess-engine-tools --bench [--bench-depth DEPTH] [--bench-time MS]\n"
         << "                  [--bench-tt MB] [--threads N]\n";
 }
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TOOLS_BIN="${1:-./build/tiramisu-tools}"
-UCI_BIN="${UCI_BIN:-./build/tiramisu-uci}"
+TOOLS_BIN="${1:-./build/chess-engine-tools}"
+UCI_BIN="${UCI_BIN:-./build/chess-engine-uci}"
 
 echo "== Regression =="
 "$(dirname "$0")/run_regression.sh" "$TOOLS_BIN"

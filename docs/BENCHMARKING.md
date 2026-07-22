@@ -45,7 +45,7 @@ conditions; it does not assign either engine an absolute human-style rating.
 
 Both refs must be committed because the builder uses `git archive`. Old refs
 are handled automatically: before v1, UCI mode lived in the SFML `gui` binary;
-new refs use the independent `tiramisu-uci` executable. Set `SFML_PREFIX` or
+new refs use the independent `chess-engine-uci` executable. Set `SFML_PREFIX` or
 pass `--sfml-prefix` if SFML 2.6 is not in the normal CMake search path.
 
 After the two binaries are built, they are also registered as local web GUI

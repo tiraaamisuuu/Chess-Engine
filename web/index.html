@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b0d0c">
-  <title>TiramisuChess — Engine Room</title>
-  <meta name="description" content="A focused local interface for playing and analysing with TiramisuChess.">
+  <title>Chess Engine — Engine Room</title>
+  <meta name="description" content="A focused local interface for playing and analysing with local chess engines.">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -13,9 +13,9 @@
   <div class="ambient ambient-two" aria-hidden="true"></div>
 
   <header class="topbar">
-    <a class="brand" href="#" aria-label="TiramisuChess home">
+    <a class="brand" href="#" aria-label="Chess engine home">
       <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-      <span><strong>TIRAMISU</strong><small>CHESS ENGINE</small></span>
+      <span><strong>ENGINE ROOM</strong><small>LOCAL CHESS</small></span>
     </a>
     <div class="connection" id="connection">
       <span class="connection-dot"></span>
@@ -27,9 +27,9 @@
   <main class="workspace">
     <section class="play-area" aria-label="Chess game">
       <div class="player-strip" id="top-player">
-        <div class="avatar"><span id="top-monogram">TC</span></div>
+        <div class="avatar"><span id="top-monogram">CE</span></div>
         <div class="player-copy">
-          <strong id="top-name">TiramisuChess</strong>
+          <strong id="top-name">Chess Engine</strong>
           <span id="top-detail">Engine · 650 ms</span>
         </div>
         <div class="turn-pill" id="top-turn">WAITING</div>
@@ -44,7 +44,7 @@
           <div class="board" id="board" role="grid" aria-label="Chessboard"></div>
           <div class="thinking-overlay" id="thinking-overlay" aria-live="polite">
             <span class="thinking-spinner"></span>
-            <strong>Tiramisu is thinking</strong>
+            <strong>Engine is thinking</strong>
             <small id="thinking-detail">Searching the position</small>
           </div>
         </div>
@@ -63,7 +63,7 @@
         <button class="icon-button" id="undo" title="Undo move" aria-label="Undo move"><span>↶</span>Undo</button>
         <button class="icon-button" id="flip" title="Flip board" aria-label="Flip board"><span>⇅</span>Flip</button>
         <button class="icon-button" id="auto-play" title="Pause computer play" aria-label="Pause computer play" hidden><span>Ⅱ</span>Pause</button>
-        <button class="icon-button" id="copy-fen" title="Copy FEN" aria-label="Copy FEN"><span>□</span>Copy FEN</button>
+        <button class="icon-button" id="export-game" title="Export game log" aria-label="Export game log"><span>⇩</span>Export</button>
         <button class="icon-button" id="new-game" title="New game" aria-label="New game"><span>＋</span>New</button>
       </div>
     </section>
@@ -107,13 +107,14 @@
           <div><span>NPS</span><strong id="metric-nps">—</strong></div>
           <div><span>TIME</span><strong id="metric-time">—</strong></div>
         </div>
+        <button class="button analysis-button" id="run-analysis" type="button">Analyse position</button>
       </section>
 
       <div class="engine-card">
         <div class="engine-icon" aria-hidden="true"><span></span></div>
         <div>
           <span class="eyebrow">ACTIVE ENGINE / MODEL</span>
-          <strong id="engine-name">TiramisuChess</strong>
+          <strong id="engine-name">Chess Engine</strong>
         </div>
         <span class="engine-state" id="engine-state">UCI</span>
       </div>
@@ -198,6 +199,41 @@
       </fieldset>
 
       <button class="button button-primary modal-submit" value="default" type="submit">Start game</button>
+    </form>
+  </dialog>
+
+  <dialog class="modal export-modal" id="export-modal">
+    <form method="dialog" id="export-form">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow">GAME LOG</span>
+          <h2>Export this game</h2>
+        </div>
+        <button class="modal-close" id="close-export" type="button" aria-label="Close">×</button>
+      </div>
+
+      <fieldset>
+        <legend>Format</legend>
+        <div class="segmented three">
+          <label><input type="radio" name="export-format" value="pgn" checked><span>PGN</span></label>
+          <label><input type="radio" name="export-format" value="fen"><span>FEN</span></label>
+          <label><input type="radio" name="export-format" value="json"><span>JSON</span></label>
+        </div>
+        <p class="field-help" id="export-help">Standard PGN for Chessigma and other game-analysis tools.</p>
+      </fieldset>
+
+      <div class="export-metadata" id="export-metadata">
+        <label><span>Event</span><input id="export-event" name="event" value="Local Game" maxlength="120"></label>
+        <label><span>White</span><input id="export-white" name="white" maxlength="120"></label>
+        <label><span>Black</span><input id="export-black" name="black" maxlength="120"></label>
+      </div>
+
+      <label class="export-preview-label" for="export-preview">Preview</label>
+      <textarea class="export-preview" id="export-preview" readonly spellcheck="false">Preparing export…</textarea>
+      <div class="export-actions">
+        <button class="button" id="copy-export" type="button">Copy</button>
+        <button class="button button-primary" id="download-export" type="button">Download .pgn</button>
+      </div>
     </form>
   </dialog>
 

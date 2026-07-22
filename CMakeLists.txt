@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(TiramisuChess VERSION 1.0.0 LANGUAGES CXX)
+project(ChessEngine VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,11 +17,11 @@ target_include_directories(chess_core INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src
 add_library(chess_uci STATIC src/uci.cpp)
 target_link_libraries(chess_uci PUBLIC chess_core Threads::Threads)
 
-add_executable(tiramisu-uci src/uci_main.cpp)
-target_link_libraries(tiramisu-uci PRIVATE chess_uci)
+add_executable(chess-engine-uci src/uci_main.cpp)
+target_link_libraries(chess-engine-uci PRIVATE chess_uci)
 
-add_executable(tiramisu-tools src/tools_main.cpp)
-target_link_libraries(tiramisu-tools PRIVATE chess_core Threads::Threads)
+add_executable(chess-engine-tools src/tools_main.cpp)
+target_link_libraries(chess-engine-tools PRIVATE chess_core Threads::Threads)
 
 if(CHESS_BUILD_GUI)
   find_package(SFML 2.6 COMPONENTS graphics window system REQUIRED)
@@ -68,8 +68,8 @@ if(CHESS_ENABLE_WARNINGS)
     set(CHESS_WARNING_FLAGS -Wall -Wextra -Wpedantic -Wshadow)
   endif()
   target_compile_options(chess_uci PRIVATE ${CHESS_WARNING_FLAGS})
-  target_compile_options(tiramisu-uci PRIVATE ${CHESS_WARNING_FLAGS})
-  target_compile_options(tiramisu-tools PRIVATE ${CHESS_WARNING_FLAGS})
+  target_compile_options(chess-engine-uci PRIVATE ${CHESS_WARNING_FLAGS})
+  target_compile_options(chess-engine-tools PRIVATE ${CHESS_WARNING_FLAGS})
   if(TARGET gui)
     target_compile_options(gui PRIVATE ${CHESS_WARNING_FLAGS})
   endif()
@@ -85,14 +85,14 @@ if(BUILD_TESTING)
   add_test(NAME chess-core-tests COMMAND chess-core-tests)
   if(UNIX)
     add_test(NAME uci-smoke
-      COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_uci_smoke.sh" $<TARGET_FILE:tiramisu-uci>)
+      COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_uci_smoke.sh" $<TARGET_FILE:chess-engine-uci>)
   endif()
 endif()
 
-install(TARGETS tiramisu-uci tiramisu-tools RUNTIME DESTINATION bin)
+install(TARGETS chess-engine-uci chess-engine-tools RUNTIME DESTINATION bin)
 if(TARGET gui)
   install(TARGETS gui RUNTIME DESTINATION bin)
-  install(DIRECTORY assets DESTINATION share/tiramisu-chess)
+  install(DIRECTORY assets DESTINATION share/chess-engine)
 endif()
 install(DIRECTORY web assets DESTINATION .
   PATTERN "__pycache__" EXCLUDE
@@ -102,8 +102,8 @@ install(FILES scripts/run_web_gui.ps1 DESTINATION scripts)
 install(FILES README.md DESTINATION .)
 install(DIRECTORY docs DESTINATION .)
 
-set(CPACK_PACKAGE_NAME "TiramisuChess")
+set(CPACK_PACKAGE_NAME "ChessEngine")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-set(CPACK_PACKAGE_FILE_NAME "TiramisuChess-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_PACKAGE_FILE_NAME "ChessEngine-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 set(CPACK_GENERATOR "ZIP")
 include(CPack)

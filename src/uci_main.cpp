@@ -10,7 +10,7 @@ int main(int argc, char** argv){
     for(int index = 1; index < argc; index++){
         const std::string argument = argv[index];
         if(argument == "--help" || argument == "-h"){
-            std::cout << "Usage: tiramisu-uci [--uci] [--threads N]\n";
+            std::cout << "Usage: chess-engine-uci [--uci] [--threads N]\n";
             return 0;
         }
         if(argument == "--uci") continue; // Compatibility with tournament scripts.

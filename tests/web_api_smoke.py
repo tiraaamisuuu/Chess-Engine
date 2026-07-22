@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 from pathlib import Path
 import socket
@@ -12,6 +13,8 @@ import sys
 import time
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+import chess.pgn
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -88,6 +91,24 @@ def main() -> int:
         analysis = request(base, "/api/analyse", {})
         assert analysis["depth"] >= 1
         assert isinstance(analysis["pv"], list)
+        assert analysis["profileName"]
+
+        exported = request(base, "/api/export", {
+            "format": "pgn", "event": "Web Export Test", "white": "Alice", "black": "Engine",
+        })
+        assert exported["filename"].endswith(".pgn")
+        game = chess.pgn.read_game(io.StringIO(exported["content"]))
+        assert game is not None
+        assert game.headers["Event"] == "Web Export Test"
+        assert game.headers["White"] == "Alice"
+        assert len(list(game.mainline_moves())) == 2
+
+        fen_export = request(base, "/api/export", {"format": "fen"})
+        assert fen_export["content"].strip() == state["fen"]
+        json_export = request(base, "/api/export", {"format": "json"})
+        game_log = json.loads(json_export["content"])
+        assert len(game_log["moves"]) == 2
+        assert game_log["currentFen"] == state["fen"]
 
         state = request(base, "/api/undo", {})
         assert state["ply"] == 0
@@ -122,10 +143,21 @@ def main() -> int:
         assert state["ply"] == 2 and state["needsEngineMove"] is True
         assert state["engine"]["lastMove"]["profileId"] == profile_id
 
+        custom_fen = "8/8/8/8/8/8/4K3/R6k w - - 0 1"
+        state = request(base, "/api/new", {"mode": "pvp", "fen": custom_fen})
+        state = request(base, "/api/move", {"uci": "e2e3"})
+        custom_export = request(base, "/api/export", {"format": "pgn"})
+        custom_game = chess.pgn.read_game(io.StringIO(custom_export["content"]))
+        assert custom_game is not None
+        assert custom_game.headers["SetUp"] == "1"
+        assert custom_game.headers["FEN"] == custom_fen
+        assert [move.uci() for move in custom_game.mainline_moves()] == ["e2e3"]
+
         with urlopen(base + "/", timeout=5) as response:
             page = response.read()
-            assert b"TIRAMISU" in page and b'value="cvc"' in page
+            assert b"ENGINE ROOM" in page and b'value="cvc"' in page
             assert b"pvc-profile-summary" in page
+            assert b"export-modal" in page and b"run-analysis" in page
         print("Web GUI smoke: PASS")
         return 0
     finally:

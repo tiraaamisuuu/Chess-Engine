@@ -14,13 +14,13 @@ if ($LASTEXITCODE -ne 0) {
     & $Python -m pip install --disable-pip-version-check -r (Join-Path $Root "web\requirements.txt")
 }
 
-$PackagedEngine = Join-Path $Root "bin\tiramisu-uci.exe"
+$PackagedEngine = Join-Path $Root "bin\chess-engine-uci.exe"
 $Engine = if ($env:ENGINE_BIN) {
     $env:ENGINE_BIN
 } elseif (Test-Path $PackagedEngine) {
     $PackagedEngine
 } else {
-    Join-Path $Build "Release\tiramisu-uci.exe"
+    Join-Path $Build "Release\chess-engine-uci.exe"
 }
 if (-not (Test-Path $Engine)) {
     if (-not (Test-Path (Join-Path $Root "CMakeLists.txt"))) {
@@ -30,10 +30,10 @@ if (-not (Test-Path $Engine)) {
     cmake --build $Build --config Release --parallel
 }
 if (-not (Test-Path $Engine)) {
-    $Engine = Join-Path $Build "tiramisu-uci.exe"
+    $Engine = Join-Path $Build "chess-engine-uci.exe"
 }
 if (-not (Test-Path $Engine)) {
-    throw "The TiramisuChess UCI executable was not produced."
+    throw "The chess engine UCI executable was not produced."
 }
 
 & $Python (Join-Path $Root "web\server.py") --engine $Engine @args

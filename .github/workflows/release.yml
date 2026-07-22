@@ -32,8 +32,8 @@ jobs:
         run: cmake --build build --config Release --target package
       - uses: actions/upload-artifact@v7
         with:
-          name: tiramisu-${{ matrix.label }}
-          path: build/TiramisuChess-*.zip
+          name: chess-engine-${{ matrix.label }}
+          path: build/ChessEngine-*.zip
 
   publish:
     needs: build
