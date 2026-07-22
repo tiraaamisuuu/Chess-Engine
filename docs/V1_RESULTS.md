@@ -96,6 +96,13 @@ added a low-clock transport/scheduling reserve. The match is encouraging
 evidence that the throughput work converts to strength, but is not a final Elo
 claim.
 
+A subsequent 40-game `2+0.02` stress check of the configurable 25 ms default
+`Move Overhead` produced zero time forfeits for either engine. Its playing result
+(11 wins, 15 losses, 14 draws; -34.9 ±88.8 Elo) was statistically inconclusive,
+as expected from a small sample where the safer candidate intentionally searches
+less in the final milliseconds. At normal controls the fixed overhead is a much
+smaller fraction of the available time.
+
 ## Remaining evidence
 
 - Run a longer candidate-versus-baseline SPRT at a slower time control.
