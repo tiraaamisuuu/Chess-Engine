@@ -2,6 +2,7 @@
 
 #include "board.hpp"
 #include "evaluation.hpp"
+#include "see.hpp"
 
 // ======================== Search (ID + TT + QS + Ordering) ========================
 struct SearchStats {
@@ -27,6 +28,7 @@ struct SearchContext {
     int hardTimeLimitMs=1000;
     bool stop=false;
     const std::atomic<bool>* abortFlag=nullptr;
+    const PositionEvaluator* evaluator=nullptr;
 
     Move killer[128][2]{};
     Move countermove[2][64][64]{};
@@ -37,6 +39,10 @@ struct SearchContext {
     std::vector<u64> gameHistory; // position hashes from actual game (includes current root)
     std::vector<u64> repetition;
 };
+
+inline int evaluatePosition(const Board& board, const SearchContext& context){
+    return context.evaluator ? context.evaluator->evaluate(board) : evaluateClassical(board);
+}
 
 inline bool sameMove(const Move& a, const Move& b){
     return a.from==b.from && a.to==b.to && a.promo==b.promo && a.isCastle==b.isCastle && a.isEnPassant==b.isEnPassant;
@@ -79,7 +85,9 @@ inline int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const M
     }
 
     if(m.isCapture || m.isEnPassant){
-        return 100000 + mvvLvaScore(bd, m) + ctx.captureHistory[side][attackerType][m.to];
+        const int see = staticExchangeEvaluation(bd, m);
+        const int band = see >= 0 ? 100000 : 70000;
+        return band + see * 8 + mvvLvaScore(bd, m) + ctx.captureHistory[side][attackerType][m.to];
     }
 
     if(ply<128){
@@ -92,6 +100,19 @@ inline int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const M
         if(sameMove(m, cm)) return 85000;
     }
     return ctx.history[side][m.from][m.to];
+}
+
+template<typename Scorer>
+inline void sortMovesByScore(std::vector<Move>& moves, Scorer scorer){
+    struct ScoredMove { int score; Move move; };
+    thread_local std::vector<ScoredMove> scored;
+    scored.clear();
+    if(scored.capacity() < 256) scored.reserve(256);
+    for(const Move& move : moves) scored.push_back(ScoredMove{scorer(move), move});
+    std::sort(scored.begin(), scored.end(), [](const ScoredMove& lhs, const ScoredMove& rhs){
+        return lhs.score > rhs.score;
+    });
+    for(size_t index = 0; index < scored.size(); index++) moves[index] = scored[index].move;
 }
 
 inline bool timeUp(SearchContext& ctx){
@@ -199,7 +220,7 @@ inline int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int pl
 
     if(isThreefoldRepetition(bd, ctx)) return 0;
 
-    int stand = evaluate(bd);
+    int stand = evaluatePosition(bd, ctx);
     if(stand >= beta) return stand;
     if(stand > alpha) alpha = stand;
 
@@ -225,13 +246,10 @@ inline int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int pl
         moves.push_back(m);
     }
 
-    std::sort(moves.begin(), moves.end(), [&](const Move& a, const Move& b){
-        auto tactical = [&](const Move& m){
-            int s = mvvLvaScore(bd, m);
-            if(m.promo != PieceType::None) s += 2000 + pieceValue(m.promo);
-            return s;
-        };
-        return tactical(a) > tactical(b);
+    sortMovesByScore(moves, [&](const Move& move){
+        int score = staticExchangeEvaluation(bd, move) * 8 + mvvLvaScore(bd, move);
+        if(move.promo != PieceType::None) score += 2000 + pieceValue(move.promo);
+        return score;
     });
 
     for(const Move& m : moves){
@@ -274,7 +292,7 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     bool inCheck = bd.inCheck(bd.stm);
     int staticEval = 0;
     if(!inCheck){
-        staticEval = evaluate(bd);
+        staticEval = evaluatePosition(bd, ctx);
         if(ply < 128) ctx.staticEvalByPly[ply] = staticEval;
     } else if(ply < 128){
         ctx.staticEvalByPly[ply] = -INF;
@@ -368,8 +386,8 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         depth++;
     }
 
-    std::sort(moves.begin(), moves.end(), [&](const Move& a, const Move& b){
-        return scoreMove(bd, ctx, a, ttMove, ply, prevMove) > scoreMove(bd, ctx, b, ttMove, ply, prevMove);
+    sortMovesByScore(moves, [&](const Move& move){
+        return scoreMove(bd, ctx, move, ttMove, ply, prevMove);
     });
 
     int best = -INF;
@@ -428,7 +446,7 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
             if(newDepth >= 8 && i >= 12) reduction++;
             if(!improving) reduction++;
             if(pvNode) reduction--;
-            if(sameMove(m, ctx.killer[ply][0])) reduction--;
+            if(ply < 128 && sameMove(m, ctx.killer[ply][0])) reduction--;
             if(ctx.history[side][m.from][m.to] > 18000) reduction -= 2;
             else if(ctx.history[side][m.from][m.to] > 9000) reduction--;
             reduction = std::clamp(reduction, 0, std::max(0, newDepth - 1));
@@ -585,13 +603,10 @@ inline Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
                 if(e->key==bd.hash) ttMove = e->best;
             }
 
-            std::sort(rootMoves.begin(), rootMoves.end(), [&](const Move& a, const Move& b){
-                auto rootOrderScore = [&](const Move& m){
-                    int s = scoreMove(bd, ctx, m, ttMove, 0, noMove);
-                    if(sameMove(m, bestMove)) s += 200000;
-                    return s;
-                };
-                return rootOrderScore(a) > rootOrderScore(b);
+            sortMovesByScore(rootMoves, [&](const Move& move){
+                int score = scoreMove(bd, ctx, move, ttMove, 0, noMove);
+                if(sameMove(move, bestMove)) score += 200000;
+                return score;
             });
 
             int localBest = -INF;
@@ -740,12 +755,13 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
     const int workers = std::max(1, std::min<int>(std::clamp(threadCount, 1, 64), int(rootMoves.size())));
     ctx.stats.workersUsed = workers;
     const size_t ttBytes = std::max<size_t>(sizeof(TTEntry), ctx.tt.table.size() * sizeof(TTEntry));
-    const size_t ttPerThreadMB = std::max<size_t>(16, (ttBytes / size_t(workers)) / (1024ull * 1024ull));
+    const size_t ttPerThreadMB = std::max<size_t>(1, (ttBytes / size_t(workers)) / (1024ull * 1024ull));
 
     std::vector<SearchContext> workerCtx;
     workerCtx.resize(static_cast<size_t>(workers));
     for(int w = 0; w < workers; w++){
         workerCtx[size_t(w)].tt.resizeMB(ttPerThreadMB);
+        workerCtx[size_t(w)].evaluator = ctx.evaluator;
         std::memcpy(workerCtx[size_t(w)].killer, ctx.killer, sizeof(ctx.killer));
         std::memcpy(workerCtx[size_t(w)].countermove, ctx.countermove, sizeof(ctx.countermove));
         std::memcpy(workerCtx[size_t(w)].history, ctx.history, sizeof(ctx.history));
@@ -772,53 +788,77 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
         std::vector<int> owners(rootMoves.size(), -1);
         std::vector<u64> depthNodes(rootMoves.size(), 0);
         std::vector<u64> depthQNodes(rootMoves.size(), 0);
-        std::atomic<size_t> nextIndex{0};
 
-        std::vector<std::thread> threads;
-        threads.reserve(size_t(workers));
-
-        for(int w = 0; w < workers; w++){
-            threads.emplace_back([&, w](){
-                SearchContext& local = workerCtx[size_t(w)];
-                local.start = ctx.start;
-                local.softTimeLimitMs = ctx.softTimeLimitMs;
-                local.hardTimeLimitMs = ctx.hardTimeLimitMs;
-                local.stop = false;
-                local.abortFlag = ctx.abortFlag;
-                local.tt.newSearch();
-
-                while(true){
-                    if(timeUp(local)) break;
-                    size_t ord = nextIndex.fetch_add(1, std::memory_order_relaxed);
-                    if(ord >= order.size()) break;
-
-                    const size_t idx = order[ord];
-                    const Move m = rootMoves[idx];
-
-                    Board child = bd;
-                    Undo u{};
-                    if(!child.makeMove(m, u)){
-                        scores[idx] = -INF;
-                        owners[idx] = w;
-                        continue;
-                    }
-
-                    local.repetition = rootRepetition;
-                    local.repetition.push_back(child.hash);
-
-                    const u64 prevNodes = local.stats.nodes;
-                    const u64 prevQNodes = local.stats.qnodes;
-                    int score = -negamax(child, local, d - 1, -INF, INF, 1, m, true);
-                    depthNodes[idx] = local.stats.nodes - prevNodes;
-                    depthQNodes[idx] = local.stats.qnodes - prevQNodes;
-                    scores[idx] = score;
-                    owners[idx] = w;
-                }
-            });
+        for(int worker = 0; worker < workers; worker++){
+            SearchContext& local = workerCtx[static_cast<size_t>(worker)];
+            local.start = ctx.start;
+            local.softTimeLimitMs = ctx.softTimeLimitMs;
+            local.hardTimeLimitMs = ctx.hardTimeLimitMs;
+            local.stop = false;
+            local.abortFlag = ctx.abortFlag;
+            local.tt.newSearch();
         }
 
-        for(std::thread& t : threads){
-            if(t.joinable()) t.join();
+        auto searchRootMove = [&](int worker, size_t index, int rootAlpha, bool fullWindow){
+            SearchContext& local = workerCtx[static_cast<size_t>(worker)];
+            Board child = bd;
+            const Move move = rootMoves[index];
+            Undo undo{};
+            if(!child.makeMove(move, undo)) return;
+
+            local.repetition = rootRepetition;
+            local.repetition.push_back(child.hash);
+            const u64 previousNodes = local.stats.nodes;
+            const u64 previousQNodes = local.stats.qnodes;
+
+            int score = 0;
+            if(fullWindow){
+                score = -negamax(child, local, d - 1, -INF, INF, 1, move, true);
+            } else {
+                score = -negamax(child, local, d - 1, -rootAlpha - 1, -rootAlpha, 1, move, true);
+                if(!local.stop && score > rootAlpha){
+                    score = -negamax(child, local, d - 1, -INF, INF, 1, move, true);
+                }
+            }
+
+            depthNodes[index] = local.stats.nodes - previousNodes;
+            depthQNodes[index] = local.stats.qnodes - previousQNodes;
+            if(local.stop) return;
+            scores[index] = score;
+            owners[index] = worker;
+        };
+
+        // Establish a trustworthy alpha before splitting the remaining root moves.
+        const size_t firstIndex = order.front();
+        searchRootMove(0, firstIndex, -INF, true);
+        std::atomic<int> sharedAlpha{scores[firstIndex]};
+        std::atomic<size_t> nextIndex{1};
+
+        std::vector<std::thread> threads;
+        threads.reserve(static_cast<size_t>(workers));
+        if(scores[firstIndex] != -INF){
+            for(int worker = 0; worker < workers; worker++){
+                threads.emplace_back([&, worker](){
+                    while(true){
+                        SearchContext& local = workerCtx[static_cast<size_t>(worker)];
+                        if(timeUp(local)) break;
+                        const size_t orderIndex = nextIndex.fetch_add(1, std::memory_order_relaxed);
+                        if(orderIndex >= order.size()) break;
+
+                        const size_t rootIndex = order[orderIndex];
+                        const int alphaSnapshot = sharedAlpha.load(std::memory_order_relaxed);
+                        searchRootMove(worker, rootIndex, alphaSnapshot, false);
+                        const int score = scores[rootIndex];
+                        int current = sharedAlpha.load(std::memory_order_relaxed);
+                        while(score > current &&
+                              !sharedAlpha.compare_exchange_weak(current, score, std::memory_order_relaxed)){}
+                    }
+                });
+            }
+        }
+
+        for(std::thread& thread : threads){
+            if(thread.joinable()) thread.join();
         }
 
         bool incomplete = false;
@@ -885,6 +925,28 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
     std::memcpy(ctx.countermove, workerCtx[size_t(bestWorker)].countermove, sizeof(ctx.countermove));
     std::memcpy(ctx.history, workerCtx[size_t(bestWorker)].history, sizeof(ctx.history));
     std::memcpy(ctx.captureHistory, workerCtx[size_t(bestWorker)].captureHistory, sizeof(ctx.captureHistory));
+
+    // Preserve the selected worker's continuation in the public TT so UCI/GUI
+    // can report a useful PV after a root-parallel search.
+    Board pvBoard = bd;
+    Undo pvUndo{};
+    if(pvBoard.makeMove(bestMove, pvUndo)){
+        TranspositionTable& source = workerCtx[static_cast<size_t>(bestWorker)].tt;
+        for(int ply = 1; ply < 16; ply++){
+            TTEntry* entry = source.probe(pvBoard.hash);
+            if(!entry || entry->key != pvBoard.hash) break;
+            ctx.tt.store(entry->key, entry->depth, entry->score, entry->flag, entry->best);
+
+            std::vector<Move> legal;
+            pvBoard.genLegalMoves(legal);
+            const auto next = std::find_if(legal.begin(), legal.end(), [&](const Move& move){
+                return sameMove(move, entry->best);
+            });
+            if(next == legal.end()) break;
+            Undo undo{};
+            if(!pvBoard.makeMove(*next, undo)) break;
+        }
+    }
 
     auto end = std::chrono::steady_clock::now();
     ctx.stats.timeMs = (int)std::chrono::duration_cast<std::chrono::milliseconds>(end - ctx.start).count();

@@ -78,6 +78,8 @@ struct Board {
 
         int rank = 7;
         int file = 0;
+        int whiteKings = 0;
+        int blackKings = 0;
         for(char ch : boardPart){
             if(ch == '/'){
                 if(file != 8) return false;
@@ -107,11 +109,15 @@ struct Board {
 
             if(rank < 0 || file >= 8) return false;
             b[rank*8 + file] = Piece{pt, pc};
-            if(pt == PieceType::King) kingSquare[pc == Color::White ? 0 : 1] = rank * 8 + file;
+            if(pt == PieceType::King){
+                kingSquare[pc == Color::White ? 0 : 1] = rank * 8 + file;
+                if(pc == Color::White) whiteKings++;
+                else blackKings++;
+            }
             file++;
         }
 
-        if(rank != 0 || file != 8) return false;
+        if(rank != 0 || file != 8 || whiteKings != 1 || blackKings != 1) return false;
 
         if(stmPart == "w") stm = Color::White;
         else if(stmPart == "b") stm = Color::Black;
@@ -448,6 +454,7 @@ struct Board {
     }
 
     bool makeMove(const Move& m, Undo& u){
+        if(m.from >= 64 || m.to >= 64) return false;
         u.m = m;
         u.epSquare = epSquare;
         u.castling = castling;

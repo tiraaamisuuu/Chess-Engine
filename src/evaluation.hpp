@@ -1,6 +1,7 @@
 #pragma once
 
 #include "board.hpp"
+#include "nnue.hpp"
 
 // ======================== Evaluation (PST + extras) ========================
 inline int mirrorIndex(int idx){
@@ -80,19 +81,23 @@ inline const int PST_KING_EG[64]={
    -50,-30,-30,-30,-30,-30,-30,-50
 };
 
-inline int pstScore(PieceType t, int idxWhitePerspective, bool endgameKing){
+inline int pstScore(PieceType t, int idxWhitePerspective, int phase){
     switch(t){
         case PieceType::Pawn: return PST_PAWN[idxWhitePerspective];
         case PieceType::Knight: return PST_KNIGHT[idxWhitePerspective];
         case PieceType::Bishop: return PST_BISHOP[idxWhitePerspective];
         case PieceType::Rook: return PST_ROOK[idxWhitePerspective];
         case PieceType::Queen: return PST_QUEEN[idxWhitePerspective];
-        case PieceType::King: return endgameKing ? PST_KING_EG[idxWhitePerspective] : PST_KING_MG[idxWhitePerspective];
+        case PieceType::King: {
+            const int middleGame = PST_KING_MG[idxWhitePerspective];
+            const int endGame = PST_KING_EG[idxWhitePerspective];
+            return (middleGame * phase + endGame * (24 - phase)) / 24;
+        }
         default: return 0;
     }
 }
 
-inline int evaluate(const Board& bd){
+inline int evaluateClassical(const Board& bd){
     int material = 0;
     int pst = 0;
 
@@ -105,7 +110,6 @@ inline int evaluate(const Board& bd){
         else if(p.t==PieceType::Queen) phase += 4;
     }
     phase = std::clamp(phase, 0, 24);
-    const bool endgameKing = (phase <= 8);
 
     int whiteBishops = 0, blackBishops = 0;
     int wpFile[8]{}, bpFile[8]{};
@@ -122,7 +126,7 @@ inline int evaluate(const Board& bd){
 
         // PST data is stored rank 8 first, while the board uses a1 == 0.
         const int idxW = (p.c==Color::White) ? mirrorIndex(i) : i;
-        const int ps = pstScore(p.t, idxW, endgameKing);
+        const int ps = pstScore(p.t, idxW, phase);
         if(p.c==Color::White) pst += ps;
         else pst -= ps;
 
@@ -236,7 +240,7 @@ inline int evaluate(const Board& bd){
     }
 
     int kingSafety = 0;
-    if(!endgameKing){
+    if(phase > 0){
         const int wK = bd.findKing(Color::White);
         const int bK = bd.findKing(Color::Black);
 
@@ -280,8 +284,35 @@ inline int evaluate(const Board& bd){
         const bool bCanCastle = (bd.castling & 0b1100) != 0;
         if(!wCanCastle) kingSafety -= 10;
         if(!bCanCastle) kingSafety += 10;
+        kingSafety = (kingSafety * phase) / 24;
     }
 
     int scoreWhite = material + pst + bishopPair + pawnStruct + passedPawns + rookFiles + mobility + kingSafety;
     return (bd.stm==Color::White) ? scoreWhite : -scoreWhite;
 }
+
+class PositionEvaluator {
+public:
+    int evaluate(const Board& board) const {
+        return useNnue_ && nnue_.loaded() ? nnue_.evaluate(board) : evaluateClassical(board);
+    }
+
+    bool loadNnue(const std::filesystem::path& path, std::string* error = nullptr){
+        const bool loaded = nnue_.load(path, error);
+        if(!loaded) useNnue_ = false;
+        return loaded;
+    }
+
+    bool setUseNnue(bool enabled){
+        useNnue_ = enabled && nnue_.loaded();
+        return useNnue_ == enabled;
+    }
+
+    bool usingNnue() const { return useNnue_ && nnue_.loaded(); }
+    bool hasNnue() const { return nnue_.loaded(); }
+    const NnueNetwork& nnue() const { return nnue_; }
+
+private:
+    NnueNetwork nnue_;
+    bool useNnue_ = false;
+};

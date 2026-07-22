@@ -35,10 +35,11 @@ Move findMove(Board& board, const std::string& uci){
     return *found;
 }
 
-void testPerft(const Zobrist& zobrist){
+void testPerft(const Zobrist& zobrist, bool quick){
     struct Case { const char* fen; int depth; u64 expected; };
     const std::vector<Case> cases = {
-        {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 4, 197281ULL},
+        {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+         quick ? 3 : 4, quick ? 8902ULL : 197281ULL},
         {"r3k2r/p1ppqpb1/bn2pnp1/2pP4/1p2P3/2N2N2/PPQBBPPP/R3K2R w KQkq - 0 1", 3, 85877ULL},
         {"8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 3, 2812ULL},
         {"r3k2r/Pppp1ppp/1b3nbN/nP6/B1P1P3/5N2/Pp1P1PPP/R2Q1RK1 w kq - 0 1", 3, 35941ULL},
@@ -174,23 +175,99 @@ void testFENValidation(const Zobrist& zobrist){
     expect(!board.loadFEN("8/8/8/8/8/8/8 w - - 0 1"), "FEN with seven ranks must fail");
     expect(!board.loadFEN("8/8/8/8/8/8/8/9 w - - 0 1"), "FEN digit 9 must fail");
     expect(!board.loadFEN("8/8/8/8/8/8/8/8 x - - 0 1"), "invalid side to move must fail");
+    expect(!board.loadFEN("8/8/8/8/8/8/8/8 w - - 0 1"), "kingless FEN must fail");
 
     const std::string fen = "r3k2r/ppp2ppp/2n5/3qp3/8/2N2N2/PPP2PPP/R2Q1RK1 b kq - 7 14";
     expect(board.loadFEN(fen), "round-trip FEN should load");
     expect(board.toFEN() == fen, "FEN serialization should preserve all six fields");
 }
 
+void testTranspositionClusters(){
+    TranspositionTable table;
+    table.resizeMB(1);
+    const u64 stride = static_cast<u64>(table.mask + 1);
+    const Move move{};
+    for(u64 collision = 0; collision < TranspositionTable::ClusterSize; collision++){
+        const u64 key = 17 + collision * stride;
+        table.store(key, static_cast<int>(collision + 1), static_cast<int>(collision * 10), TTFlag::Exact, move);
+    }
+    for(u64 collision = 0; collision < TranspositionTable::ClusterSize; collision++){
+        const u64 key = 17 + collision * stride;
+        const TTEntry* entry = table.probe(key);
+        expect(entry && entry->key == key, "TT cluster should retain colliding positions");
+    }
+}
+
+void testNnueFormat(const Zobrist& zobrist){
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "tiramisu-nnue-format-test.nnue";
+    {
+        std::ofstream output(path, std::ios::binary);
+        const std::array<char, 8> magic{{'T','N','N','U','E','1','\0','\0'}};
+        const u32 version = NnueNetwork::FormatVersion;
+        const u32 features = NnueNetwork::FeatureCount;
+        const u32 hidden = 1;
+        const int32_t hiddenScale = 1;
+        const int32_t outputScale = 1;
+        const int32_t outputBias = 42;
+        const int32_t hiddenBias = 0;
+        const std::vector<int16_t> inputWeights(features, 0);
+        const std::array<int16_t, 2> outputWeights{{0, 0}};
+        output.write(magic.data(), static_cast<std::streamsize>(magic.size()));
+        output.write(reinterpret_cast<const char*>(&version), sizeof(version));
+        output.write(reinterpret_cast<const char*>(&features), sizeof(features));
+        output.write(reinterpret_cast<const char*>(&hidden), sizeof(hidden));
+        output.write(reinterpret_cast<const char*>(&hiddenScale), sizeof(hiddenScale));
+        output.write(reinterpret_cast<const char*>(&outputScale), sizeof(outputScale));
+        output.write(reinterpret_cast<const char*>(&outputBias), sizeof(outputBias));
+        output.write(reinterpret_cast<const char*>(&hiddenBias), sizeof(hiddenBias));
+        output.write(reinterpret_cast<const char*>(inputWeights.data()),
+                     static_cast<std::streamsize>(inputWeights.size() * sizeof(int16_t)));
+        output.write(reinterpret_cast<const char*>(outputWeights.data()), sizeof(outputWeights));
+    }
+
+    PositionEvaluator evaluator;
+    std::string error;
+    expect(evaluator.loadNnue(path, &error), "valid NNUE v1 fixture should load: " + error);
+    expect(evaluator.setUseNnue(true), "loaded NNUE should be selectable");
+    Board board;
+    board.setZobrist(&zobrist);
+    board.reset();
+    expect(evaluator.evaluate(board) == 42, "NNUE quantized inference should match fixture output");
+    std::error_code removeError;
+    std::filesystem::remove(path, removeError);
+}
+
+void testStaticExchange(const Zobrist& zobrist){
+    Board board;
+    board.setZobrist(&zobrist);
+    expect(board.loadFEN("4k3/8/4p3/3p4/8/8/8/3QK3 w - - 0 1"), "SEE fixture should load");
+    const Move queenTakesPawn = findMove(board, "d1d5");
+    expect(queenTakesPawn.from < 64, "SEE fixture capture should be legal");
+    expect(staticExchangeEvaluation(board, queenTakesPawn) <= -700,
+           "SEE should identify a queen taking a defended pawn as losing");
+
+    expect(board.loadFEN("4k3/8/8/3q4/8/8/3R4/4K3 w - - 0 1"), "winning SEE fixture should load");
+    const Move rookTakesQueen = findMove(board, "d2d5");
+    expect(rookTakesQueen.from < 64, "winning SEE capture should be legal");
+    expect(staticExchangeEvaluation(board, rookTakesQueen) == 900,
+           "SEE should value an undefended queen capture");
+}
+
 } // namespace
 
 int main(){
     const Zobrist zobrist;
-    testPerft(zobrist);
+    const bool quick = std::getenv("CHESS_TEST_QUICK") != nullptr;
+    testPerft(zobrist, quick);
     testMakeUnmakeAndHash(zobrist);
     testEvaluationOrientation(zobrist);
     testEnPassantHashing(zobrist);
     testDrawRules(zobrist);
     testNotation(zobrist);
     testFENValidation(zobrist);
+    testTranspositionClusters();
+    testNnueFormat(zobrist);
+    testStaticExchange(zobrist);
 
     if(failures != 0){
         std::cerr << failures << " test assertion(s) failed\n";

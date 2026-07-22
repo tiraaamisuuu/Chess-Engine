@@ -21,7 +21,7 @@ trap 'rm -f "$OUT_FILE"' EXIT
   printf 'go movetime 300\n'
   sleep 0.6
   printf 'position startpos\n'
-  printf 'go movetime 200 searchmoves a2a3\n'
+  printf 'go searchmoves a2a3 movetime 200\n'
   sleep 0.4
   printf 'quit\n'
 } | "$ENGINE_BIN" --uci > "$OUT_FILE"
@@ -52,6 +52,13 @@ fi
 
 if ! rg -q '^option name Clear Hash type button$' "$OUT_FILE"; then
   echo "[FAIL] Clear Hash option was not advertised" >&2
+  cat "$OUT_FILE" >&2
+  exit 1
+fi
+
+if ! rg -q '^option name EvalFile type string default <empty>$' "$OUT_FILE" ||
+   ! rg -q '^option name Use NNUE type check default false$' "$OUT_FILE"; then
+  echo "[FAIL] NNUE UCI options were not advertised" >&2
   cat "$OUT_FILE" >&2
   exit 1
 fi

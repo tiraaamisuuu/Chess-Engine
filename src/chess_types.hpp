@@ -185,23 +185,29 @@ struct TTEntry {
 };
 
 struct TranspositionTable {
+    static constexpr size_t ClusterSize = 4;
     std::vector<TTEntry> table;
     size_t mask=0;
     u8 generation=0;
 
     void resizeMB(size_t mb){
         size_t bytes = mb*1024ull*1024ull;
-        size_t n = std::max<size_t>(1, bytes / sizeof(TTEntry));
-        size_t p=1;
-        while((p << 1) <= n) p<<=1;
-        table.assign(p, TTEntry{});
-        mask = p-1;
+        const size_t requestedClusters = std::max<size_t>(1, bytes / (sizeof(TTEntry) * ClusterSize));
+        size_t clusters = 1;
+        while((clusters << 1) <= requestedClusters) clusters <<= 1;
+        table.assign(clusters * ClusterSize, TTEntry{});
+        mask = clusters - 1;
         generation = 0;
     }
 
     TTEntry* probe(u64 key){
         if(table.empty()) return nullptr;
-        return &table[size_t(key) & mask];
+        const size_t base = (size_t(key) & mask) * ClusterSize;
+        for(size_t slot = 0; slot < ClusterSize; slot++){
+            TTEntry& entry = table[base + slot];
+            if(entry.key == key) return &entry;
+        }
+        return &table[base];
     }
 
     void newSearch(){
@@ -214,25 +220,34 @@ struct TranspositionTable {
 
     void store(u64 key, int depth, int score, TTFlag flag, const Move& best){
         if(table.empty()) return;
-        TTEntry& e = table[size_t(key) & mask];
-        bool replace = false;
-        if(e.key==0 || e.key==key){
-            replace = true;
-        } else {
-            // Prefer deeper entries, but age out stale data from previous searches.
-            const int existingQuality = int(e.depth) - 2 * ageOf(generation, e.generation);
-            const int incomingQuality = depth;
-            replace = incomingQuality >= existingQuality;
+        const size_t base = (size_t(key) & mask) * ClusterSize;
+        TTEntry* replacement = nullptr;
+        int replacementQuality = 1000000;
+        for(size_t slot = 0; slot < ClusterSize; slot++){
+            TTEntry& candidate = table[base + slot];
+            if(candidate.key == key){
+                replacement = &candidate;
+                break;
+            }
+            if(candidate.key == 0){
+                replacement = &candidate;
+                break;
+            }
+            const int quality = int(candidate.depth) - 2 * ageOf(generation, candidate.generation);
+            if(quality < replacementQuality){
+                replacementQuality = quality;
+                replacement = &candidate;
+            }
         }
 
-        if(replace){
-            e.key=key;
-            e.depth=(int8_t)std::clamp(depth, 0, 127);
-            e.score=score;
-            e.generation=generation;
-            e.flag=flag;
-            e.best=best;
-        }
+        if(!replacement) return;
+        if(replacement->key != 0 && replacement->key != key && depth < replacementQuality) return;
+        replacement->key=key;
+        replacement->depth=(int8_t)std::clamp(depth, 0, 127);
+        replacement->score=score;
+        replacement->generation=generation;
+        replacement->flag=flag;
+        replacement->best=best;
     }
 };
 

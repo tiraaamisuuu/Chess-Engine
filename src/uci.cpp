@@ -101,26 +101,37 @@ GoParameters parseGoCommand(const std::string& line){
     std::string token;
     input >> token; // go
 
-    auto readInt = [&](int& destination){
-        std::string value;
-        if(!(input >> value)) return;
-        int parsed = 0;
-        if(parseIntStrict(value, parsed)) destination = parsed;
+    std::vector<std::string> tokens;
+    while(input >> token) tokens.push_back(token);
+    auto looksLikeMove = [](const std::string& value){
+        if(value.size() != 4 && value.size() != 5) return false;
+        if(value[0] < 'a' || value[0] > 'h' || value[2] < 'a' || value[2] > 'h' ||
+           value[1] < '1' || value[1] > '8' || value[3] < '1' || value[3] > '8') return false;
+        return value.size() == 4 || value[4] == 'q' || value[4] == 'r' ||
+               value[4] == 'b' || value[4] == 'n';
     };
 
-    while(input >> token){
-        if(token == "depth") readInt(result.depth);
-        else if(token == "movetime") readInt(result.movetimeMs);
-        else if(token == "wtime") readInt(result.wtimeMs);
-        else if(token == "btime") readInt(result.btimeMs);
-        else if(token == "winc") readInt(result.wincMs);
-        else if(token == "binc") readInt(result.bincMs);
-        else if(token == "movestogo") readInt(result.movesToGo);
-        else if(token == "infinite") result.infinite = true;
-        else if(token == "searchmoves"){
+    for(size_t index = 0; index < tokens.size(); index++){
+        auto readInt = [&](int& destination){
+            if(index + 1 >= tokens.size()) return;
+            int parsed = 0;
+            if(parseIntStrict(tokens[++index], parsed)) destination = parsed;
+        };
+
+        const std::string& current = tokens[index];
+        if(current == "depth") readInt(result.depth);
+        else if(current == "movetime") readInt(result.movetimeMs);
+        else if(current == "wtime") readInt(result.wtimeMs);
+        else if(current == "btime") readInt(result.btimeMs);
+        else if(current == "winc") readInt(result.wincMs);
+        else if(current == "binc") readInt(result.bincMs);
+        else if(current == "movestogo") readInt(result.movesToGo);
+        else if(current == "infinite") result.infinite = true;
+        else if(current == "searchmoves"){
             result.restrictRootMoves = true;
-            while(input >> token) result.searchMoves.push_back(token);
-            break;
+            while(index + 1 < tokens.size() && looksLikeMove(tokens[index + 1])){
+                result.searchMoves.push_back(tokens[++index]);
+            }
         }
     }
     return result;
@@ -184,8 +195,10 @@ int runUCILoop(int defaultThreads){
     int searchThreads = std::clamp(defaultThreads, 1, hardwareThreads);
     int hashMB = 256;
 
+    PositionEvaluator evaluator;
     SearchContext search;
     search.tt.resizeMB(static_cast<size_t>(hashMB));
+    search.evaluator = &evaluator;
 
     std::atomic<bool> abortSearch(false);
     std::mutex outputMutex;
@@ -201,6 +214,7 @@ int runUCILoop(int defaultThreads){
         stopSearch();
         search = SearchContext{};
         search.tt.resizeMB(static_cast<size_t>(hashMB));
+        search.evaluator = &evaluator;
     };
 
     auto launchSearch = [&](int depth, TimeBudget budget, std::vector<Move> rootRestriction, bool restrictRootMoves){
@@ -214,6 +228,7 @@ int runUCILoop(int defaultThreads){
                               rootRestriction = std::move(rootRestriction), restrictRootMoves]() mutable {
             search.abortFlag = &abortSearch;
             search.gameHistory = rootHistory;
+            search.evaluator = &evaluator;
             const std::vector<Move>* restriction = restrictRootMoves ? &rootRestriction : nullptr;
             Move best = searchBestMove(root, search, depth, budget.softMs, budget.hardMs,
                                        threadsForSearch, restriction);
@@ -263,6 +278,8 @@ int runUCILoop(int defaultThreads){
                       << "option name Threads type spin default " << searchThreads
                       << " min 1 max " << hardwareThreads << "\n"
                       << "option name Clear Hash type button\n"
+                      << "option name EvalFile type string default <empty>\n"
+                      << "option name Use NNUE type check default false\n"
                       << "uciok\n" << std::flush;
         } else if(lower == "isready"){
             std::lock_guard<std::mutex> lock(outputMutex);
@@ -271,6 +288,29 @@ int runUCILoop(int defaultThreads){
             const size_t valuePosition = lower.find(" value ");
             if(lower.find("name clear hash") != std::string::npos){
                 resetSearch();
+            } else if(lower.find("name evalfile") != std::string::npos && valuePosition != std::string::npos){
+                stopSearch();
+                const std::string path = trim(line.substr(valuePosition + 7));
+                std::string error;
+                const bool loaded = !path.empty() && path != "<empty>" && evaluator.loadNnue(path, &error);
+                resetSearch();
+                std::lock_guard<std::mutex> lock(outputMutex);
+                if(loaded){
+                    std::cout << "info string NNUE loaded: " << path << "\n" << std::flush;
+                } else {
+                    std::cout << "info string NNUE load failed: "
+                              << (error.empty() ? "no network path" : error) << "\n" << std::flush;
+                }
+            } else if(lower.find("name use nnue") != std::string::npos && valuePosition != std::string::npos){
+                stopSearch();
+                const std::string value = toLowerASCII(trim(line.substr(valuePosition + 7)));
+                const bool enable = value == "true" || value == "1" || value == "on";
+                const bool accepted = evaluator.setUseNnue(enable);
+                resetSearch();
+                if(!accepted){
+                    std::lock_guard<std::mutex> lock(outputMutex);
+                    std::cout << "info string Use NNUE requires a valid EvalFile\n" << std::flush;
+                }
             } else if(lower.find("name hash") != std::string::npos && valuePosition != std::string::npos){
                 int value = 0;
                 if(parseIntStrict(trim(line.substr(valuePosition + 7)), value)){

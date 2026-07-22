@@ -23,3 +23,10 @@ jobs:
       - name: UCI smoke test
         if: runner.os != 'Windows'
         run: scripts/run_uci_smoke.sh ./build/tiramisu-uci
+
+  sanitizers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Address and undefined behaviour sanitizers
+        run: scripts/run_sanitizers.sh

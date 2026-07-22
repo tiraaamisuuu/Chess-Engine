@@ -1,199 +1,130 @@
-# README – Build Instructions
+# TiramisuChess
 
-## Overview
-This project is a C++ chess engine with an SFML 2.6.x GUI.
-It will NOT compile against SFML 3.x.
-Make sure you are using SFML 2.6.x on all platforms.
-The same binary also supports a UCI mode (`--uci`) for engine-vs-engine testing.
-Source files:
-- `src/main.cpp` (app entrypoint)
-- `src/ui.cpp` / `src/ui.hpp` (UI assets + mode helpers)
-- `src/chess_core.hpp` (umbrella include)
-- `src/chess_types.hpp`, `src/board.hpp`, `src/search.hpp` (core chess modules)
-- `CMakeLists.txt` (cross-platform build, including Windows)
+TiramisuChess is a C++17 chess engine with independent UCI, developer-tool, and
+SFML 2.6 desktop targets. The v1 rework prioritizes rule correctness,
+reproducible strength testing, efficient classical search, and an optional NNUE
+evaluation path.
 
-## BUILDING ON WINDOWS (MSVC + CMake)
+## Current engine
 
-### Requirements
+- Legal chess including castling, promotion, and en passant
+- Iterative-deepening alpha-beta/PVS search
+- Quiescence, transposition table, null-move pruning, LMR, aspiration windows,
+  killer/history/countermove ordering, and time management
+- UCI Hash, Threads, Clear Hash, searchmoves, EvalFile, and Use NNUE controls
+- SFML modes for local play, play against the engine, and engine self-play
+- Perft, fixed-position benchmarks, UCI smoke tests, paired opening matches,
+  and cross-platform headless CI
 
-Windows 10/11
-Visual Studio 2022 or later (Desktop development with C++)
-CMake 3.21+
-SFML 2.6.x (not 3.x)
+The optional root-parallel search is still experimental. One thread remains the
+default until paired Elo testing proves a multi-thread configuration stronger at
+equal time.
 
-### Configure and build
+## Build the headless engine and tools
 
-Set `SFML_DIR` to SFML's CMake package folder (example path shown below), then run:
-```bat
-set SFML_DIR=C:\libs\SFML-2.6.2\lib\cmake\SFML
-cmake -S . -B build-windows -G "Visual Studio 17 2022" -A x64 -DSFML_DIR="%SFML_DIR%"
-cmake --build build-windows --config Release
+No SFML installation is needed:
+
+```sh
+cmake -S . -B build -DCHESS_BUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
 ```
 
-If you have Visual Studio 18 / 2026 installed instead of VS2022, use the matching generator and instance path:
-```bat
-set SFML_DIR=C:\libs\SFML-2.6.2\lib\cmake\SFML
-cmake -S . -B build-vs18 -G "Visual Studio 18 2026" -A x64 -DCMAKE_GENERATOR_INSTANCE="C:\Program Files\Microsoft Visual Studio\18\Community" -DSFML_DIR="%SFML_DIR%"
-cmake --build build-vs18 --config Release
-```
+Executables:
 
-Run:
-```bat
-build-windows\Release\gui.exe
-```
+- `build/tiramisu-uci` — tournament/analysis engine
+- `build/tiramisu-tools` — perft, divide, and benchmarks
+- `build/chess-core-tests` — deterministic core test suite
 
-You can also use:
-```bat
-scripts\build_windows.bat
-```
-after setting `SFML_DIR`.
-
-## BUILDING ON macOS (Apple Silicon / Intel)
-
-### Requirements
-
-macOS
-clang++
-SFML 2.6.x (built from source or installed locally)
-
-#### Important
-Homebrew installs SFML 3.x by default.
-This codebase uses SFML 2.6.x APIs, so you must NOT link against SFML 3.x.
-Recommended setup
-Build SFML 2.6.2 locally into ~/.local/sfml-2.6.2
-#### Compile command
-```bash
-clang++ -O2 -std=c++17 src/main.cpp src/ui.cpp -o gui -I"$HOME/.local/sfml-2.6.2/include" -L"$HOME/.local/sfml-2.6.2/lib" -lsfml-graphics -lsfml-window -lsfml-system -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo -pthread -Wl,-rpath,"$HOME/.local/sfml-2.6.2/lib" -Wl,-sectcreate,__TEXT,__info_plist,macos/Info.plist
-```
-Run
-```bash
-./gui
-./gui --threads 8
-```
-
-If you get missing dylib or freetype errors, it means the runtime linker cannot find SFML’s bundled frameworks. Re-check the rpath and that SFML was installed correctly.
-
-## BUILDING ON Fedora / Linux
-
-### Requirements
-g++ or clang++
-SFML 2.6.x development packages
-pkg-config
-#### Install dependencies (Fedora example)
-```bash
-sudo dnf install sfml-devel pkg-config
-```
-
-#### Compile command
-```bash
-g++ -O2 -std=c++17 src/main.cpp src/ui.cpp -o gui $(pkg-config --cflags --libs sfml-graphics sfml-window sfml-system) -pthread
-
-```
-Run
-```bash
-./gui
-```
-
-## ENGINE TOOLS (HEADLESS)
-
-After building, you can run engine-only tools from the CLI:
-
-```bash
-./build/gui --help
-./build/gui --uci
-./build/gui --uci --threads 4
-./build/gui --perft 4
-./build/gui --divide 3
-./build/gui --perft-tests --max-depth 4
-./build/gui --bench --bench-depth 6 --bench-time 1500 --bench-tt 128
-./build/gui --bench --bench-depth 6 --bench-time 1500 --bench-tt 128 --threads 4
-```
-
-Automated regression runner:
-
-```bash
-scripts/run_regression.sh ./build/gui
-```
-
-UCI protocol smoke test:
-
-```bash
-scripts/run_uci_smoke.sh ./build/gui
-```
-
-Example interactive UCI session with threads:
+Example UCI session:
 
 ```text
+./build/tiramisu-uci
 uci
-setoption name Threads value 4
 isready
-position startpos
+position startpos moves e2e4 e7e5 g1f3
 go movetime 1000
+quit
 ```
 
-One-command quality gate (regression + UCI smoke):
+## Build the GUI
 
-```bash
-scripts/run_quality_gate.sh ./build/gui
+The GUI requires SFML 2.6.x; SFML 3 is not API-compatible with this project.
+
+```sh
+cmake -S . -B build-gui \
+  -DCHESS_BUILD_GUI=ON \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH=/path/to/sfml-2.6.2
+cmake --build build-gui --parallel
+./build-gui/gui
 ```
 
-Optional: include an Elo match in the quality gate (requires `cutechess-cli`):
+Platform helpers are provided in `scripts/build_mac.sh`,
+`scripts/build_linux.sh`, and `scripts/build_windows.bat`. Set `SFML_PREFIX` on
+macOS or `SFML_DIR` on Windows when SFML is not in a standard CMake prefix.
 
-```bash
-RUN_ELO=1 BASELINE_BIN=./build/gui scripts/run_quality_gate.sh ./build/gui
+## Correctness and regression gates
+
+```sh
+scripts/run_quality_gate.sh
 ```
 
-## ELO MATCH RUNNER (CUTECHESS)
+The gate runs:
 
-Standalone Elo/SPRT script:
+- Standard six-position perft regression through depth 4
+- Search benchmark telemetry
+- UCI lifecycle, option, and searchmoves checks
 
-```bash
-scripts/run_elo_match.sh <candidate_bin> <baseline_bin>
+The C++ test target additionally checks randomized make/unmake and incremental
+hash invariants, FEN round-tripping, SAN, repetition hashing, draw adjudication,
+transposition-table collisions, and the NNUE binary contract.
+
+## Strength testing
+
+Install `cutechess-cli`, build separate candidate and baseline binaries, then:
+
+```sh
+GAMES=400 TC=10+0.1 THREADS=1 \
+  scripts/run_elo_match.sh ./candidate/tiramisu-uci ./baseline/tiramisu-uci
 ```
 
-Useful environment overrides:
-- `GAMES` (default `200`)
-- `CONCURRENCY` (default `2`)
-- `TC` (default `10+0.1`)
-- `HASH_MB` (default `256`)
-- `THREADS` (default `1`, passed as UCI `option.Threads`)
-- `SPRT=1` (enables SPRT mode; configure with `ELO0`, `ELO1`, `ALPHA`, `BETA`)
+Matches use `tests/openings.epd` with paired colours. For serious tuning, set
+`OPENINGS_FILE` to a much larger balanced suite and enable SPRT:
 
-Example:
-
-```bash
-GAMES=400 CONCURRENCY=4 TC=40/10+0.1 THREADS=4 scripts/run_elo_match.sh ./build/gui ./build/gui
+```sh
+SPRT=1 ELO0=0 ELO1=5 GAMES=10000 OPENINGS_FILE=/path/to/uho.epd \
+  scripts/run_elo_match.sh ./candidate/tiramisu-uci ./baseline/tiramisu-uci
 ```
 
-## NOTES
+Search and evaluation changes should not be accepted solely because they reach
+more nodes or look positionally sensible; they need paired match evidence.
 
-Default AI search depth is defined in `src/main.cpp`.
-Current default:
-`int aiMaxDepth = 20;`
+## NNUE
 
-AI search runs on a worker thread to avoid UI freezes.
+The engine contains a tested, versioned HalfKP-v1 loader and reference quantized
+inference backend. Classical evaluation stays active unless a network is loaded
+and explicitly enabled:
 
-GUI and UCI searches now use adaptive soft/hard time budgets:
-- the configured move time is treated as a base budget
-- obvious positions spend less time
-- sharp or unstable positions can spend more time up to the hard limit
-
-GUI thread count can be set at launch:
-```bash
-./gui --threads 8
-```
-
-UCI thread count can be set either at launch or via UCI:
 ```text
-./build/gui --uci --threads 8
-setoption name Threads value 8
+setoption name EvalFile value networks/tiramisu-v1.nnue
+setoption name Use NNUE value true
 ```
 
-Board flipping is visual only and does not affect game logic.
+Dataset generation, PyTorch training, export commands, hardware guidance, and
+release requirements are documented in [docs/NNUE.md](docs/NNUE.md). An NNUE
+network is not bundled yet.
 
-Assets required:
-assets/pieces_png/white_.png
-assets/pieces_png/black_.png
+## Repository layout
 
-Fonts are loaded dynamically from common Windows/Linux/macOS paths.
-If no font loads, text will not render but the game will still run.
+```text
+src/                  chess core, evaluation, search, UCI, GUI
+tests/                deterministic tests and opening positions
+scripts/              builds, quality gates, Elo matches
+scripts/nnue/         dataset generation and PyTorch training
+docs/                 baseline, roadmap, and NNUE specification
+assets/               GUI piece artwork
+```
+
+See [docs/BASELINE.md](docs/BASELINE.md) for the pre-v1 measurements and
+[docs/V1_ROADMAP.md](docs/V1_ROADMAP.md) for release criteria.
