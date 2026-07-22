@@ -11,7 +11,8 @@ search, and an optional NNUE evaluation path.
 - Iterative-deepening alpha-beta/PVS search
 - Quiescence, transposition table, null-move pruning, LMR, aspiration windows,
   killer/history/countermove ordering, and time management
-- UCI Hash, Threads, Clear Hash, searchmoves, EvalFile, and Use NNUE controls
+- UCI Hash, Threads, Move Overhead, Clear Hash, searchmoves, EvalFile, and Use
+  NNUE controls
 - Responsive local web GUI with PvP, PvC, CvC, engine profiles, and live analysis
 - SFML modes for local play, play against the engine, and engine self-play
 - Perft, fixed-position benchmarks, UCI smoke tests, paired opening matches,

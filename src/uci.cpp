@@ -137,7 +137,7 @@ GoParameters parseGoCommand(const std::string& line){
     return result;
 }
 
-TimeBudget pickUCITimeBudget(const Board& board, const GoParameters& parameters){
+TimeBudget pickUCITimeBudget(const Board& board, const GoParameters& parameters, int moveOverheadMs){
     if(parameters.movetimeMs > 0){
         return TimeBudget{parameters.movetimeMs, parameters.movetimeMs};
     }
@@ -167,7 +167,8 @@ TimeBudget pickUCITimeBudget(const Board& board, const GoParameters& parameters)
     // scheduling. This matters when the remaining clock is roughly one
     // increment: spending the entire increment can still lose on time after
     // the bestmove line leaves the engine process.
-    const int reserve = std::max(5, std::min(250, sideTime / 50));
+    const int reserve = std::max(std::clamp(moveOverheadMs, 0, 5000),
+                                 std::min(250, std::max(1, sideTime / 50)));
     const int safeTime = std::max(1, sideTime - reserve);
     const int baseSlice = safeTime / std::max(1, movesToGo + 3);
     int soft = baseSlice + (sideIncrement * 3) / 4;
@@ -198,6 +199,7 @@ int runUCILoop(int defaultThreads){
     const int hardwareThreads = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
     int searchThreads = std::clamp(defaultThreads, 1, hardwareThreads);
     int hashMB = 256;
+    int moveOverheadMs = 10;
 
     PositionEvaluator evaluator;
     SearchContext search;
@@ -281,6 +283,7 @@ int runUCILoop(int defaultThreads){
                       << "option name Hash type spin default 256 min 1 max 4096\n"
                       << "option name Threads type spin default " << searchThreads
                       << " min 1 max " << hardwareThreads << "\n"
+                      << "option name Move Overhead type spin default 10 min 0 max 5000\n"
                       << "option name Clear Hash type button\n"
                       << "option name EvalFile type string default <empty>\n"
                       << "option name Use NNUE type check default false\n"
@@ -326,6 +329,11 @@ int runUCILoop(int defaultThreads){
                 if(parseIntStrict(trim(line.substr(valuePosition + 7)), value)){
                     searchThreads = std::clamp(value, 1, hardwareThreads);
                 }
+            } else if(lower.find("name move overhead") != std::string::npos && valuePosition != std::string::npos){
+                int value = 10;
+                if(parseIntStrict(trim(line.substr(valuePosition + 7)), value)){
+                    moveOverheadMs = std::clamp(value, 0, 5000);
+                }
             }
         } else if(lower == "ucinewgame"){
             board.reset();
@@ -340,7 +348,7 @@ int runUCILoop(int defaultThreads){
         } else if(startsWith(lower, "go")){
             const GoParameters parameters = parseGoCommand(line);
             constexpr int oneDayMs = 24 * 60 * 60 * 1000;
-            TimeBudget budget = pickUCITimeBudget(board, parameters);
+            TimeBudget budget = pickUCITimeBudget(board, parameters, moveOverheadMs);
             budget.softMs = std::clamp(budget.softMs, 1, oneDayMs);
             budget.hardMs = std::clamp(budget.hardMs, budget.softMs, oneDayMs);
             std::vector<Move> rootRestriction;
