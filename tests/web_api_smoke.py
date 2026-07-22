@@ -130,6 +130,9 @@ def main() -> int:
         assert state["controllers"]["black"]["type"] == "human"
         assert state["canMove"] is True
 
+        state = request(base, "/api/new", {"mode": "pvp", "engineTimeMs": 5000})
+        assert state["engine"]["moveTimeMs"] == 5000
+
         state = request(base, "/api/new", {
             "mode": "cvc", "whiteProfile": profile_id, "blackProfile": profile_id,
             "engineTimeMs": 100,
@@ -158,6 +161,7 @@ def main() -> int:
             assert b"ENGINE ROOM" in page and b'value="cvc"' in page
             assert b"pvc-profile-summary" in page
             assert b"export-modal" in page and b"run-analysis" in page
+            assert b"engine-time-slider" in page and b'data-time="5000"' in page
         print("Web GUI smoke: PASS")
         return 0
     finally:

@@ -182,11 +182,24 @@
 
       <fieldset id="strength-field">
         <legend>Thinking time per move</legend>
-        <div class="segmented three">
-          <label><input type="radio" name="engine-time" value="250"><span>Quick</span></label>
-          <label><input type="radio" name="engine-time" value="650" checked><span>Balanced</span></label>
-          <label><input type="radio" name="engine-time" value="1500"><span>Deep</span></label>
+        <div class="time-presets" aria-label="Thinking time presets">
+          <button type="button" class="time-preset" data-time="250"><strong>250</strong><span>ms</span></button>
+          <button type="button" class="time-preset active" data-time="650"><strong>650</strong><span>ms</span></button>
+          <button type="button" class="time-preset" data-time="1500"><strong>1.5</strong><span>sec</span></button>
+          <button type="button" class="time-preset" data-time="5000"><strong>5</strong><span>sec</span></button>
+          <button type="button" class="time-preset" data-time="10000"><strong>10</strong><span>sec</span></button>
         </div>
+        <div class="time-control">
+          <div class="time-readout">
+            <span>Custom control</span>
+            <output id="engine-time-output" for="engine-time-slider">650 ms</output>
+          </div>
+          <input type="range" id="engine-time-slider" min="0" max="1000" value="484"
+                 aria-label="Custom thinking time" aria-describedby="engine-time-hint">
+          <input type="hidden" id="engine-time" name="engine-time" value="650">
+          <div class="time-scale" aria-hidden="true"><span>50 ms</span><span>10 sec</span></div>
+        </div>
+        <p class="field-help" id="engine-time-hint">Drag for a custom value. The control snaps gently to the presets above.</p>
       </fieldset>
 
       <fieldset>

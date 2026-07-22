@@ -38,7 +38,8 @@ headless engine when needed, starts the local bridge, and opens the interface.
 It supports click and true pointer-following drag movement, legal-move guidance,
 PvP/PvC/CvC, visible on-demand analysis and PV, move history, PGN/FEN/JSON game
 export, undo, board flipping, promotion, side choice, selectable engines/models,
-and desktop/mobile layouts. PGN exports can be pasted into or uploaded to common
+magnetic thinking-time presets with a 50 ms–10 second custom range, and
+desktop/mobile layouts. PGN exports can be pasted into or uploaded to common
 game-analysis tools.
 The setup panel automatically lists the current engine, revisions built by
 `scripts/compare_engines.py`, and any `.nnue` models placed under `networks/`.

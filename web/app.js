@@ -33,6 +33,11 @@ const elements = {
   pvcOptions: document.querySelector("#pvc-options"),
   cvcOptions: document.querySelector("#cvc-options"),
   strengthField: document.querySelector("#strength-field"),
+  engineTime: document.querySelector("#engine-time"),
+  engineTimeSlider: document.querySelector("#engine-time-slider"),
+  engineTimeOutput: document.querySelector("#engine-time-output"),
+  engineTimeHint: document.querySelector("#engine-time-hint"),
+  timePresets: [...document.querySelectorAll(".time-preset")],
   modeHelp: document.querySelector("#mode-help"),
   pvcProfile: document.querySelector("#pvc-profile"),
   whiteProfile: document.querySelector("#white-profile"),
@@ -73,6 +78,12 @@ let analysisError = "";
 let exportPayload = null;
 let exportSequence = 0;
 
+const ENGINE_TIME_MIN = 50;
+const ENGINE_TIME_MAX = 10_000;
+const ENGINE_TIME_SLIDER_MAX = 1000;
+const ENGINE_TIME_MAGNET_RADIUS = 30;
+const ENGINE_TIME_PRESETS = [250, 650, 1500, 5000, 10_000];
+
 async function request(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json" },
@@ -100,6 +111,62 @@ function formatNumber(value) {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
   return String(value);
+}
+
+function formatDuration(milliseconds) {
+  if (milliseconds < 1000) return `${milliseconds} ms`;
+  const seconds = milliseconds / 1000;
+  return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(2).replace(/0$/, "")} sec`;
+}
+
+function timeToSlider(milliseconds) {
+  const bounded = Math.max(ENGINE_TIME_MIN, Math.min(ENGINE_TIME_MAX, milliseconds));
+  const ratio = Math.log(bounded / ENGINE_TIME_MIN) / Math.log(ENGINE_TIME_MAX / ENGINE_TIME_MIN);
+  return Math.round(ratio * ENGINE_TIME_SLIDER_MAX);
+}
+
+function sliderToTime(position) {
+  const ratio = Number(position) / ENGINE_TIME_SLIDER_MAX;
+  return ENGINE_TIME_MIN * ((ENGINE_TIME_MAX / ENGINE_TIME_MIN) ** ratio);
+}
+
+function cleanTime(milliseconds) {
+  let step = 10;
+  if (milliseconds >= 250) step = 25;
+  if (milliseconds >= 1000) step = 50;
+  if (milliseconds >= 2500) step = 100;
+  if (milliseconds >= 5000) step = 250;
+  return Math.max(ENGINE_TIME_MIN, Math.min(ENGINE_TIME_MAX, Math.round(milliseconds / step) * step));
+}
+
+function setEngineTime(milliseconds, source = "custom") {
+  const value = cleanTime(milliseconds);
+  const sliderPosition = timeToSlider(value);
+  elements.engineTime.value = String(value);
+  elements.engineTimeSlider.value = String(sliderPosition);
+  elements.engineTimeSlider.style.setProperty("--slider-progress", `${sliderPosition / 10}%`);
+  elements.engineTimeOutput.value = formatDuration(value);
+  const selectedPreset = ENGINE_TIME_PRESETS.includes(value);
+  elements.timePresets.forEach((button) => {
+    const active = Number(button.dataset.time) === value;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  elements.engineTimeHint.textContent = selectedPreset
+    ? `${source === "slider" ? "Snapped to" : "Selected"} ${formatDuration(value)}. Drag away for a custom value.`
+    : `Custom value · ${formatDuration(value)} per move. The control snaps gently near presets.`;
+}
+
+function updateEngineTimeFromSlider() {
+  const position = Number(elements.engineTimeSlider.value);
+  const nearestPreset = ENGINE_TIME_PRESETS
+    .map((time) => ({ time, distance: Math.abs(timeToSlider(time) - position) }))
+    .sort((left, right) => left.distance - right.distance)[0];
+  if (nearestPreset.distance <= ENGINE_TIME_MAGNET_RADIUS) {
+    setEngineTime(nearestPreset.time, "slider");
+  } else {
+    setEngineTime(sliderToTime(position), "custom");
+  }
 }
 
 function formatScore(information) {
@@ -628,6 +695,12 @@ for (const select of [elements.pvcProfile, elements.whiteProfile, elements.black
   select.addEventListener("change", renderProfileSummaries);
 }
 
+elements.timePresets.forEach((button) => {
+  button.setAttribute("aria-pressed", String(button.classList.contains("active")));
+  button.addEventListener("click", () => setEngineTime(Number(button.dataset.time), "preset"));
+});
+elements.engineTimeSlider.addEventListener("input", updateEngineTimeFromSlider);
+
 document.querySelector("#undo").addEventListener("click", async () => {
   if (busy) return;
   cancelScheduledEnginePlay();
@@ -754,6 +827,7 @@ for (const tab of document.querySelectorAll(".tab")) {
 async function initialise() {
   try {
     state = await request("/api/state");
+    setEngineTime(state.engine.moveTimeMs || 650, "preset");
     orientation = resolveOrientation("auto");
     autoPlay = state.mode === "cvc";
     render();
