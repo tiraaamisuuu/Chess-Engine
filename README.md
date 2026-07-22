@@ -46,6 +46,14 @@ The setup panel automatically lists the current engine, revisions built by
 Role badges distinguish the newest development build, committed candidate,
 legacy baseline, and NNUE models at a glance.
 
+Use **Engines** in the top bar to import Stockfish or another UCI-compatible
+executable. The local service copies the selected file into its ignored
+`.tools/user-engines/` library, verifies the UCI handshake, records the name and
+author reported by the engine, and makes it available to PvC, CvC, and analysis.
+Imported engines persist between launches and can be removed from the same
+panel. Only import executables you trust: imported engines run locally with your
+user account's permissions.
+
 ## Build the headless engine and tools
 
 No SFML installation is needed:

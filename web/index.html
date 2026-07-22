@@ -21,7 +21,10 @@
       <span class="connection-dot"></span>
       <span id="connection-label">Connecting</span>
     </div>
-    <button class="button button-primary compact" id="new-game-top">New game</button>
+    <div class="topbar-actions">
+      <button class="button compact" id="manage-engines" type="button">Engines <span id="engine-count">0</span></button>
+      <button class="button button-primary compact" id="new-game-top" type="button">New game</button>
+    </div>
   </header>
 
   <main class="workspace">
@@ -212,6 +215,35 @@
       </fieldset>
 
       <button class="button button-primary modal-submit" value="default" type="submit">Start game</button>
+    </form>
+  </dialog>
+
+  <dialog class="modal engine-library-modal" id="engine-library-modal">
+    <form id="engine-import-form">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow">UCI ENGINE LIBRARY</span>
+          <h2>Import another engine</h2>
+        </div>
+        <button class="modal-close" id="close-engine-library" type="button" aria-label="Close">×</button>
+      </div>
+
+      <div class="engine-import-grid">
+        <label class="file-picker" for="engine-file">
+          <span class="file-picker-mark" aria-hidden="true">＋</span>
+          <span><strong id="engine-file-label">Choose engine executable</strong><small>Stockfish or another UCI-compatible binary</small></span>
+          <input id="engine-file" name="engine-file" type="file" required>
+        </label>
+        <label class="text-field" for="engine-label">
+          <span>Display name <small>optional</small></span>
+          <input id="engine-label" name="engine-label" maxlength="120" placeholder="Use the engine's own name">
+        </label>
+      </div>
+      <p class="engine-security-note">Only import engines you trust. The selected executable is copied into this local project, launched on your computer, and verified with a UCI handshake.</p>
+      <button class="button button-primary engine-import-submit" id="import-engine" type="submit">Verify and import</button>
+
+      <div class="library-divider"><span>Available profiles</span></div>
+      <div class="engine-library-list" id="engine-library-list" aria-live="polite"></div>
     </form>
   </dialog>
 

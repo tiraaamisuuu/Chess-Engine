@@ -10,13 +10,16 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
+import os
 from pathlib import Path
 import secrets
+import shutil
 import signal
+import stat
 import threading
 import webbrowser
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import chess
 import chess.engine
@@ -27,6 +30,11 @@ ROOT = Path(__file__).resolve().parents[1]
 WEB_ROOT = ROOT / "web"
 PIECE_ROOT = ROOT / "assets" / "pieces"
 PROFILE_MANIFEST = ROOT / ".tools" / "engine-match" / "profiles.json"
+USER_ENGINE_ROOT = Path(os.environ.get(
+    "CHESS_USER_ENGINE_ROOT", ROOT / ".tools" / "user-engines"
+)).expanduser().resolve()
+USER_ENGINE_MANIFEST = USER_ENGINE_ROOT / "engines.json"
+MAX_ENGINE_UPLOAD_BYTES = 256 * 1024 * 1024
 
 
 def color_name(color: chess.Color | None) -> str | None:
@@ -66,6 +74,8 @@ class EngineProfile:
     badge: str
     command: tuple[str, ...]
     eval_file: Path | None = None
+    removable: bool = False
+    author: str = ""
 
     def serialize(self) -> dict[str, Any]:
         return {
@@ -77,7 +87,49 @@ class EngineProfile:
             "badge": self.badge,
             "usesNnue": self.eval_file is not None,
             "available": Path(self.command[0]).is_file(),
+            "removable": self.removable,
+            "author": self.author,
         }
+
+
+def load_user_engine_entries() -> list[dict[str, Any]]:
+    if not USER_ENGINE_MANIFEST.is_file():
+        return []
+    try:
+        manifest = json.loads(USER_ENGINE_MANIFEST.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    entries = manifest.get("engines", []) if isinstance(manifest, dict) else []
+    return [entry for entry in entries if isinstance(entry, dict)]
+
+
+def write_user_engine_entries(entries: list[dict[str, Any]]) -> None:
+    USER_ENGINE_ROOT.mkdir(parents=True, exist_ok=True)
+    temporary = USER_ENGINE_MANIFEST.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"version": 1, "engines": entries}, indent=2) + "\n",
+                         encoding="utf-8")
+    temporary.replace(USER_ENGINE_MANIFEST)
+
+
+def external_engine_profile(entry: dict[str, Any]) -> EngineProfile | None:
+    binary = Path(str(entry.get("path", ""))).expanduser().resolve()
+    profile_id = slug(str(entry.get("id", "")))
+    if not profile_id.startswith("external-") or not binary.is_file():
+        return None
+    raw_arguments = entry.get("args", [])
+    arguments = tuple(str(value) for value in raw_arguments) \
+        if isinstance(raw_arguments, list) else ()
+    return EngineProfile(
+        profile_id,
+        str(entry.get("name") or binary.stem),
+        str(entry.get("detail") or "Imported UCI engine"),
+        "external",
+        "external",
+        "EXTERNAL · UCI",
+        (str(binary), *arguments),
+        removable=True,
+        author=str(entry.get("author") or ""),
+    )
 
 
 def find_built_engine(build: Path) -> Path | None:
@@ -162,6 +214,17 @@ def discover_profiles(engine_path: Path, nnue_path: Path | None) -> list[EngineP
             ))
             known_commands.add(str(binary))
             used_ids.add(profile_id)
+
+    for entry in load_user_engine_entries():
+        profile = external_engine_profile(entry)
+        if profile is None or profile.profile_id in used_ids:
+            continue
+        command_path = str(Path(profile.command[0]).resolve())
+        if command_path in known_commands:
+            continue
+        profiles.append(profile)
+        known_commands.add(command_path)
+        used_ids.add(profile.profile_id)
 
     networks: list[Path] = []
     if nnue_path:
@@ -258,6 +321,7 @@ class GameService:
         self.last_engine_info: dict[str, Any] = {}
         self.last_analysis: dict[str, Any] = {}
         self.game_tokens: dict[str, object] = {}
+        self.library_token = secrets.token_urlsafe(24)
         self._session(self.default_profile_id)
 
     @property
@@ -285,6 +349,117 @@ class GameService:
             for session in self.sessions.values():
                 session.close()
             self.sessions.clear()
+
+    @staticmethod
+    def _unique_external_id(name: str, existing: set[str]) -> str:
+        base = f"external-{slug(name) or 'engine'}"
+        profile_id = base
+        suffix = 2
+        while profile_id in existing:
+            profile_id = f"{base}-{suffix}"
+            suffix += 1
+        return profile_id
+
+    @staticmethod
+    def _probe_engine(command: tuple[str, ...]) -> tuple[str, str]:
+        engine: chess.engine.SimpleEngine | None = None
+        try:
+            engine = chess.engine.SimpleEngine.popen_uci(list(command), timeout=10.0)
+            name = str(engine.id.get("name") or Path(command[0]).stem).strip()
+            author = str(engine.id.get("author") or "").strip()
+            return name[:120], author[:120]
+        except (OSError, chess.engine.EngineError, TimeoutError) as error:
+            raise ValueError(f"This file did not complete a UCI handshake: {error}") from error
+        finally:
+            if engine:
+                try:
+                    engine.quit()
+                except (OSError, chess.engine.EngineError, TimeoutError):
+                    pass
+
+    def import_engine(self, filename: str, requested_name: str, content: bytes) -> dict[str, Any]:
+        with self.lock:
+            clean_filename = Path(filename.replace("\\", "/")).name.strip().replace("\x00", "")
+            if not clean_filename:
+                clean_filename = "uci-engine.exe" if os.name == "nt" else "uci-engine"
+            clean_filename = clean_filename[:180]
+            if not content:
+                raise ValueError("Choose a non-empty engine executable")
+            if len(content) > MAX_ENGINE_UPLOAD_BYTES:
+                raise ValueError("Engine executable exceeds the 256 MB import limit")
+
+            provisional_id = self._unique_external_id(
+                requested_name or Path(clean_filename).stem, set(self.profiles)
+            )
+            destination_dir = USER_ENGINE_ROOT / provisional_id
+            destination = destination_dir / clean_filename
+            destination_dir.mkdir(parents=True, exist_ok=False)
+            try:
+                destination.write_bytes(content)
+                if os.name != "nt":
+                    destination.chmod(destination.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+                detected_name, author = self._probe_engine((str(destination),))
+                final_name = requested_name.strip()[:120] or detected_name
+                final_id = self._unique_external_id(final_name, set(self.profiles))
+                if final_id != provisional_id:
+                    final_dir = USER_ENGINE_ROOT / final_id
+                    destination_dir.rename(final_dir)
+                    destination_dir = final_dir
+                    destination = final_dir / clean_filename
+
+                detail = f"Imported UCI engine · {detected_name}"
+                if author:
+                    detail += f" · {author}"
+                entry = {
+                    "id": final_id,
+                    "name": final_name,
+                    "detail": detail,
+                    "author": author,
+                    "path": str(destination.resolve()),
+                    "args": [],
+                    "importedAt": datetime.now().astimezone().isoformat(timespec="seconds"),
+                    "sourceFilename": clean_filename,
+                }
+                entries = load_user_engine_entries()
+                entries.append(entry)
+                write_user_engine_entries(entries)
+                profile = external_engine_profile(entry)
+                if profile is None:
+                    raise ValueError("Imported engine metadata could not be loaded")
+                self.profiles[profile.profile_id] = profile
+                return {
+                    "profile": profile.serialize(),
+                    "state": self._serialize(),
+                }
+            except Exception:
+                shutil.rmtree(destination_dir, ignore_errors=True)
+                raise
+
+    def remove_engine(self, profile_id: str) -> dict[str, Any]:
+        with self.lock:
+            profile = self.profiles.get(profile_id)
+            if profile is None or not profile.removable:
+                raise ValueError("Only imported engines can be removed")
+            if profile_id in self.controllers.values():
+                raise ValueError("Start a new game without this engine before removing it")
+
+            session = self.sessions.pop(profile_id, None)
+            if session:
+                session.close()
+            entries = [
+                entry for entry in load_user_engine_entries()
+                if str(entry.get("id")) != profile_id
+            ]
+            write_user_engine_entries(entries)
+            binary = Path(profile.command[0]).resolve()
+            try:
+                binary.relative_to(USER_ENGINE_ROOT.resolve())
+            except ValueError:
+                pass
+            else:
+                shutil.rmtree(binary.parent, ignore_errors=True)
+            del self.profiles[profile_id]
+            return self._serialize()
 
     def new_game(self, payload: dict[str, Any]) -> dict[str, Any]:
         with self.lock:
@@ -613,6 +788,11 @@ class GameService:
                 "black": self._controller(chess.BLACK),
             },
             "profiles": [profile.serialize() for profile in self.profiles.values()],
+            "engineLibrary": {
+                "token": self.library_token,
+                "importedCount": sum(profile.removable for profile in self.profiles.values()),
+                "maxUploadMB": MAX_ENGINE_UPLOAD_BYTES // (1024 * 1024),
+            },
             "canMove": can_move,
             "needsEngineMove": needs_engine,
             "gameOver": game_over,
@@ -660,8 +840,18 @@ class WebHandler(BaseHTTPRequestHandler):
         self._static(path)
 
     def do_POST(self) -> None:  # noqa: N802
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         try:
+            if path == "/api/engines/import":
+                self._verify_library_token()
+                length = self._content_length(MAX_ENGINE_UPLOAD_BYTES)
+                query = parse_qs(parsed.query)
+                filename = query.get("filename", [""])[0]
+                name = query.get("name", [""])[0]
+                response = self.service.import_engine(filename, name, self.rfile.read(length))
+                self._json(response, HTTPStatus.CREATED)
+                return
             payload = self._payload()
             if path == "/api/new":
                 response = self.service.new_game(payload)
@@ -675,6 +865,9 @@ class WebHandler(BaseHTTPRequestHandler):
                 response = self.service.export_game(payload)
             elif path == "/api/undo":
                 response = self.service.undo()
+            elif path == "/api/engines/remove":
+                self._verify_library_token()
+                response = self.service.remove_engine(str(payload.get("profileId", "")))
             else:
                 self._json({"error": "Unknown endpoint"}, HTTPStatus.NOT_FOUND)
                 return
@@ -685,6 +878,22 @@ class WebHandler(BaseHTTPRequestHandler):
             self._json({"error": str(error)}, HTTPStatus.SERVICE_UNAVAILABLE)
         except (chess.engine.EngineError, TimeoutError, OSError) as error:
             self._json({"error": f"Engine failure: {error}"}, HTTPStatus.SERVICE_UNAVAILABLE)
+
+    def _content_length(self, maximum: int) -> int:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as error:
+            raise ValueError("Invalid Content-Length") from error
+        if length <= 0:
+            raise ValueError("The request body is empty")
+        if length > maximum:
+            raise ValueError(f"The request exceeds the {maximum // (1024 * 1024)} MB limit")
+        return length
+
+    def _verify_library_token(self) -> None:
+        supplied = self.headers.get("X-Engine-Library-Token", "")
+        if not secrets.compare_digest(supplied, self.service.library_token):
+            raise ValueError("Engine library token is missing or invalid")
 
     def _payload(self) -> dict[str, Any]:
         length = bounded_int(self.headers.get("Content-Length"), 0, 64 * 1024, 0)

@@ -30,6 +30,14 @@ const elements = {
   bottomTurn: document.querySelector("#bottom-turn"),
   newGameModal: document.querySelector("#new-game-modal"),
   newGameForm: document.querySelector("#new-game-form"),
+  engineLibraryModal: document.querySelector("#engine-library-modal"),
+  engineImportForm: document.querySelector("#engine-import-form"),
+  engineFile: document.querySelector("#engine-file"),
+  engineFileLabel: document.querySelector("#engine-file-label"),
+  engineLabel: document.querySelector("#engine-label"),
+  importEngine: document.querySelector("#import-engine"),
+  engineLibraryList: document.querySelector("#engine-library-list"),
+  engineCount: document.querySelector("#engine-count"),
   pvcOptions: document.querySelector("#pvc-options"),
   cvcOptions: document.querySelector("#cvc-options"),
   strengthField: document.querySelector("#strength-field"),
@@ -557,11 +565,13 @@ function render() {
     baseline: "BASELINE",
     nnue: "NNUE",
     revision: "REVISION",
+    external: "EXTERNAL",
   };
   elements.engineState.textContent = state.engine.connected
     ? compactBadges[state.engine.activeProfileRole] || "READY"
     : "OFFLINE";
   elements.engineState.dataset.role = state.engine.activeProfileRole || "revision";
+  elements.engineCount.textContent = state.engine.profileCount;
   elements.status.textContent = state.gameOver
     ? `${state.result} · ${state.resultReason}`
     : busy ? "Engine thinking" : state.status;
@@ -572,6 +582,61 @@ function render() {
   renderAnalysis();
   renderAutoPlay();
   populateProfileOptions();
+  renderEngineLibrary();
+}
+
+function renderEngineLibrary() {
+  if (!state?.profiles) return;
+  elements.engineLibraryList.replaceChildren();
+  state.profiles.forEach((profile) => {
+    const row = document.createElement("div");
+    row.className = "library-engine";
+    row.dataset.role = profile.role;
+
+    const badge = document.createElement("span");
+    badge.className = "profile-badge";
+    badge.textContent = profile.badge;
+
+    const copy = document.createElement("span");
+    copy.className = "library-engine-copy";
+    const name = document.createElement("strong");
+    name.textContent = profile.name;
+    const detail = document.createElement("small");
+    detail.textContent = profile.detail;
+    copy.append(name, detail);
+    row.append(badge, copy);
+
+    if (profile.removable) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "library-remove";
+      remove.textContent = "Remove";
+      remove.setAttribute("aria-label", `Remove ${profile.name}`);
+      remove.addEventListener("click", () => removeImportedEngine(profile.id));
+      row.append(remove);
+    }
+    elements.engineLibraryList.append(row);
+  });
+}
+
+async function removeImportedEngine(profileId) {
+  const profile = state?.profiles?.find((candidate) => candidate.id === profileId);
+  if (!profile || !window.confirm(`Remove ${profile.name} from this local engine library?`)) return;
+  try {
+    state = await request("/api/engines/remove", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Engine-Library-Token": state.engineLibrary.token,
+      },
+      body: JSON.stringify({ profileId }),
+    });
+    profileOptionsKey = "";
+    render();
+    showToast(`${profile.name} removed`);
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 function populateProfileOptions() {
@@ -680,6 +745,63 @@ for (const button of document.querySelectorAll("#new-game, #new-game-top")) {
     elements.newGameModal.showModal();
   });
 }
+
+document.querySelector("#manage-engines").addEventListener("click", () => {
+  renderEngineLibrary();
+  elements.engineLibraryModal.showModal();
+});
+
+document.querySelector("#close-engine-library").addEventListener("click", () => {
+  elements.engineLibraryModal.close();
+});
+
+elements.engineFile.addEventListener("change", () => {
+  const file = elements.engineFile.files[0];
+  elements.engineFileLabel.textContent = file ? file.name : "Choose engine executable";
+});
+
+elements.engineImportForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const file = elements.engineFile.files[0];
+  if (!file) {
+    showToast("Choose a UCI engine executable first");
+    return;
+  }
+  if (file.size > state.engineLibrary.maxUploadMB * 1024 * 1024) {
+    showToast(`Engine files are limited to ${state.engineLibrary.maxUploadMB} MB`);
+    return;
+  }
+
+  elements.importEngine.disabled = true;
+  elements.importEngine.textContent = "Verifying UCI…";
+  try {
+    const query = new URLSearchParams({
+      filename: file.name,
+      name: elements.engineLabel.value.trim(),
+    });
+    const response = await fetch(`/api/engines/import?${query}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Engine-Library-Token": state.engineLibrary.token,
+      },
+      body: file,
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || `Import failed (${response.status})`);
+    state = payload.state;
+    profileOptionsKey = "";
+    elements.engineImportForm.reset();
+    elements.engineFileLabel.textContent = "Choose engine executable";
+    render();
+    showToast(`${payload.profile.name} imported and ready`);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    elements.importEngine.disabled = false;
+    elements.importEngine.textContent = "Verify and import";
+  }
+});
 
 document.querySelector("#close-new-game").addEventListener("click", () => elements.newGameModal.close());
 

@@ -6,11 +6,14 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
 import sys
+import tempfile
 import time
+from urllib.parse import urlencode
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -32,10 +35,28 @@ def free_port() -> int:
         return int(listener.getsockname()[1])
 
 
-def request(base: str, path: str, payload: dict | None = None) -> dict:
+def request(base: str, path: str, payload: dict | None = None,
+            headers: dict[str, str] | None = None) -> dict:
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
-    call = Request(base + path, data=data, headers={"Content-Type": "application/json"})
+    request_headers = {"Content-Type": "application/json"}
+    request_headers.update(headers or {})
+    call = Request(base + path, data=data, headers=request_headers)
     with urlopen(call, timeout=15) as response:
+        return json.load(response)
+
+
+def upload_engine(base: str, engine: Path, token: str, name: str) -> dict:
+    query = urlencode({"filename": engine.name, "name": name})
+    call = Request(
+        f"{base}/api/engines/import?{query}",
+        data=engine.read_bytes(),
+        headers={
+            "Content-Type": "application/octet-stream",
+            "X-Engine-Library-Token": token,
+        },
+    )
+    with urlopen(call, timeout=20) as response:
+        assert response.status == 201
         return json.load(response)
 
 
@@ -45,6 +66,9 @@ def main() -> int:
         raise SystemExit(f"engine not found: {args.engine}")
     port = free_port()
     base = f"http://127.0.0.1:{port}"
+    engine_library = tempfile.TemporaryDirectory(prefix="chess-user-engines-")
+    environment = dict(os.environ)
+    environment["CHESS_USER_ENGINE_ROOT"] = engine_library.name
     server = subprocess.Popen(
         [sys.executable, str(ROOT / "web" / "server.py"), "--engine", str(args.engine),
          "--port", str(port), "--no-open"],
@@ -52,6 +76,7 @@ def main() -> int:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        env=environment,
     )
     try:
         deadline = time.monotonic() + 15
@@ -81,6 +106,31 @@ def main() -> int:
         assert state["controllers"]["black"]["badge"] == "DEV · NEWEST"
         assert state["engine"]["activeProfileRole"] == "development"
         profile_id = state["profiles"][0]["id"]
+
+        imported = upload_engine(
+            base, args.engine.resolve(), state["engineLibrary"]["token"], "Smoke Test Engine"
+        )
+        imported_profile = imported["profile"]
+        assert imported_profile["role"] == "external"
+        assert imported_profile["badge"] == "EXTERNAL · UCI"
+        assert imported_profile["removable"] is True
+        assert imported["state"]["engine"]["profileCount"] == state["engine"]["profileCount"] + 1
+        state = request(base, "/api/new", {
+            "mode": "pvc", "side": "white", "engineProfile": imported_profile["id"],
+            "engineTimeMs": 100,
+        })
+        state = request(base, "/api/move", {"uci": "e2e4"})
+        state = request(base, "/api/engine-move", {})
+        assert state["engine"]["lastMove"]["profileId"] == imported_profile["id"]
+        state = request(base, "/api/new", {"mode": "pvp"})
+        state = request(base, "/api/engines/remove", {"profileId": imported_profile["id"]}, headers={
+            "X-Engine-Library-Token": state["engineLibrary"]["token"],
+        })
+        assert all(profile["id"] != imported_profile["id"] for profile in state["profiles"])
+        state = request(base, "/api/new", {
+            "mode": "pvc", "side": "white", "engineProfile": profile_id,
+            "engineTimeMs": 100,
+        })
 
         state = request(base, "/api/move", {"uci": "e2e4"})
         assert state["ply"] == 1 and state["needsEngineMove"] is True
@@ -162,6 +212,7 @@ def main() -> int:
             assert b"pvc-profile-summary" in page
             assert b"export-modal" in page and b"run-analysis" in page
             assert b"engine-time-slider" in page and b'data-time="5000"' in page
+            assert b"engine-library-modal" in page and b"engine-import-form" in page
         print("Web GUI smoke: PASS")
         return 0
     finally:
@@ -171,6 +222,7 @@ def main() -> int:
         except subprocess.TimeoutExpired:
             server.kill()
             server.wait(timeout=5)
+        engine_library.cleanup()
 
 
 if __name__ == "__main__":
