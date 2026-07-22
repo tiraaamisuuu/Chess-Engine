@@ -73,6 +73,10 @@ def main() -> int:
         assert state["controllers"]["white"]["type"] == "human"
         assert state["controllers"]["black"]["type"] == "engine"
         assert state["profiles"] and state["profiles"][0]["id"] == "current-classical"
+        assert state["profiles"][0]["role"] == "development"
+        assert state["profiles"][0]["badge"] == "DEV · NEWEST"
+        assert state["controllers"]["black"]["badge"] == "DEV · NEWEST"
+        assert state["engine"]["activeProfileRole"] == "development"
         profile_id = state["profiles"][0]["id"]
 
         state = request(base, "/api/move", {"uci": "e2e4"})
@@ -121,6 +125,7 @@ def main() -> int:
         with urlopen(base + "/", timeout=5) as response:
             page = response.read()
             assert b"TIRAMISU" in page and b'value="cvc"' in page
+            assert b"pvc-profile-summary" in page
         print("Web GUI smoke: PASS")
         return 0
     finally:

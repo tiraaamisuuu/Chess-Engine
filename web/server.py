@@ -60,6 +60,8 @@ class EngineProfile:
     name: str
     detail: str
     kind: str
+    role: str
+    badge: str
     command: tuple[str, ...]
     eval_file: Path | None = None
 
@@ -69,6 +71,8 @@ class EngineProfile:
             "name": self.name,
             "detail": self.detail,
             "kind": self.kind,
+            "role": self.role,
+            "badge": self.badge,
             "usesNnue": self.eval_file is not None,
             "available": Path(self.command[0]).is_file(),
         }
@@ -80,12 +84,24 @@ def find_built_engine(build: Path) -> Path | None:
     return candidates[0].resolve() if candidates else None
 
 
+def revision_identity(profile_id: str) -> tuple[str, str]:
+    if profile_id.startswith("baseline-v0"):
+        return "legacy", "LEGACY · BASELINE"
+    if profile_id.startswith("baseline-"):
+        return "baseline", "REFERENCE · BASELINE"
+    if profile_id.startswith("candidate-"):
+        return "candidate", "CANDIDATE · COMMITTED"
+    return "revision", "BUILT REVISION"
+
+
 def discover_profiles(engine_path: Path, nnue_path: Path | None) -> list[EngineProfile]:
     profiles = [EngineProfile(
         "current-classical",
-        "Current · Classical",
-        "Working tree engine",
+        "Development · Classical",
+        "Live working-tree build · newest local code",
         "current",
+        "development",
+        "DEV · NEWEST",
         (str(engine_path), "--uci"),
     )]
     known_commands = {str(engine_path.resolve())}
@@ -107,11 +123,14 @@ def discover_profiles(engine_path: Path, nnue_path: Path | None) -> list[EngineP
                 raw_arguments = entry.get("args", ["--uci"])
                 arguments = tuple(str(value) for value in raw_arguments) \
                     if isinstance(raw_arguments, list) else ("--uci",)
+                default_role, default_badge = revision_identity(profile_id)
                 profiles.append(EngineProfile(
                     profile_id,
                     str(entry.get("name") or profile_id),
                     str(entry.get("detail") or "Built comparison revision"),
                     "revision",
+                    str(entry.get("role") or default_role),
+                    str(entry.get("badge") or default_badge),
                     (str(binary), *arguments),
                 ))
                 known_commands.add(str(binary))
@@ -129,11 +148,14 @@ def discover_profiles(engine_path: Path, nnue_path: Path | None) -> list[EngineP
             profile_id = slug(label)
             if not profile_id or profile_id in used_ids:
                 continue
+            role, badge = revision_identity(profile_id)
             profiles.append(EngineProfile(
                 profile_id,
                 label.replace("-", " ").title(),
                 "Built comparison revision",
                 "revision",
+                role,
+                badge,
                 (str(binary), "--uci"),
             ))
             known_commands.add(str(binary))
@@ -159,8 +181,10 @@ def discover_profiles(engine_path: Path, nnue_path: Path | None) -> list[EngineP
         profiles.append(EngineProfile(
             profile_id,
             f"NNUE · {network.stem}",
-            "Current engine with trained network",
+            "Development engine with trained evaluation network",
             "nnue",
+            "nnue",
+            "NNUE · MODEL",
             (str(engine_path), "--uci"),
             network.resolve(),
         ))
@@ -439,6 +463,8 @@ class GameService:
             "name": profile.name,
             "profileId": profile_id,
             "kind": profile.kind,
+            "role": profile.role,
+            "badge": profile.badge,
             "detail": profile.detail,
         }
 
@@ -512,6 +538,8 @@ class GameService:
                                   or (default_session and default_session.engine)),
                 "name": active_profile.name,
                 "activeProfileId": active_profile_id,
+                "activeProfileRole": active_profile.role,
+                "activeProfileBadge": active_profile.badge,
                 "profileCount": len(self.profiles),
                 "moveTimeMs": self.engine_time_ms,
                 "error": active_session.error if active_session else None,

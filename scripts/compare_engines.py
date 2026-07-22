@@ -186,20 +186,28 @@ def write_web_profiles(baseline_ref: str, baseline: Path, baseline_commit: str,
     """Expose locally built revisions to the web GUI without committing machine paths."""
     destination = TOOLS / "engine-match" / "profiles.json"
     destination.parent.mkdir(parents=True, exist_ok=True)
+    legacy_baseline = baseline_ref.lower().startswith(("v0.", "v0-"))
     payload = {
         "version": 1,
         "profiles": [
             {
                 "id": f"candidate-{safe_name(candidate_ref)}",
                 "name": f"Candidate · {candidate_ref}",
-                "detail": f"Revision {candidate_commit[:10]}",
+                "detail": f"Committed comparison build · revision {candidate_commit[:10]}",
+                "role": "candidate",
+                "badge": "CANDIDATE · COMMITTED",
                 "path": str(candidate.resolve()),
                 "args": ["--uci"],
             },
             {
                 "id": f"baseline-{safe_name(baseline_ref)}",
-                "name": f"Baseline · {baseline_ref}",
-                "detail": f"Revision {baseline_commit[:10]}",
+                "name": f"{'Legacy' if legacy_baseline else 'Baseline'} · {baseline_ref}",
+                "detail": (
+                    f"Older release build · revision {baseline_commit[:10]}" if legacy_baseline
+                    else f"Reference comparison build · revision {baseline_commit[:10]}"
+                ),
+                "role": "legacy" if legacy_baseline else "baseline",
+                "badge": "LEGACY · BASELINE" if legacy_baseline else "REFERENCE · BASELINE",
                 "path": str(baseline.resolve()),
                 "args": ["--uci"],
             },

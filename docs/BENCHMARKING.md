@@ -39,6 +39,10 @@ scripts/compare_engines.py \
 Every opening is played with reversed colours. PGN games and the complete
 match log are written under `artifacts/elo/`.
 
+The reported Elo is a **relative difference**. For example, `+100` means the
+candidate performed about 100 Elo above the selected baseline under those test
+conditions; it does not assign either engine an absolute human-style rating.
+
 Both refs must be committed because the builder uses `git archive`. Old refs
 are handled automatically: before v1, UCI mode lived in the SFML `gui` binary;
 new refs use the independent `tiramisu-uci` executable. Set `SFML_PREFIX` or

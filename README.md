@@ -40,6 +40,8 @@ PvP/PvC/CvC, live evaluation and PV, move history, undo, board flipping,
 promotion, side choice, selectable engines/models, and desktop/mobile layouts.
 The setup panel automatically lists the current engine, revisions built by
 `scripts/compare_engines.py`, and any `.nnue` models placed under `networks/`.
+Role badges distinguish the newest development build, committed candidate,
+legacy baseline, and NNUE models at a glance.
 
 ## Build the headless engine and tools
 

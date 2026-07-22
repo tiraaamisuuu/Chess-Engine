@@ -36,6 +36,9 @@ const elements = {
   pvcProfile: document.querySelector("#pvc-profile"),
   whiteProfile: document.querySelector("#white-profile"),
   blackProfile: document.querySelector("#black-profile"),
+  pvcProfileSummary: document.querySelector("#pvc-profile-summary"),
+  whiteProfileSummary: document.querySelector("#white-profile-summary"),
+  blackProfileSummary: document.querySelector("#black-profile-summary"),
   autoPlay: document.querySelector("#auto-play"),
   promotionModal: document.querySelector("#promotion-modal"),
   promotionOptions: document.querySelector("#promotion-options"),
@@ -370,10 +373,12 @@ function renderPlayer(position, color) {
   const detailElement = position === "top" ? elements.topDetail : elements.bottomDetail;
   const monogramElement = position === "top" ? elements.topMonogram : elements.bottomMonogram;
   const turnElement = position === "top" ? elements.topTurn : elements.bottomTurn;
+  const stripElement = document.querySelector(`#${position}-player`);
   nameElement.textContent = controller.name;
   detailElement.textContent = isEngine
-    ? `${controller.detail} · ${state.engine.moveTimeMs} ms`
+    ? `${controller.badge} · ${controller.detail} · ${state.engine.moveTimeMs} ms`
     : `${color[0].toUpperCase()}${color.slice(1)} pieces`;
+  stripElement.dataset.role = isEngine ? controller.role : "human";
   monogramElement.textContent = initials(controller.name, isEngine);
   monogramElement.closest(".avatar").classList.toggle("human", !isEngine);
   const active = !state.gameOver && state.turn === color;
@@ -442,7 +447,18 @@ function render() {
     ? `${state.engine.profileCount} engine profile${state.engine.profileCount === 1 ? "" : "s"} ready`
     : "Engine unavailable";
   elements.engineName.textContent = state.engine.name;
-  elements.engineState.textContent = state.engine.connected ? "READY" : "OFFLINE";
+  const compactBadges = {
+    development: "NEWEST",
+    candidate: "CANDIDATE",
+    legacy: "LEGACY",
+    baseline: "BASELINE",
+    nnue: "NNUE",
+    revision: "REVISION",
+  };
+  elements.engineState.textContent = state.engine.connected
+    ? compactBadges[state.engine.activeProfileRole] || "READY"
+    : "OFFLINE";
+  elements.engineState.dataset.role = state.engine.activeProfileRole || "revision";
   elements.status.textContent = state.gameOver
     ? `${state.result} · ${state.resultReason}`
     : busy ? "Engine thinking" : state.status;
@@ -457,30 +473,48 @@ function render() {
 
 function populateProfileOptions() {
   if (!state?.profiles?.length) return;
-  const key = state.profiles.map((profile) => profile.id).join("|");
-  if (key === profileOptionsKey) return;
-  profileOptionsKey = key;
-  const revision = state.profiles.find((profile) => profile.id.startsWith("baseline-"))
-    || state.profiles.find((profile) => profile.kind === "revision");
-  const selectors = [elements.pvcProfile, elements.whiteProfile, elements.blackProfile];
-  selectors.forEach((select, index) => {
-    const previous = select.value;
-    select.replaceChildren();
-    state.profiles.forEach((profile) => {
-      const option = document.createElement("option");
-      option.value = profile.id;
-      option.textContent = `${profile.name} — ${profile.detail}`;
-      option.disabled = !profile.available;
-      select.append(option);
+  const key = state.profiles.map((profile) => `${profile.id}:${profile.badge}:${profile.detail}`).join("|");
+  if (key !== profileOptionsKey) {
+    profileOptionsKey = key;
+    const revision = state.profiles.find((profile) => profile.role === "legacy")
+      || state.profiles.find((profile) => profile.role === "baseline")
+      || state.profiles.find((profile) => profile.kind === "revision");
+    const selectors = [elements.pvcProfile, elements.whiteProfile, elements.blackProfile];
+    selectors.forEach((select, index) => {
+      const previous = select.value;
+      select.replaceChildren();
+      state.profiles.forEach((profile) => {
+        const option = document.createElement("option");
+        option.value = profile.id;
+        option.textContent = `[${profile.badge}] ${profile.name} — ${profile.detail}`;
+        option.disabled = !profile.available;
+        select.append(option);
+      });
+      if (previous && state.profiles.some((profile) => profile.id === previous)) {
+        select.value = previous;
+      } else if (index === 2 && revision) {
+        select.value = revision.id;
+      } else {
+        select.value = state.profiles[0].id;
+      }
     });
-    if (previous && state.profiles.some((profile) => profile.id === previous)) {
-      select.value = previous;
-    } else if (index === 2 && revision) {
-      select.value = revision.id;
-    } else {
-      select.value = state.profiles[0].id;
-    }
-  });
+  }
+  renderProfileSummaries();
+}
+
+function renderProfileSummary(select, summary) {
+  const profile = state?.profiles?.find((candidate) => candidate.id === select.value);
+  if (!profile) return;
+  summary.dataset.role = profile.role;
+  summary.querySelector(".profile-badge").textContent = profile.badge;
+  summary.querySelector("strong").textContent = profile.name;
+  summary.querySelector("small").textContent = profile.detail;
+}
+
+function renderProfileSummaries() {
+  renderProfileSummary(elements.pvcProfile, elements.pvcProfileSummary);
+  renderProfileSummary(elements.whiteProfile, elements.whiteProfileSummary);
+  renderProfileSummary(elements.blackProfile, elements.blackProfileSummary);
 }
 
 function resolveOrientation(preference) {
@@ -552,6 +586,10 @@ elements.newGameForm.addEventListener("submit", (event) => {
 });
 
 elements.newGameForm.addEventListener("change", updateSetupVisibility);
+
+for (const select of [elements.pvcProfile, elements.whiteProfile, elements.blackProfile]) {
+  select.addEventListener("change", renderProfileSummaries);
+}
 
 document.querySelector("#undo").addEventListener("click", async () => {
   if (busy) return;
