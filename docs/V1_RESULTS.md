@@ -38,6 +38,12 @@ same container. Three interleaved depth-11 comparisons against the mobility-only
 revision kept an identical 391,564-node tree; median runtime fell from 2,427 ms
 to 2,147 ms, an additional 11.5% reduction on the profiled host.
 
+Finally, search now samples the steady clock every 256 nodes instead of at every
+node, and insufficient-material detection exits as soon as it sees a pawn, rook,
+or queen. Three interleaved depth-11 comparisons against the fixed-list revision
+again kept the exact tree; median runtime fell from 1,465 ms to 1,401 ms (4.4%).
+A 50 ms UCI search still stopped at the requested 50 ms on the profiled host.
+
 ## Root parallelism
 
 The original four-thread implementation searched every root move independently

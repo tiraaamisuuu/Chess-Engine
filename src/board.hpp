@@ -664,15 +664,13 @@ struct Board {
     bool insufficientMaterial() const {
         int wMinor=0,bMinor=0;
         int wB=0,wN=0,bB=0,bN=0;
-        int wOther=0,bOther=0;
         int whiteBishopSquare = -1;
         int blackBishopSquare = -1;
         for(size_t square = 0; square < b.size(); square++){
             const Piece& p = b[square];
             if(isNone(p) || p.t==PieceType::King) continue;
             if(p.t==PieceType::Pawn || p.t==PieceType::Rook || p.t==PieceType::Queen){
-                if(p.c==Color::White) wOther++;
-                else bOther++;
+                return false;
             } else {
                 if(p.c==Color::White){
                     wMinor++;
@@ -685,7 +683,6 @@ struct Board {
                 }
             }
         }
-        if(wOther>0 || bOther>0) return false;
         if(wMinor==0 && bMinor==0) return true;
         if(wMinor==1 && bMinor==0 && (wB==1 || wN==1)) return true;
         if(bMinor==1 && wMinor==0 && (bB==1 || bN==1)) return true;

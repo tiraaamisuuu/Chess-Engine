@@ -27,6 +27,7 @@ struct SearchContext {
     int softTimeLimitMs=1000;
     int hardTimeLimitMs=1000;
     bool stop=false;
+    u32 timeCheckCounter=0;
     const std::atomic<bool>* abortFlag=nullptr;
     const PositionEvaluator* evaluator=nullptr;
 
@@ -121,6 +122,11 @@ inline bool timeUp(SearchContext& ctx){
         ctx.stop = true;
         return true;
     }
+    // A steady-clock syscall at every node is measurable search overhead.
+    // At current throughput, checking every 256 nodes keeps hard-limit drift
+    // comfortably below the GUI's 50 ms minimum while removing most calls.
+    ctx.timeCheckCounter++;
+    if((ctx.timeCheckCounter & 255U) != 0) return false;
     auto now = std::chrono::steady_clock::now();
     int ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - ctx.start).count();
     if(ms >= ctx.hardTimeLimitMs){
@@ -533,6 +539,7 @@ inline Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
     ctx.softTimeLimitMs = softTimeLimitMs;
     ctx.hardTimeLimitMs = std::max(softTimeLimitMs, hardTimeLimitMs);
     ctx.stop = false;
+    ctx.timeCheckCounter = 0;
     ctx.tt.newSearch();
     const Move noMove = invalidMove();
 
@@ -709,6 +716,7 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
     ctx.softTimeLimitMs = softTimeLimitMs;
     ctx.hardTimeLimitMs = std::max(softTimeLimitMs, hardTimeLimitMs);
     ctx.stop = false;
+    ctx.timeCheckCounter = 0;
     ctx.tt.newSearch();
     const Move noMove = invalidMove();
 
@@ -795,6 +803,7 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
             local.softTimeLimitMs = ctx.softTimeLimitMs;
             local.hardTimeLimitMs = ctx.hardTimeLimitMs;
             local.stop = false;
+            local.timeCheckCounter = 0;
             local.abortFlag = ctx.abortFlag;
             local.tt.newSearch();
         }
