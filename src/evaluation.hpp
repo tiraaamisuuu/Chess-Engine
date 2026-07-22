@@ -97,6 +97,123 @@ inline int pstScore(PieceType t, int idxWhitePerspective, int phase){
     }
 }
 
+// Count pseudo-legal moves without constructing Move objects. Classical
+// evaluation only needs the mobility total, so routing through genPseudoMoves
+// paid for vector writes and full move metadata at every evaluated node.
+inline int pseudoMobility(const Board& bd, Color us){
+    int count = 0;
+    for(int square = 0; square < 64; square++){
+        const Piece piece = bd.b[static_cast<size_t>(square)];
+        if(isNone(piece) || piece.c != us) continue;
+        const int rank = square / 8;
+        const int file = square % 8;
+
+        if(piece.t == PieceType::Pawn){
+            const int direction = us == Color::White ? 1 : -1;
+            const int startRank = us == Color::White ? 1 : 6;
+            const int promotionRank = us == Color::White ? 7 : 0;
+            const int nextRank = rank + direction;
+            if(nextRank >= 0 && nextRank < 8){
+                const int one = nextRank * 8 + file;
+                if(isNone(bd.b[static_cast<size_t>(one)])){
+                    count += nextRank == promotionRank ? 4 : 1;
+                    if(rank == startRank){
+                        const int two = (rank + 2 * direction) * 8 + file;
+                        if(isNone(bd.b[static_cast<size_t>(two)])) count++;
+                    }
+                }
+                for(const int fileOffset : {-1, 1}){
+                    const int targetFile = file + fileOffset;
+                    if(targetFile < 0 || targetFile >= 8) continue;
+                    const int target = nextRank * 8 + targetFile;
+                    const Piece occupant = bd.b[static_cast<size_t>(target)];
+                    if(!isNone(occupant) && occupant.c != us){
+                        count += nextRank == promotionRank ? 4 : 1;
+                    }
+                    if(bd.epSquare == target){
+                        const Piece adjacent = bd.b[static_cast<size_t>(rank * 8 + targetFile)];
+                        if(adjacent.t == PieceType::Pawn && adjacent.c != us) count++;
+                    }
+                }
+            }
+            continue;
+        }
+
+        if(piece.t == PieceType::Knight){
+            static constexpr int offsets[8][2] = {
+                {1,2}, {2,1}, {-1,2}, {-2,1}, {1,-2}, {2,-1}, {-1,-2}, {-2,-1}
+            };
+            for(const auto& offset : offsets){
+                const int targetFile = file + offset[0];
+                const int targetRank = rank + offset[1];
+                if(targetFile < 0 || targetFile >= 8 || targetRank < 0 || targetRank >= 8) continue;
+                const Piece target = bd.b[static_cast<size_t>(targetRank * 8 + targetFile)];
+                if(isNone(target) || target.c != us) count++;
+            }
+            continue;
+        }
+
+        if(piece.t == PieceType::Bishop || piece.t == PieceType::Rook || piece.t == PieceType::Queen){
+            auto countRay = [&](int fileStep, int rankStep){
+                int targetFile = file + fileStep;
+                int targetRank = rank + rankStep;
+                while(targetFile >= 0 && targetFile < 8 && targetRank >= 0 && targetRank < 8){
+                    const Piece target = bd.b[static_cast<size_t>(targetRank * 8 + targetFile)];
+                    if(isNone(target)){
+                        count++;
+                    } else {
+                        if(target.c != us) count++;
+                        break;
+                    }
+                    targetFile += fileStep;
+                    targetRank += rankStep;
+                }
+            };
+            if(piece.t == PieceType::Bishop || piece.t == PieceType::Queen){
+                countRay(1, 1); countRay(1, -1); countRay(-1, 1); countRay(-1, -1);
+            }
+            if(piece.t == PieceType::Rook || piece.t == PieceType::Queen){
+                countRay(1, 0); countRay(-1, 0); countRay(0, 1); countRay(0, -1);
+            }
+            continue;
+        }
+
+        if(piece.t == PieceType::King){
+            for(int fileOffset = -1; fileOffset <= 1; fileOffset++){
+                for(int rankOffset = -1; rankOffset <= 1; rankOffset++){
+                    if(fileOffset == 0 && rankOffset == 0) continue;
+                    const int targetFile = file + fileOffset;
+                    const int targetRank = rank + rankOffset;
+                    if(targetFile < 0 || targetFile >= 8 || targetRank < 0 || targetRank >= 8) continue;
+                    const Piece target = bd.b[static_cast<size_t>(targetRank * 8 + targetFile)];
+                    if(isNone(target) || target.c != us) count++;
+                }
+            }
+
+            if(us == Color::White && square == 4){
+                if((bd.castling & 0b0001) && isNone(bd.b[5]) && isNone(bd.b[6]) &&
+                   bd.b[7].t == PieceType::Rook && bd.b[7].c == Color::White &&
+                   !bd.inCheck(Color::White) && !bd.isSquareAttacked(5, Color::Black) &&
+                   !bd.isSquareAttacked(6, Color::Black)) count++;
+                if((bd.castling & 0b0010) && isNone(bd.b[3]) && isNone(bd.b[2]) && isNone(bd.b[1]) &&
+                   bd.b[0].t == PieceType::Rook && bd.b[0].c == Color::White &&
+                   !bd.inCheck(Color::White) && !bd.isSquareAttacked(3, Color::Black) &&
+                   !bd.isSquareAttacked(2, Color::Black)) count++;
+            } else if(us == Color::Black && square == 60){
+                if((bd.castling & 0b0100) && isNone(bd.b[61]) && isNone(bd.b[62]) &&
+                   bd.b[63].t == PieceType::Rook && bd.b[63].c == Color::Black &&
+                   !bd.inCheck(Color::Black) && !bd.isSquareAttacked(61, Color::White) &&
+                   !bd.isSquareAttacked(62, Color::White)) count++;
+                if((bd.castling & 0b1000) && isNone(bd.b[59]) && isNone(bd.b[58]) && isNone(bd.b[57]) &&
+                   bd.b[56].t == PieceType::Rook && bd.b[56].c == Color::Black &&
+                   !bd.inCheck(Color::Black) && !bd.isSquareAttacked(59, Color::White) &&
+                   !bd.isSquareAttacked(58, Color::White)) count++;
+            }
+        }
+    }
+    return count;
+}
+
 inline int evaluateClassical(const Board& bd){
     int material = 0;
     int pst = 0;
@@ -225,19 +342,7 @@ inline int evaluateClassical(const Board& bd){
         rookFiles -= rookFileBonus(bRooks[static_cast<size_t>(rookIndex)], Color::Black);
     }
 
-    int mobility = 0;
-    {
-        Board t = bd;
-        thread_local std::vector<Move> whiteMoves;
-        thread_local std::vector<Move> blackMoves;
-        if(whiteMoves.capacity() < 256) whiteMoves.reserve(256);
-        if(blackMoves.capacity() < 256) blackMoves.reserve(256);
-        t.stm = Color::White;
-        t.genPseudoMoves(whiteMoves);
-        t.stm = Color::Black;
-        t.genPseudoMoves(blackMoves);
-        mobility = (static_cast<int>(whiteMoves.size()) - static_cast<int>(blackMoves.size())) * 2;
-    }
+    const int mobility = (pseudoMobility(bd, Color::White) - pseudoMobility(bd, Color::Black)) * 2;
 
     int kingSafety = 0;
     if(phase > 0){

@@ -107,6 +107,46 @@ void testEvaluationOrientation(const Zobrist& zobrist){
     expect(e2e4.from < 64, "e2e4 should be legal from the start position");
 }
 
+void testPseudoMobilityCounter(const Zobrist& zobrist){
+    auto compare = [&](const Board& position, const std::string& label){
+        for(const Color color : {Color::White, Color::Black}){
+            Board generated = position;
+            generated.stm = color;
+            std::vector<Move> moves;
+            generated.genPseudoMoves(moves);
+            expect(pseudoMobility(position, color) == static_cast<int>(moves.size()),
+                   label + " mobility counter should match generated pseudo moves");
+        }
+    };
+
+    Board board;
+    board.setZobrist(&zobrist);
+    board.reset();
+    compare(board, "start position");
+
+    const std::vector<std::string> fixtures = {
+        "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+        "4k3/P6p/8/3pP3/8/8/8/4K3 w - d6 0 1",
+        "4k3/2q5/3r4/2B1N3/3Q4/8/4R3/4K3 b - - 0 1",
+    };
+    for(const std::string& fen : fixtures){
+        expect(board.loadFEN(fen), "mobility fixture should load");
+        compare(board, "fixture");
+    }
+
+    board.reset();
+    std::mt19937 random(0x4D4F4249U);
+    for(int ply = 0; ply < 100; ply++){
+        compare(board, "random playout");
+        std::vector<Move> legal;
+        board.genLegalMoves(legal);
+        if(legal.empty()) break;
+        Undo undo{};
+        expect(board.makeMove(legal[static_cast<size_t>(random() % legal.size())], undo),
+               "random mobility move should be makeable");
+    }
+}
+
 void testEnPassantHashing(const Zobrist& zobrist){
     Board unavailableEp;
     unavailableEp.setZobrist(&zobrist);
@@ -261,6 +301,7 @@ int main(){
     testPerft(zobrist, quick);
     testMakeUnmakeAndHash(zobrist);
     testEvaluationOrientation(zobrist);
+    testPseudoMobilityCounter(zobrist);
     testEnPassantHashing(zobrist);
     testDrawRules(zobrist);
     testNotation(zobrist);

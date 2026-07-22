@@ -17,6 +17,20 @@ Caching king squares and reusing move buffers raised typical depth-4 perft
 throughput from roughly 11–18 million to roughly 24–29 million nodes/second on
 the baseline host.
 
+## Classical evaluation throughput
+
+An Apple M3 sampling profile identified pseudo-move generation inside the
+classical mobility term as the largest self-time cost. Evaluation only needed
+the number of moves, but was building two complete move vectors at every
+evaluated node. Replacing that work with a tested allocation-free counter kept
+every fixed-depth node count, score, and best move identical.
+
+At depth 12 across the four benchmark positions, revision `4f1bdc80a0` searched
+585,267 main nodes in 2,536 ms (230,783 NPS). The allocation-free mobility
+counter searched the identical tree in 2,268 ms (258,054 NPS): an 11.8%
+throughput increase on the same host. Time-limited results still require paired
+matches because greater NPS alone is not an Elo claim.
+
 ## Root parallelism
 
 The original four-thread implementation searched every root move independently
