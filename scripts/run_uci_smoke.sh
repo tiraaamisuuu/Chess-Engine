@@ -26,38 +26,38 @@ trap 'rm -f "$OUT_FILE"' EXIT
   printf 'quit\n'
 } | "$ENGINE_BIN" --uci > "$OUT_FILE"
 
-if ! rg -q '^uciok$' "$OUT_FILE"; then
+if ! grep -Eq '^uciok$' "$OUT_FILE"; then
   echo "[FAIL] Missing uciok" >&2
   cat "$OUT_FILE" >&2
   exit 1
 fi
 
-if ! rg -q '^readyok$' "$OUT_FILE"; then
+if ! grep -Eq '^readyok$' "$OUT_FILE"; then
   echo "[FAIL] Missing readyok" >&2
   cat "$OUT_FILE" >&2
   exit 1
 fi
 
-if ! rg -q '^bestmove [a-h][1-8][a-h][1-8][qrbn]?$' "$OUT_FILE"; then
+if ! grep -Eq '^bestmove [a-h][1-8][a-h][1-8][qrbn]?$' "$OUT_FILE"; then
   echo "[FAIL] Missing or invalid bestmove" >&2
   cat "$OUT_FILE" >&2
   exit 1
 fi
 
-if ! rg -q '^bestmove a2a3$' "$OUT_FILE"; then
+if ! grep -Eq '^bestmove a2a3$' "$OUT_FILE"; then
   echo "[FAIL] UCI searchmoves restriction was not respected" >&2
   cat "$OUT_FILE" >&2
   exit 1
 fi
 
-if ! rg -q '^option name Clear Hash type button$' "$OUT_FILE"; then
+if ! grep -Eq '^option name Clear Hash type button$' "$OUT_FILE"; then
   echo "[FAIL] Clear Hash option was not advertised" >&2
   cat "$OUT_FILE" >&2
   exit 1
 fi
 
-if ! rg -q '^option name EvalFile type string default <empty>$' "$OUT_FILE" ||
-   ! rg -q '^option name Use NNUE type check default false$' "$OUT_FILE"; then
+if ! grep -Eq '^option name EvalFile type string default <empty>$' "$OUT_FILE" ||
+   ! grep -Eq '^option name Use NNUE type check default false$' "$OUT_FILE"; then
   echo "[FAIL] NNUE UCI options were not advertised" >&2
   cat "$OUT_FILE" >&2
   exit 1

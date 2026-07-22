@@ -13,7 +13,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure headless build
         run: cmake -S . -B build -DCHESS_BUILD_GUI=OFF -DBUILD_TESTING=ON
       - name: Build
@@ -27,6 +27,6 @@ jobs:
   sanitizers:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Address and undefined behaviour sanitizers
         run: scripts/run_sanitizers.sh

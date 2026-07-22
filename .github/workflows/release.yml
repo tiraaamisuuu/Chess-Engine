@@ -21,7 +21,7 @@ jobs:
             label: windows-x64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure
         run: cmake -S . -B build -DCHESS_BUILD_GUI=OFF -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
       - name: Build
@@ -30,7 +30,7 @@ jobs:
         run: ctest --test-dir build -C Release --output-on-failure
       - name: Package
         run: cmake --build build --config Release --target package
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tiramisu-${{ matrix.label }}
           path: build/TiramisuChess-*.zip
@@ -39,7 +39,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: release-assets
           merge-multiple: true
