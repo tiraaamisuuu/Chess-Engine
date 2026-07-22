@@ -160,6 +160,7 @@ def discover_profiles(engine_path: Path, nnue_path: Path | None) -> list[EngineP
     )]
     known_commands = {str(engine_path.resolve())}
     used_ids = {profiles[0].profile_id}
+    manifest_profiles_loaded = False
 
     if PROFILE_MANIFEST.is_file():
         try:
@@ -189,6 +190,7 @@ def discover_profiles(engine_path: Path, nnue_path: Path | None) -> list[EngineP
                 ))
                 known_commands.add(str(binary))
                 used_ids.add(profile_id)
+                manifest_profiles_loaded = True
         except (OSError, json.JSONDecodeError, TypeError):
             pass
 
@@ -199,6 +201,8 @@ def discover_profiles(engine_path: Path, nnue_path: Path | None) -> list[EngineP
             if binary is None or str(binary) in known_commands:
                 continue
             label = build.parent.name
+            if manifest_profiles_loaded and not label.startswith("baseline-v0"):
+                continue
             profile_id = slug(label)
             if not profile_id or profile_id in used_ids:
                 continue
