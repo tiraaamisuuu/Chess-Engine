@@ -30,3 +30,23 @@ jobs:
       - uses: actions/checkout@v7
       - name: Address and undefined behaviour sanitizers
         run: scripts/run_sanitizers.sh
+
+  web-gui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: web/requirements.txt
+      - name: Build engine
+        run: |
+          cmake -S . -B build -DCHESS_BUILD_GUI=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+      - name: Install web bridge dependency
+        run: python -m pip install -r web/requirements.txt
+      - name: Validate web interface
+        run: |
+          node --check web/app.js
+          python tests/web_api_smoke.py --engine ./build/tiramisu-uci

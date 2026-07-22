@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0d0c">
+  <title>TiramisuChess — Engine Room</title>
+  <meta name="description" content="A focused local interface for playing and analysing with TiramisuChess.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="ambient ambient-one" aria-hidden="true"></div>
+  <div class="ambient ambient-two" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="TiramisuChess home">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span><strong>TIRAMISU</strong><small>CHESS ENGINE</small></span>
+    </a>
+    <div class="connection" id="connection">
+      <span class="connection-dot"></span>
+      <span id="connection-label">Connecting</span>
+    </div>
+    <button class="button button-primary compact" id="new-game-top">New game</button>
+  </header>
+
+  <main class="workspace">
+    <section class="play-area" aria-label="Chess game">
+      <div class="player-strip" id="top-player">
+        <div class="avatar"><span id="top-monogram">TC</span></div>
+        <div class="player-copy">
+          <strong id="top-name">TiramisuChess</strong>
+          <span id="top-detail">Engine · 650 ms</span>
+        </div>
+        <div class="turn-pill" id="top-turn">WAITING</div>
+      </div>
+
+      <div class="board-stage">
+        <div class="evaluation" aria-label="Position evaluation">
+          <div class="evaluation-white" id="evaluation-fill"></div>
+          <span id="evaluation-score">0.00</span>
+        </div>
+        <div class="board-shell">
+          <div class="board" id="board" role="grid" aria-label="Chessboard"></div>
+          <div class="thinking-overlay" id="thinking-overlay" aria-live="polite">
+            <span class="thinking-spinner"></span>
+            <strong>Tiramisu is thinking</strong>
+            <small id="thinking-detail">Searching the position</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="player-strip" id="bottom-player">
+        <div class="avatar human"><span id="bottom-monogram">YOU</span></div>
+        <div class="player-copy">
+          <strong id="bottom-name">You</strong>
+          <span id="bottom-detail">White pieces</span>
+        </div>
+        <div class="turn-pill active" id="bottom-turn">YOUR MOVE</div>
+      </div>
+
+      <div class="board-actions">
+        <button class="icon-button" id="undo" title="Undo move" aria-label="Undo move"><span>↶</span>Undo</button>
+        <button class="icon-button" id="flip" title="Flip board" aria-label="Flip board"><span>⇅</span>Flip</button>
+        <button class="icon-button" id="copy-fen" title="Copy FEN" aria-label="Copy FEN"><span>□</span>Copy FEN</button>
+        <button class="icon-button" id="new-game" title="New game" aria-label="New game"><span>＋</span>New</button>
+      </div>
+    </section>
+
+    <aside class="side-panel">
+      <div class="status-card">
+        <div>
+          <span class="eyebrow">LIVE POSITION</span>
+          <h1 id="position-status">Your move</h1>
+        </div>
+        <span class="status-pulse" id="status-pulse"></span>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Game information">
+        <button class="tab active" data-tab="moves" role="tab" aria-selected="true">Moves</button>
+        <button class="tab" data-tab="analysis" role="tab" aria-selected="false">Analysis</button>
+      </div>
+
+      <section class="panel-view active" id="moves-view" aria-label="Move list">
+        <div class="moves-list" id="moves-list">
+          <div class="empty-state">
+            <span>01</span>
+            <p>Your game will appear here.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel-view" id="analysis-view" aria-label="Engine analysis">
+        <div class="analysis-hero">
+          <span class="eyebrow">EVALUATION</span>
+          <strong id="analysis-score">0.00</strong>
+          <small id="analysis-depth">Waiting for a position</small>
+        </div>
+        <div class="pv-block">
+          <span class="eyebrow">PRINCIPAL VARIATION</span>
+          <p id="analysis-pv">Analysis begins after the first move.</p>
+        </div>
+        <div class="metric-grid">
+          <div><span>DEPTH</span><strong id="metric-depth">—</strong></div>
+          <div><span>NODES</span><strong id="metric-nodes">—</strong></div>
+          <div><span>NPS</span><strong id="metric-nps">—</strong></div>
+          <div><span>TIME</span><strong id="metric-time">—</strong></div>
+        </div>
+      </section>
+
+      <div class="engine-card">
+        <div class="engine-icon" aria-hidden="true"><span></span></div>
+        <div>
+          <span class="eyebrow">CONNECTED ENGINE</span>
+          <strong id="engine-name">TiramisuChess</strong>
+        </div>
+        <span class="engine-state" id="engine-state">UCI</span>
+      </div>
+    </aside>
+  </main>
+
+  <dialog class="modal" id="new-game-modal">
+    <form method="dialog" id="new-game-form">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow">FRESH BOARD</span>
+          <h2>Start a new game</h2>
+        </div>
+        <button class="modal-close" value="cancel" aria-label="Close">×</button>
+      </div>
+
+      <fieldset>
+        <legend>Play as</legend>
+        <div class="segmented three">
+          <label><input type="radio" name="side" value="white" checked><span>White</span></label>
+          <label><input type="radio" name="side" value="random"><span>Random</span></label>
+          <label><input type="radio" name="side" value="black"><span>Black</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Mode</legend>
+        <div class="segmented">
+          <label><input type="radio" name="mode" value="engine" checked><span>Vs engine</span></label>
+          <label><input type="radio" name="mode" value="local"><span>Local board</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset id="strength-field">
+        <legend>Engine response</legend>
+        <div class="segmented three">
+          <label><input type="radio" name="engine-time" value="250"><span>Quick</span></label>
+          <label><input type="radio" name="engine-time" value="650" checked><span>Balanced</span></label>
+          <label><input type="radio" name="engine-time" value="1500"><span>Deep</span></label>
+        </div>
+      </fieldset>
+
+      <button class="button button-primary modal-submit" value="default" type="submit">Start game</button>
+    </form>
+  </dialog>
+
+  <dialog class="promotion-modal" id="promotion-modal">
+    <div>
+      <span class="eyebrow">PROMOTION</span>
+      <h2>Choose a piece</h2>
+      <div class="promotion-options" id="promotion-options"></div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

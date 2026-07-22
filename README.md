@@ -1,9 +1,9 @@
 # TiramisuChess
 
-TiramisuChess is a C++17 chess engine with independent UCI, developer-tool, and
-SFML 2.6 desktop targets. The v1 rework prioritizes rule correctness,
-reproducible strength testing, efficient classical search, and an optional NNUE
-evaluation path.
+TiramisuChess is a C++17 chess engine with independent UCI and developer-tool
+targets, a local web interface, and the legacy SFML 2.6 desktop application. The
+v1 rework prioritizes rule correctness, reproducible strength testing, efficient
+classical search, and an optional NNUE evaluation path.
 
 ## Current engine
 
@@ -12,6 +12,7 @@ evaluation path.
 - Quiescence, transposition table, null-move pruning, LMR, aspiration windows,
   killer/history/countermove ordering, and time management
 - UCI Hash, Threads, Clear Hash, searchmoves, EvalFile, and Use NNUE controls
+- Responsive local web GUI with engine play and live analysis
 - SFML modes for local play, play against the engine, and engine self-play
 - Perft, fixed-position benchmarks, UCI smoke tests, paired opening matches,
   and cross-platform headless CI
@@ -19,6 +20,24 @@ evaluation path.
 The optional root-parallel search is still experimental. One thread remains the
 default until paired Elo testing proves a multi-thread configuration stronger at
 equal time.
+
+## Run the new web GUI
+
+The primary redesign is a sharp, responsive local web interface backed by the
+real UCI engine. It remains local to your machine; the chess engine is not sent
+to a remote website.
+
+```sh
+scripts/run_web_gui.sh
+```
+
+On Windows PowerShell, run `scripts\run_web_gui.ps1` instead.
+
+The launcher creates an isolated Python environment on first use, builds the
+headless engine when needed, starts the local bridge, and opens the interface.
+It supports click and drag movement, legal-move guidance, engine play, live
+evaluation and PV, move history, undo, board flipping, promotion, side choice,
+local two-player mode, and desktop/mobile layouts.
 
 ## Build the headless engine and tools
 
@@ -47,9 +66,10 @@ go movetime 1000
 quit
 ```
 
-## Build the GUI
+## Build the legacy SFML GUI
 
-The GUI requires SFML 2.6.x; SFML 3 is not API-compatible with this project.
+The original native GUI remains available during the transition. It requires
+SFML 2.6.x; SFML 3 is not API-compatible with this project.
 
 ```sh
 cmake -S . -B build-gui \
@@ -82,23 +102,30 @@ transposition-table collisions, and the NNUE binary contract.
 
 ## Strength testing
 
-Install `cutechess-cli`, build separate candidate and baseline binaries, then:
+The comparison tool builds two committed Git refs in isolation, downloads a
+verified balanced opening suite, and runs paired Cute Chess games. To build the
+pinned tournament runner on macOS/Linux:
 
 ```sh
-GAMES=400 TC=10+0.1 THREADS=1 \
-  scripts/run_elo_match.sh ./candidate/tiramisu-uci ./baseline/tiramisu-uci
+scripts/install_cutechess.sh
+scripts/compare_engines.py --quick
 ```
 
-Matches use `tests/openings.epd` with paired colours. For serious tuning, set
-`OPENINGS_FILE` to a much larger balanced suite and enable SPRT:
+On Windows PowerShell, first run `scripts\install_cutechess.ps1`, then invoke
+the comparison with `py -3 scripts\compare_engines.py --quick`.
+
+Compare the latest release with the rework:
 
 ```sh
-SPRT=1 ELO0=0 ELO1=5 GAMES=10000 OPENINGS_FILE=/path/to/uho.epd \
-  scripts/run_elo_match.sh ./candidate/tiramisu-uci ./baseline/tiramisu-uci
+scripts/compare_engines.py \
+  --baseline v0.4.0 --candidate codex/v1-engine-rework \
+  --games 400 --tc 10+0.1
 ```
 
 Search and evaluation changes should not be accepted solely because they reach
-more nodes or look positionally sensible; they need paired match evidence.
+more nodes or look positionally sensible; they need paired match evidence. See
+[docs/BENCHMARKING.md](docs/BENCHMARKING.md) for SPRT, larger tests, Windows
+setup, and NNUE-vs-NNUE examples.
 
 ## NNUE
 
@@ -122,6 +149,7 @@ src/                  chess core, evaluation, search, UCI, GUI
 tests/                deterministic tests and opening positions
 scripts/              builds, quality gates, Elo matches
 scripts/nnue/         dataset generation and PyTorch training
+web/                   minimalist local web GUI and UCI bridge
 docs/                 baseline, roadmap, and NNUE specification
 assets/               GUI piece artwork
 ```

@@ -94,6 +94,11 @@ if(TARGET gui)
   install(TARGETS gui RUNTIME DESTINATION bin)
   install(DIRECTORY assets DESTINATION share/tiramisu-chess)
 endif()
+install(DIRECTORY web assets DESTINATION .
+  PATTERN "__pycache__" EXCLUDE
+  PATTERN "*.pyc" EXCLUDE)
+install(PROGRAMS scripts/run_web_gui.sh DESTINATION scripts)
+install(FILES scripts/run_web_gui.ps1 DESTINATION scripts)
 install(FILES README.md DESTINATION .)
 install(DIRECTORY docs DESTINATION .)
 

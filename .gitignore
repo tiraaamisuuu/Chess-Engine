@@ -19,6 +19,8 @@ moves.txt
 .vscode/
 .idea/
 .venv/
+.venv-web/
+.tools/
 __pycache__/
 *.pyc
 
