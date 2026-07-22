@@ -55,10 +55,10 @@ fi
 
 if ! grep -Eq '^bestmove b2b3$' "$OUT_FILE" ||
    ! awk '$1 == "info" && $0 ~ / pv b2b3( |$)/ {
-              for(i = 1; i <= NF; i++) if($i == "time" && $(i + 1) <= 10) safe = 1
+              for(i = 1; i <= NF; i++) if($i == "time" && $(i + 1) <= 1) safe = 1
           }
           END { exit !safe }' "$OUT_FILE"; then
-  echo "[FAIL] Low-clock search did not preserve its 10 ms move overhead" >&2
+  echo "[FAIL] Low-clock search did not preserve its move overhead" >&2
   cat "$OUT_FILE" >&2
   exit 1
 fi
@@ -69,7 +69,7 @@ if ! grep -Eq '^option name Clear Hash type button$' "$OUT_FILE"; then
   exit 1
 fi
 
-if ! grep -Eq '^option name Move Overhead type spin default 10 min 0 max 5000$' "$OUT_FILE"; then
+if ! grep -Eq '^option name Move Overhead type spin default 25 min 0 max 5000$' "$OUT_FILE"; then
   echo "[FAIL] Move Overhead option was not advertised" >&2
   cat "$OUT_FILE" >&2
   exit 1

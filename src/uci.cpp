@@ -199,7 +199,7 @@ int runUCILoop(int defaultThreads){
     const int hardwareThreads = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
     int searchThreads = std::clamp(defaultThreads, 1, hardwareThreads);
     int hashMB = 256;
-    int moveOverheadMs = 10;
+    int moveOverheadMs = 25;
 
     PositionEvaluator evaluator;
     SearchContext search;
@@ -283,7 +283,7 @@ int runUCILoop(int defaultThreads){
                       << "option name Hash type spin default 256 min 1 max 4096\n"
                       << "option name Threads type spin default " << searchThreads
                       << " min 1 max " << hardwareThreads << "\n"
-                      << "option name Move Overhead type spin default 10 min 0 max 5000\n"
+                      << "option name Move Overhead type spin default 25 min 0 max 5000\n"
                       << "option name Clear Hash type button\n"
                       << "option name EvalFile type string default <empty>\n"
                       << "option name Use NNUE type check default false\n"
@@ -330,7 +330,7 @@ int runUCILoop(int defaultThreads){
                     searchThreads = std::clamp(value, 1, hardwareThreads);
                 }
             } else if(lower.find("name move overhead") != std::string::npos && valuePosition != std::string::npos){
-                int value = 10;
+                int value = 25;
                 if(parseIntStrict(trim(line.substr(valuePosition + 7)), value)){
                     moveOverheadMs = std::clamp(value, 0, 5000);
                 }
