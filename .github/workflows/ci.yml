@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  headless:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure headless build
+        run: cmake -S . -B build -DCHESS_BUILD_GUI=OFF -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Core tests
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: UCI smoke test
+        if: runner.os != 'Windows'
+        run: scripts/run_uci_smoke.sh ./build/tiramisu-uci

@@ -1,8 +1,5 @@
-// Chess types and shared utilities (SFML 2.6.x)
+// Chess types and shared engine utilities.
 #pragma once
-
-#include <SFML/Graphics.hpp>
-#include <SFML/Window.hpp>
 
 #include <iomanip>
 #include <algorithm>
@@ -26,24 +23,20 @@
 #include <mutex>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 
 using u8  = std::uint8_t;
 using u16 = std::uint16_t;
 using u32 = std::uint32_t;
 using u64 = std::uint64_t;
 
-static sf::Vector2f snap(sf::Vector2f p) { return sf::Vector2f(std::round(p.x), std::round(p.y)); }
-static void setCrispTextPosition(sf::Text& t, sf::Vector2f p){
-    const sf::FloatRect b = t.getLocalBounds();
-    t.setPosition(snap(sf::Vector2f(p.x - b.left, p.y - b.top)));
-}
-static std::string trim(std::string s){
+inline std::string trim(std::string s){
     while(!s.empty() && (s.back()=='\n' || s.back()=='\r' || s.back()==' ' || s.back()=='\t')) s.pop_back();
     size_t i = 0;
     while(i < s.size() && (s[i]==' ' || s[i]=='\t' || s[i]=='\n' || s[i]=='\r')) ++i;
     return s.substr(i);
 }
-static std::string shellQuote(const std::string& s){
+inline std::string shellQuote(const std::string& s){
     std::string out = "'";
     for(char c : s){
         if(c=='\'') out += "'\\''";
@@ -52,7 +45,7 @@ static std::string shellQuote(const std::string& s){
     out.push_back('\'');
     return out;
 }
-static std::string windowsCmdQuote(const std::string& s){
+inline std::string windowsCmdQuote(const std::string& s){
     std::string out = "\"";
     for(char c : s){
         if(c=='"') out += "\"\"";
@@ -64,43 +57,17 @@ static std::string windowsCmdQuote(const std::string& s){
 
 // ======================== Squares / Coords ========================
 struct Square { int file=0, rank=0; }; // 0..7
-static bool operator==(const Square& a, const Square& b){ return a.file==b.file && a.rank==b.rank; }
-static bool inBounds(const Square& s){ return s.file>=0 && s.file<8 && s.rank>=0 && s.rank<8; }
-static int sqToIndex(const Square& s){ return s.rank*8 + s.file; }
-static Square indexToSq(int idx){ return Square{idx%8, idx/8}; }
-static std::string sqName(const Square& s){
+inline bool operator==(const Square& a, const Square& b){ return a.file==b.file && a.rank==b.rank; }
+inline bool inBounds(const Square& s){ return s.file>=0 && s.file<8 && s.rank>=0 && s.rank<8; }
+inline int sqToIndex(const Square& s){ return s.rank*8 + s.file; }
+inline Square indexToSq(int idx){ return Square{idx%8, idx/8}; }
+inline std::string sqName(const Square& s){
     return std::string() + char('a'+s.file) + char('1'+s.rank);
-}
-
-// Visual board: rank 7 at top visually unless flipped
-static sf::Vector2f squareToPixel(const Square& s, float tile, sf::Vector2f origin, bool flip){
-    int vr = flip ? s.rank : (7 - s.rank);
-    int vf = flip ? (7 - s.file) : s.file;
-    return sf::Vector2f(origin.x + vf*tile, origin.y + vr*tile);
-}
-static std::optional<Square> pixelToSquare(sf::Vector2f p, float tile, sf::Vector2f origin, bool flip){
-    float x=p.x-origin.x, y=p.y-origin.y;
-    if(x<0||y<0) return std::nullopt;
-    int vf=int(x/tile), vr=int(y/tile);
-    if(vf<0||vf>7||vr<0||vr>7) return std::nullopt;
-    int file = flip ? (7 - vf) : vf;
-    int rank = flip ? vr : (7 - vr);
-    return Square{file, rank};
-}
-
-static sf::Color lighten(sf::Color c, int add){
-    auto clamp=[](int v){ return std::max(0,std::min(255,v)); };
-    return sf::Color(
-        static_cast<sf::Uint8>(clamp(int(c.r)+add)),
-        static_cast<sf::Uint8>(clamp(int(c.g)+add)),
-        static_cast<sf::Uint8>(clamp(int(c.b)+add)),
-        c.a
-    );
 }
 
 // ======================== Chess Types ========================
 enum class Color : u8 { White=0, Black=1 };
-static Color other(Color c){ return c==Color::White ? Color::Black : Color::White; }
+inline Color other(Color c){ return c==Color::White ? Color::Black : Color::White; }
 
 enum class PieceType : u8 { None=0, Pawn, Knight, Bishop, Rook, Queen, King };
 
@@ -108,9 +75,9 @@ struct Piece {
     PieceType t = PieceType::None;
     Color c = Color::White;
 };
-static bool isNone(const Piece& p){ return p.t==PieceType::None; }
+inline bool isNone(const Piece& p){ return p.t==PieceType::None; }
 
-static int pieceValue(PieceType t){
+inline int pieceValue(PieceType t){
     switch(t){
         case PieceType::Pawn:   return 100;
         case PieceType::Knight: return 320;
@@ -122,7 +89,7 @@ static int pieceValue(PieceType t){
     }
 }
 
-static std::string pieceName(PieceType t){
+inline std::string pieceName(PieceType t){
     switch(t){
         case PieceType::Pawn:   return "pawn";
         case PieceType::Knight: return "knight";
@@ -133,7 +100,7 @@ static std::string pieceName(PieceType t){
         default: return "";
     }
 }
-static std::string pieceKey(const Piece& p){
+inline std::string pieceKey(const Piece& p){
     if(p.t==PieceType::None) return "";
     std::string col = (p.c==Color::White) ? "white_" : "black_";
     return col + pieceName(p.t);
@@ -153,10 +120,12 @@ struct Undo {
     int epSquare=-1;
     u8 castling=0;
     int halfmoveClock=0;
+    int fullmoveNumber=1;
+    std::array<int, 2> kingSquare{{-1, -1}};
     u64 hash=0;
 };
 
-static std::string moveToUCI(const Move& m){
+inline std::string moveToUCI(const Move& m){
     Square a = indexToSq(m.from);
     Square b = indexToSq(m.to);
     std::string s = sqName(a) + sqName(b);
@@ -170,7 +139,7 @@ static std::string moveToUCI(const Move& m){
     return s;
 }
 
-static char sanPieceChar(PieceType t){
+inline char sanPieceChar(PieceType t){
     switch(t){
         case PieceType::Knight: return 'N';
         case PieceType::Bishop: return 'B';
@@ -224,7 +193,7 @@ struct TranspositionTable {
         size_t bytes = mb*1024ull*1024ull;
         size_t n = std::max<size_t>(1, bytes / sizeof(TTEntry));
         size_t p=1;
-        while(p < n) p<<=1;
+        while((p << 1) <= n) p<<=1;
         table.assign(p, TTEntry{});
         mask = p-1;
         generation = 0;

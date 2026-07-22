@@ -1,279 +1,7 @@
 #pragma once
 
 #include "board.hpp"
-
-// ======================== Evaluation (PST + extras) ========================
-static int mirrorIndex(int idx){
-    int f = idx%8, r=idx/8;
-    int mr = 7-r;
-    return mr*8 + f;
-}
-
-static const int PST_PAWN[64]={
-     0,  0,  0,  0,  0,  0,  0,  0,
-    50, 50, 50, 55, 55, 50, 50, 50,
-    10, 10, 20, 30, 30, 20, 10, 10,
-     5,  5, 10, 25, 25, 10,  5,  5,
-     0,  0,  0, 20, 20,  0,  0,  0,
-     5, -5,-10,  0,  0,-10, -5,  5,
-     5, 10, 10,-20,-20, 10, 10,  5,
-     0,  0,  0,  0,  0,  0,  0,  0
-};
-static const int PST_KNIGHT[64]={
-   -50,-40,-30,-30,-30,-30,-40,-50,
-   -40,-20,  0,  5,  5,  0,-20,-40,
-   -30,  5, 10, 15, 15, 10,  5,-30,
-   -30,  0, 15, 20, 20, 15,  0,-30,
-   -30,  5, 15, 20, 20, 15,  5,-30,
-   -30,  0, 10, 15, 15, 10,  0,-30,
-   -40,-20,  0,  0,  0,  0,-20,-40,
-   -50,-40,-30,-30,-30,-30,-40,-50
-};
-static const int PST_BISHOP[64]={
-   -20,-10,-10,-10,-10,-10,-10,-20,
-   -10,  5,  0,  0,  0,  0,  5,-10,
-   -10, 10, 10, 10, 10, 10, 10,-10,
-   -10,  0, 10, 10, 10, 10,  0,-10,
-   -10,  5,  5, 10, 10,  5,  5,-10,
-   -10,  0,  5, 10, 10,  5,  0,-10,
-   -10,  0,  0,  0,  0,  0,  0,-10,
-   -20,-10,-10,-10,-10,-10,-10,-20
-};
-static const int PST_ROOK[64]={
-     0,  0,  5, 10, 10,  5,  0,  0,
-    -5,  0,  0,  0,  0,  0,  0, -5,
-    -5,  0,  0,  0,  0,  0,  0, -5,
-    -5,  0,  0,  0,  0,  0,  0, -5,
-    -5,  0,  0,  0,  0,  0,  0, -5,
-    -5,  0,  0,  0,  0,  0,  0, -5,
-     5, 10, 10, 10, 10, 10, 10,  5,
-     0,  0,  0,  0,  0,  0,  0,  0
-};
-static const int PST_QUEEN[64]={
-   -20,-10,-10, -5, -5,-10,-10,-20,
-   -10,  0,  0,  0,  0,  0,  0,-10,
-   -10,  0,  5,  5,  5,  5,  0,-10,
-    -5,  0,  5,  5,  5,  5,  0, -5,
-     0,  0,  5,  5,  5,  5,  0, -5,
-   -10,  5,  5,  5,  5,  5,  0,-10,
-   -10,  0,  5,  0,  0,  0,  0,-10,
-   -20,-10,-10, -5, -5,-10,-10,-20
-};
-static const int PST_KING_MG[64]={
-   -30,-40,-40,-50,-50,-40,-40,-30,
-   -30,-40,-40,-50,-50,-40,-40,-30,
-   -30,-40,-40,-50,-50,-40,-40,-30,
-   -30,-40,-40,-50,-50,-40,-40,-30,
-   -20,-30,-30,-40,-40,-30,-30,-20,
-   -10,-20,-20,-20,-20,-20,-20,-10,
-    20, 20,  0,  0,  0,  0, 20, 20,
-    20, 30, 10,  0,  0, 10, 30, 20
-};
-static const int PST_KING_EG[64]={
-   -50,-40,-30,-20,-20,-30,-40,-50,
-   -30,-20,-10,  0,  0,-10,-20,-30,
-   -30,-10, 20, 30, 30, 20,-10,-30,
-   -30,-10, 30, 40, 40, 30,-10,-30,
-   -30,-10, 30, 40, 40, 30,-10,-30,
-   -30,-10, 20, 30, 30, 20,-10,-30,
-   -30,-30,  0,  0,  0,  0,-30,-30,
-   -50,-30,-30,-30,-30,-30,-30,-50
-};
-
-static int pstScore(PieceType t, int idxWhitePerspective, bool endgameKing){
-    switch(t){
-        case PieceType::Pawn: return PST_PAWN[idxWhitePerspective];
-        case PieceType::Knight: return PST_KNIGHT[idxWhitePerspective];
-        case PieceType::Bishop: return PST_BISHOP[idxWhitePerspective];
-        case PieceType::Rook: return PST_ROOK[idxWhitePerspective];
-        case PieceType::Queen: return PST_QUEEN[idxWhitePerspective];
-        case PieceType::King: return endgameKing ? PST_KING_EG[idxWhitePerspective] : PST_KING_MG[idxWhitePerspective];
-        default: return 0;
-    }
-}
-
-static int evaluate(const Board& bd){
-    int material = 0;
-    int pst = 0;
-
-    int phase = 0;
-    for(int i=0;i<64;i++){
-        const Piece p = bd.b[i];
-        if(isNone(p) || p.t==PieceType::King || p.t==PieceType::Pawn) continue;
-        if(p.t==PieceType::Knight || p.t==PieceType::Bishop) phase += 1;
-        else if(p.t==PieceType::Rook) phase += 2;
-        else if(p.t==PieceType::Queen) phase += 4;
-    }
-    phase = std::clamp(phase, 0, 24);
-    const bool endgameKing = (phase <= 8);
-
-    int whiteBishops = 0, blackBishops = 0;
-    int wpFile[8]{}, bpFile[8]{};
-    std::vector<int> wPawns, bPawns, wRooks, bRooks;
-    wPawns.reserve(8); bPawns.reserve(8); wRooks.reserve(2); bRooks.reserve(2);
-
-    for(int i=0;i<64;i++){
-        const Piece p = bd.b[i];
-        if(isNone(p)) continue;
-
-        const int base = pieceValue(p.t);
-        if(p.c==Color::White) material += base;
-        else material -= base;
-
-        const int idxW = (p.c==Color::White) ? i : mirrorIndex(i);
-        const int ps = pstScore(p.t, idxW, endgameKing);
-        if(p.c==Color::White) pst += ps;
-        else pst -= ps;
-
-        if(p.t==PieceType::Bishop){
-            if(p.c==Color::White) whiteBishops++;
-            else blackBishops++;
-        } else if(p.t==PieceType::Pawn){
-            const int f = i % 8;
-            if(p.c==Color::White){
-                wpFile[f]++;
-                wPawns.push_back(i);
-            } else {
-                bpFile[f]++;
-                bPawns.push_back(i);
-            }
-        } else if(p.t==PieceType::Rook){
-            if(p.c==Color::White) wRooks.push_back(i);
-            else bRooks.push_back(i);
-        }
-    }
-
-    int bishopPair = 0;
-    if(whiteBishops >= 2) bishopPair += 30;
-    if(blackBishops >= 2) bishopPair -= 30;
-
-    int pawnStruct = 0;
-    for(int f=0; f<8; f++){
-        if(wpFile[f] >= 2) pawnStruct -= 12 * (wpFile[f] - 1);
-        if(bpFile[f] >= 2) pawnStruct += 12 * (bpFile[f] - 1);
-
-        if(wpFile[f] > 0){
-            const bool left = (f > 0 && wpFile[f-1] > 0);
-            const bool right = (f < 7 && wpFile[f+1] > 0);
-            if(!left && !right) pawnStruct -= 10;
-        }
-        if(bpFile[f] > 0){
-            const bool left = (f > 0 && bpFile[f-1] > 0);
-            const bool right = (f < 7 && bpFile[f+1] > 0);
-            if(!left && !right) pawnStruct += 10;
-        }
-    }
-
-    int passedPawns = 0;
-    static const int passedBonusByRank[8] = {0, 5, 10, 20, 35, 60, 90, 0};
-    for(int sq : wPawns){
-        const int f = sq % 8;
-        const int r = sq / 8;
-        bool blocked = false;
-        for(int rr = r + 1; rr < 8 && !blocked; rr++){
-            for(int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ff++){
-                const Piece p = bd.b[rr*8 + ff];
-                if(!isNone(p) && p.c==Color::Black && p.t==PieceType::Pawn){
-                    blocked = true;
-                    break;
-                }
-            }
-        }
-        if(!blocked){
-            passedPawns += passedBonusByRank[r];
-        }
-    }
-    for(int sq : bPawns){
-        const int f = sq % 8;
-        const int r = sq / 8;
-        bool blocked = false;
-        for(int rr = r - 1; rr >= 0 && !blocked; rr--){
-            for(int ff = std::max(0, f - 1); ff <= std::min(7, f + 1); ff++){
-                const Piece p = bd.b[rr*8 + ff];
-                if(!isNone(p) && p.c==Color::White && p.t==PieceType::Pawn){
-                    blocked = true;
-                    break;
-                }
-            }
-        }
-        if(!blocked){
-            const int progress = 7 - r;
-            passedPawns -= passedBonusByRank[progress];
-        }
-    }
-
-    int rookFiles = 0;
-    auto rookFileBonus = [&](int sq, Color c)->int{
-        const int f = sq % 8;
-        const int ownPawns = (c==Color::White) ? wpFile[f] : bpFile[f];
-        const int oppPawns = (c==Color::White) ? bpFile[f] : wpFile[f];
-        if(ownPawns == 0 && oppPawns == 0) return 24;
-        if(ownPawns == 0) return 12;
-        return 0;
-    };
-    for(int sq : wRooks) rookFiles += rookFileBonus(sq, Color::White);
-    for(int sq : bRooks) rookFiles -= rookFileBonus(sq, Color::Black);
-
-    int mobility = 0;
-    {
-        Board t = bd;
-        t.stm = Color::White;
-        std::vector<Move> w; t.genPseudoMoves(w);
-        t.stm = Color::Black;
-        std::vector<Move> b; t.genPseudoMoves(b);
-        mobility = (int(w.size()) - int(b.size())) * 2;
-    }
-
-    int kingSafety = 0;
-    if(!endgameKing){
-        const int wK = bd.findKing(Color::White);
-        const int bK = bd.findKing(Color::Black);
-
-        auto kingCentrePenalty = [&](int kIdx)->int{
-            if(kIdx < 0) return 0;
-            const int f = kIdx % 8;
-            const int r = kIdx / 8;
-            const int df = std::abs(f - 4);
-            int pen = 0;
-            if(df <= 1 && (r==0 || r==7)) pen += 10;
-            if(df <= 1 && (r==1 || r==6)) pen += 20;
-            if(df <= 1 && (r==2 || r==5)) pen += 35;
-            return pen;
-        };
-
-        auto kingShieldScore = [&](int kIdx, Color c)->int{
-            if(kIdx < 0) return 0;
-            const int f = kIdx % 8;
-            const int r = kIdx / 8;
-            const int dir = (c==Color::White) ? 1 : -1;
-            const int sr = r + dir;
-            if(sr < 0 || sr > 7) return 0;
-
-            int score = 0;
-            for(int df = -1; df <= 1; df++){
-                const int nf = f + df;
-                if(nf < 0 || nf > 7) continue;
-                const Piece p = bd.b[sr*8 + nf];
-                if(!isNone(p) && p.c==c && p.t==PieceType::Pawn) score += 8;
-                else score -= 6;
-            }
-            return score;
-        };
-
-        kingSafety -= kingCentrePenalty(wK);
-        kingSafety += kingCentrePenalty(bK);
-        kingSafety += kingShieldScore(wK, Color::White);
-        kingSafety -= kingShieldScore(bK, Color::Black);
-
-        const bool wCanCastle = (bd.castling & 0b0011) != 0;
-        const bool bCanCastle = (bd.castling & 0b1100) != 0;
-        if(!wCanCastle) kingSafety -= 10;
-        if(!bCanCastle) kingSafety += 10;
-    }
-
-    int scoreWhite = material + pst + bishopPair + pawnStruct + passedPawns + rookFiles + mobility + kingSafety;
-    return (bd.stm==Color::White) ? scoreWhite : -scoreWhite;
-}
+#include "evaluation.hpp"
 
 // ======================== Search (ID + TT + QS + Ordering) ========================
 struct SearchStats {
@@ -310,18 +38,18 @@ struct SearchContext {
     std::vector<u64> repetition;
 };
 
-static bool sameMove(const Move& a, const Move& b){
+inline bool sameMove(const Move& a, const Move& b){
     return a.from==b.from && a.to==b.to && a.promo==b.promo && a.isCastle==b.isCastle && a.isEnPassant==b.isEnPassant;
 }
 
-static Move invalidMove(){
+inline Move invalidMove(){
     Move m{};
     m.from = 64;
     m.to = 64;
     return m;
 }
 
-static int mvvLvaScore(const Board& bd, const Move& m){
+inline int mvvLvaScore(const Board& bd, const Move& m){
     Piece a = bd.at(m.from);
     int attacker = pieceValue(a.t);
     int victim = 0;
@@ -334,7 +62,7 @@ static int mvvLvaScore(const Board& bd, const Move& m){
     return victim*10 - attacker;
 }
 
-static int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const Move& ttMove, int ply, const Move& prevMove){
+inline int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const Move& ttMove, int ply, const Move& prevMove){
     if(ttMove.from < 64 && ttMove.from==m.from && ttMove.to==m.to && ttMove.promo==m.promo) return 1000000;
 
     const int side = (bd.stm==Color::White)?0:1;
@@ -366,7 +94,7 @@ static int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const M
     return ctx.history[side][m.from][m.to];
 }
 
-static inline bool timeUp(SearchContext& ctx){
+inline bool timeUp(SearchContext& ctx){
     if(ctx.stop) return true;
     if(ctx.abortFlag && ctx.abortFlag->load(std::memory_order_relaxed)){
         ctx.stop = true;
@@ -381,31 +109,31 @@ static inline bool timeUp(SearchContext& ctx){
     return false;
 }
 
-static inline int elapsedTimeMs(const SearchContext& ctx){
+inline int elapsedTimeMs(const SearchContext& ctx){
     auto now = std::chrono::steady_clock::now();
     return (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - ctx.start).count();
 }
 
-static inline bool softTimeUp(const SearchContext& ctx){
+inline bool softTimeUp(const SearchContext& ctx){
     return elapsedTimeMs(ctx) >= ctx.softTimeLimitMs;
 }
 
-static const int INF = 100000000;
-static const int MATE = 1000000;
+inline const int INF = 100000000;
+inline const int MATE = 1000000;
 
-static int scoreToTT(int score, int ply){
+inline int scoreToTT(int score, int ply){
     if(score >= MATE - 10000) return score + ply;
     if(score <= -MATE + 10000) return score - ply;
     return score;
 }
 
-static int scoreFromTT(int score, int ply){
+inline int scoreFromTT(int score, int ply){
     if(score >= MATE - 10000) return score - ply;
     if(score <= -MATE + 10000) return score + ply;
     return score;
 }
 
-static bool hasNonPawnMaterial(const Board& bd, Color side){
+inline bool hasNonPawnMaterial(const Board& bd, Color side){
     for(const auto& p : bd.b){
         if(isNone(p) || p.c != side) continue;
         if(p.t != PieceType::King && p.t != PieceType::Pawn) return true;
@@ -413,7 +141,7 @@ static bool hasNonPawnMaterial(const Board& bd, Color side){
     return false;
 }
 
-static int nonKingPieceCount(const Board& bd, Color side){
+inline int nonKingPieceCount(const Board& bd, Color side){
     int count = 0;
     for(const auto& p : bd.b){
         if(isNone(p) || p.c != side || p.t == PieceType::King) continue;
@@ -422,16 +150,7 @@ static int nonKingPieceCount(const Board& bd, Color side){
     return count;
 }
 
-static int practicalDrawScore(const Board& bd, int staticEval){
-    const int totalPieces = nonKingPieceCount(bd, Color::White) + nonKingPieceCount(bd, Color::Black);
-    if(totalPieces <= 4) return 0;
-
-    int contempt = std::clamp(staticEval / 10, -24, 24);
-    if(totalPieces <= 8) contempt = (contempt * 2) / 3;
-    return -contempt;
-}
-
-static bool isThreefoldRepetition(const Board& bd, const SearchContext& ctx){
+inline bool isThreefoldRepetition(const Board& bd, const SearchContext& ctx){
     if(ctx.repetition.empty()) return false;
 
     const size_t n = ctx.repetition.size();
@@ -448,15 +167,13 @@ static bool isThreefoldRepetition(const Board& bd, const SearchContext& ctx){
     return false;
 }
 
-static int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int ply){
+inline int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int ply){
     if(timeUp(ctx)) return 0;
     ctx.stats.qnodes++;
 
     alpha = std::max(alpha, -MATE + ply);
     beta = std::min(beta, MATE - ply - 1);
     if(alpha >= beta) return alpha;
-
-    if(isThreefoldRepetition(bd, ctx)) return practicalDrawScore(bd, evaluate(bd));
 
     const bool inCheck = bd.inCheck(bd.stm);
     if(inCheck){
@@ -479,6 +196,8 @@ static int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int pl
         }
         return best;
     }
+
+    if(isThreefoldRepetition(bd, ctx)) return 0;
 
     int stand = evaluate(bd);
     if(stand >= beta) return stand;
@@ -530,7 +249,7 @@ static int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int pl
     return alpha;
 }
 
-static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta, int ply, const Move& prevMove, bool allowNullMove){
+inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta, int ply, const Move& prevMove, bool allowNullMove){
     if(timeUp(ctx)) return 0;
     ctx.stats.nodes++;
 
@@ -540,9 +259,17 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     if(alpha >= beta) return alpha;
     const bool pvNode = (beta - alpha) > 1;
 
+    const bool ruleDraw = bd.halfmoveClock >= 100 || isThreefoldRepetition(bd, ctx);
+    if(ruleDraw){
+        // Checkmate ends the game before a draw claim can be made.
+        if(bd.inCheck(bd.stm)){
+            std::vector<Move> evasions;
+            bd.genLegalMoves(evasions);
+            if(evasions.empty()) return -MATE + ply;
+        }
+        return 0;
+    }
     if(bd.insufficientMaterial()) return 0;
-    if(bd.halfmoveClock >= 100) return 0;
-    if(isThreefoldRepetition(bd, ctx)) return practicalDrawScore(bd, evaluate(bd));
 
     bool inCheck = bd.inCheck(bd.stm);
     int staticEval = 0;
@@ -776,7 +503,8 @@ static int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     return best;
 }
 
-static Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, int softTimeLimitMs, int hardTimeLimitMs){
+inline Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, int softTimeLimitMs, int hardTimeLimitMs,
+                                 const std::vector<Move>* rootRestriction = nullptr){
     ctx.stats = {};
     ctx.stats.softTimeLimitMs = softTimeLimitMs;
     ctx.stats.hardTimeLimitMs = hardTimeLimitMs;
@@ -814,6 +542,13 @@ static Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
 
     std::vector<Move> rootMoves;
     bd.genLegalMoves(rootMoves);
+    if(rootRestriction){
+        rootMoves.erase(std::remove_if(rootMoves.begin(), rootMoves.end(), [&](const Move& move){
+            return std::none_of(rootRestriction->begin(), rootRestriction->end(), [&](const Move& allowed){
+                return sameMove(move, allowed);
+            });
+        }), rootMoves.end());
+    }
     if(rootMoves.empty()) return Move{};
 
     Move bestMove = rootMoves[0];
@@ -924,6 +659,7 @@ static Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
             ctx.stats.bestScore = bestScore;
             ctx.stats.bestMoveChanges = bestMoveChanges;
             ctx.stats.aspirationResearches = aspirationResearches;
+            ctx.tt.store(bd.hash, d, scoreToTT(bestScore, 0), TTFlag::Exact, bestMove);
 
             const int scoreSwing = std::abs(bestScore - previousScore);
             int extraTime = 0;
@@ -947,7 +683,8 @@ static Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
     return bestMove;
 }
 
-static Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, int softTimeLimitMs, int hardTimeLimitMs, int threadCount){
+inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, int softTimeLimitMs, int hardTimeLimitMs,
+                                   int threadCount, const std::vector<Move>* rootRestriction = nullptr){
     ctx.stats = {};
     ctx.stats.softTimeLimitMs = softTimeLimitMs;
     ctx.stats.hardTimeLimitMs = hardTimeLimitMs;
@@ -985,6 +722,13 @@ static Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
 
     std::vector<Move> rootMoves;
     bd.genLegalMoves(rootMoves);
+    if(rootRestriction){
+        rootMoves.erase(std::remove_if(rootMoves.begin(), rootMoves.end(), [&](const Move& move){
+            return std::none_of(rootRestriction->begin(), rootRestriction->end(), [&](const Move& allowed){
+                return sameMove(move, allowed);
+            });
+        }), rootMoves.end());
+    }
     if(rootMoves.empty()) return Move{};
 
     Move bestMove = rootMoves[0];
@@ -1115,6 +859,7 @@ static Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
             ctx.stats.depthReached = d;
             ctx.stats.bestScore = bestScore;
             ctx.stats.bestMoveChanges = bestMoveChanges;
+            ctx.tt.store(bd.hash, d, scoreToTT(bestScore, 0), TTFlag::Exact, bestMove);
 
             const int scoreSwing = std::abs(bestScore - previousScore);
             int extraTime = 0;
@@ -1146,89 +891,15 @@ static Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
     return bestMove;
 }
 
-static Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int softTimeLimitMs, int hardTimeLimitMs, int threadCount=1){
+inline Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int softTimeLimitMs, int hardTimeLimitMs,
+                           int threadCount=1, const std::vector<Move>* rootRestriction = nullptr){
     if(threadCount <= 1){
-        return searchBestMoveSingle(bd, ctx, maxDepth, softTimeLimitMs, hardTimeLimitMs);
+        return searchBestMoveSingle(bd, ctx, maxDepth, softTimeLimitMs, hardTimeLimitMs, rootRestriction);
     }
-    return searchBestMoveParallel(bd, ctx, maxDepth, softTimeLimitMs, hardTimeLimitMs, threadCount);
+    return searchBestMoveParallel(bd, ctx, maxDepth, softTimeLimitMs, hardTimeLimitMs, threadCount, rootRestriction);
 }
 
-static float drawWrappedText(sf::RenderTarget& target,
-                             const sf::Font& font,
-                             const std::string& text,
-                             unsigned characterSize,
-                             sf::Vector2f pos,
-                             float maxWidth,
-                             sf::Color col)
-{
-    sf::Text t;
-    t.setFont(font);
-    t.setCharacterSize(characterSize);
-    t.setFillColor(col);
-
-    const float lineSpacing = font.getLineSpacing(characterSize);
-    float y = pos.y;
-
-    auto flushLine = [&](const std::string& line){
-        if(line.empty()) return;
-        t.setString(line);
-        setCrispTextPosition(t, sf::Vector2f(pos.x, y));
-        target.draw(t);
-        y += lineSpacing;
-    };
-
-    auto fits = [&](const std::string& candidate)->bool{
-        t.setString(candidate);
-        return t.getLocalBounds().width <= maxWidth;
-    };
-
-    std::string currentLine;
-    std::string currentWord;
-
-    auto commitWord = [&](){
-        if(currentWord.empty()) return;
-
-        if(currentLine.empty()){
-            if(fits(currentWord)){
-                currentLine = currentWord;
-                currentWord.clear();
-                return;
-            }
-        } else {
-            std::string trial = currentLine + " " + currentWord;
-            if(fits(trial)){
-                currentLine = trial;
-                currentWord.clear();
-                return;
-            }
-        }
-
-        flushLine(currentLine);
-        currentLine = currentWord;
-        currentWord.clear();
-    };
-
-    for(char ch : text){
-        if(ch == '\n'){
-            commitWord();
-            flushLine(currentLine);
-            currentLine.clear();
-            continue;
-        }
-        if(ch == ' '){
-            commitWord();
-            continue;
-        }
-        currentWord.push_back(ch);
-    }
-
-    commitWord();
-    flushLine(currentLine);
-
-    return y - pos.y;
-}
-
-static std::string extractPVFromTT(Board bd, SearchContext& ctx, int maxPlies=12){
+inline std::string extractPVFromTT(Board bd, SearchContext& ctx, int maxPlies=12){
     std::string pv;
     std::vector<u64> seen;
     seen.reserve((size_t)maxPlies+2);
@@ -1259,7 +930,7 @@ static std::string extractPVFromTT(Board bd, SearchContext& ctx, int maxPlies=12
     return pv;
 }
 
-static u64 perft(Board& bd, int depth){
+inline u64 perft(Board& bd, int depth){
     if(depth <= 0) return 1;
 
     std::vector<Move> legal;
@@ -1276,7 +947,7 @@ static u64 perft(Board& bd, int depth){
     return nodes;
 }
 
-static std::vector<std::pair<std::string, u64>> perftDivide(Board& bd, int depth){
+inline std::vector<std::pair<std::string, u64>> perftDivide(Board& bd, int depth){
     std::vector<std::pair<std::string, u64>> out;
     if(depth <= 0) return out;
 
@@ -1299,7 +970,7 @@ struct PerftCase {
     std::vector<std::pair<int, u64>> expectations;
 };
 
-static int runPerftSuite(const Zobrist& zob, int maxDepthPerCase = 4){
+inline int runPerftSuite(const Zobrist& zob, int maxDepthPerCase = 4){
     const std::vector<PerftCase> cases = {
         {"Start Position", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", {
             {1, 20ULL}, {2, 400ULL}, {3, 8902ULL}, {4, 197281ULL}
@@ -1365,7 +1036,7 @@ struct BenchmarkPosition {
     const char* fen;
 };
 
-static int runSearchBenchmark(const Zobrist& zob, int depth, int perPositionTimeMs, int ttSizeMB = 256, int threads = 1){
+inline int runSearchBenchmark(const Zobrist& zob, int depth, int perPositionTimeMs, int ttSizeMB = 256, int threads = 1){
     const std::vector<BenchmarkPosition> positions = {
         {"Start", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"},
         {"Middlegame 1", "r2q1rk1/pp2bppp/2np1n2/2p1p1B1/2P1P3/2NP1N2/PP2QPPP/R4RK1 w - - 0 10"},

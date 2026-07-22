@@ -1,4 +1,6 @@
 #include "ui.hpp"
+#include "time_management.hpp"
+#include "uci.hpp"
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -74,406 +76,6 @@ private:
     std::chrono::steady_clock::time_point lastWall;
     std::clock_t lastCpu{};
 };
-
-static bool startsWith(const std::string& s, const std::string& prefix){
-    return s.size() >= prefix.size() && s.compare(0, prefix.size(), prefix) == 0;
-}
-
-static std::string toLowerASCII(std::string s){
-    for(char& ch : s){
-        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    }
-    return s;
-}
-
-static bool parseIntStrict(const std::string& s, int& out){
-    try{
-        size_t pos = 0;
-        int v = std::stoi(s, &pos);
-        if(pos != s.size()) return false;
-        out = v;
-        return true;
-    } catch(...){
-        return false;
-    }
-}
-
-static bool parseUCIMove(Board& board, const std::string& uci, Move& out){
-    std::vector<Move> legal;
-    board.genLegalMoves(legal);
-    auto it = std::find_if(legal.begin(), legal.end(), [&](const Move& m){
-        return moveToUCI(m) == uci;
-    });
-    if(it == legal.end()) return false;
-    out = *it;
-    return true;
-}
-
-static bool applyUCIPositionCommand(const std::string& line, Board& board, std::vector<u64>& history){
-    std::istringstream iss(line);
-    std::string token;
-    iss >> token; // "position"
-
-    std::vector<std::string> parts;
-    while(iss >> token){
-        parts.push_back(token);
-    }
-    if(parts.empty()) return false;
-
-    size_t idx = 0;
-    if(parts[idx] == "startpos"){
-        board.reset();
-        idx++;
-    } else if(parts[idx] == "fen"){
-        idx++;
-        const size_t fenStart = idx;
-        while(idx < parts.size() && parts[idx] != "moves"){
-            idx++;
-        }
-        if(idx - fenStart < 6) return false;
-
-        std::string fen;
-        for(size_t i = fenStart; i < idx; i++){
-            if(!fen.empty()) fen.push_back(' ');
-            fen += parts[i];
-        }
-        if(!board.loadFEN(fen)) return false;
-    } else {
-        return false;
-    }
-
-    history.clear();
-    history.push_back(board.hash);
-
-    if(idx >= parts.size()) return true;
-    if(parts[idx] != "moves") return false;
-    idx++;
-
-    for(; idx < parts.size(); idx++){
-        Move m{};
-        if(!parseUCIMove(board, parts[idx], m)) return false;
-        Undo u{};
-        if(!board.makeMove(m, u)) return false;
-        history.push_back(board.hash);
-    }
-    return true;
-}
-
-struct UCIGoParams {
-    int depth = -1;
-    int movetimeMs = -1;
-    int wtimeMs = -1;
-    int btimeMs = -1;
-    int wincMs = 0;
-    int bincMs = 0;
-    int movesToGo = -1;
-    bool infinite = false;
-};
-
-struct TimeBudget {
-    int softMs = 1000;
-    int hardMs = 1000;
-};
-
-static UCIGoParams parseUCIGoCommand(const std::string& line){
-    UCIGoParams out;
-    std::istringstream iss(line);
-    std::string token;
-    iss >> token; // "go"
-
-    auto readInt = [&](int& dst){
-        std::string v;
-        if(!(iss >> v)) return;
-        int parsed = 0;
-        if(parseIntStrict(v, parsed)) dst = parsed;
-    };
-
-    while(iss >> token){
-        if(token == "depth") readInt(out.depth);
-        else if(token == "movetime") readInt(out.movetimeMs);
-        else if(token == "wtime") readInt(out.wtimeMs);
-        else if(token == "btime") readInt(out.btimeMs);
-        else if(token == "winc") readInt(out.wincMs);
-        else if(token == "binc") readInt(out.bincMs);
-        else if(token == "movestogo") readInt(out.movesToGo);
-        else if(token == "infinite") out.infinite = true;
-        else if(token == "ponder"){
-            // Supported as a token but treated the same as normal search.
-        } else if(token == "searchmoves"){
-            // Skip explicit move list for now.
-            while(iss >> token){
-                if(token.size() < 4 || token.size() > 5) break;
-            }
-            break;
-        }
-    }
-    return out;
-}
-
-static int countNonKingPieces(const Board& board){
-    int pieces = 0;
-    for(const Piece& p : board.b){
-        if(isNone(p) || p.t == PieceType::King) continue;
-        pieces++;
-    }
-    return pieces;
-}
-
-static int positionComplexityScale(const Board& board, int legalMoves){
-    if(legalMoves <= 1) return 35;
-
-    int scale = 100;
-    const int pieces = countNonKingPieces(board);
-    if(board.inCheck(board.stm)) scale += 20;
-
-    if(legalMoves >= 36) scale += 18;
-    else if(legalMoves >= 28) scale += 10;
-    else if(legalMoves <= 6) scale -= 18;
-    else if(legalMoves <= 10) scale -= 10;
-
-    if(pieces >= 20) scale += 8;
-    else if(pieces <= 8) scale -= 8;
-
-    return std::clamp(scale, 35, 145);
-}
-
-static TimeBudget pickUCITimeBudget(const Board& board, const UCIGoParams& p){
-    if(p.movetimeMs > 0) return TimeBudget{p.movetimeMs, p.movetimeMs};
-    if(p.infinite) return TimeBudget{24 * 60 * 60 * 1000, 24 * 60 * 60 * 1000};
-
-    const bool white = (board.stm == Color::White);
-    const int sideTime = white ? p.wtimeMs : p.btimeMs;
-    const int sideInc = white ? p.wincMs : p.bincMs;
-    if(sideTime <= 0) return TimeBudget{1000, 1500};
-
-    Board probe = board;
-    std::vector<Move> legal;
-    probe.genLegalMoves(legal);
-    const int legalMoves = int(legal.size());
-    const int complexityScale = positionComplexityScale(board, legalMoves);
-
-    int movesToGo = p.movesToGo;
-    if(movesToGo <= 0){
-        const int pieces = countNonKingPieces(board);
-        if(pieces >= 22) movesToGo = 32;
-        else if(pieces >= 12) movesToGo = 24;
-        else movesToGo = 16;
-    }
-
-    const int reserve = std::max(25, std::min(250, sideTime / 50));
-    const int safeTime = std::max(20, sideTime - reserve);
-    const int baseSlice = safeTime / std::max(1, movesToGo + 3);
-    int soft = baseSlice + (sideInc * 3) / 4;
-    if(movesToGo <= 8) soft += baseSlice / 3;
-    if(sideTime < 2000) soft = std::max(15, baseSlice + sideInc / 2);
-    soft = (soft * complexityScale) / 100;
-    if(legalMoves <= 1) soft = std::min(soft, std::max(15, std::min(80, safeTime / 20)));
-    soft = std::clamp(soft, 15, std::max(15, safeTime / 2));
-
-    int hard = std::max(soft + 40, soft + soft / 2);
-    hard = std::max(hard, baseSlice * 3 + sideInc);
-    if(sideTime < 1000) hard = std::max(soft + 20, soft * 2);
-    hard = (hard * std::max(100, complexityScale + 10)) / 100;
-    if(legalMoves <= 1) hard = std::min(hard, std::max(soft, std::min(120, safeTime / 12)));
-    hard = std::clamp(hard, soft, safeTime);
-    return TimeBudget{soft, hard};
-}
-
-static TimeBudget pickGuiTimeBudget(const Board& board, int requestedMs){
-    Board probe = board;
-    std::vector<Move> legal;
-    probe.genLegalMoves(legal);
-    const int legalMoves = int(legal.size());
-    const int complexityScale = positionComplexityScale(board, legalMoves);
-
-    const int base = std::clamp(requestedMs, 100, 180000);
-    int soft = (base * complexityScale) / 100;
-    soft = std::clamp(soft, std::max(100, base / 3), std::min(180000, base + base / 2));
-    if(legalMoves <= 1) soft = std::min(soft, std::max(60, base / 5));
-    const int hard = std::clamp(soft + std::max(250, soft / 4), soft, 180000);
-    return TimeBudget{soft, hard};
-}
-
-static int runUCILoop(int defaultThreads = 1){
-    Zobrist zob;
-    Board board;
-    board.setZobrist(&zob);
-    board.reset();
-
-    std::vector<u64> positionHistory{board.hash};
-
-    const int maxThreads = std::max(1, int(std::thread::hardware_concurrency()));
-    int searchThreads = std::clamp(defaultThreads, 1, maxThreads);
-    int hashMB = 256;
-    SearchContext searchCtx;
-    searchCtx.tt.resizeMB(static_cast<size_t>(hashMB));
-
-    std::atomic<bool> abortSearch(false);
-    std::atomic<bool> thinking(false);
-    std::mutex ioMutex;
-    std::thread worker;
-
-    auto stopSearch = [&](){
-        abortSearch.store(true);
-        if(worker.joinable()) worker.join();
-        thinking.store(false);
-        abortSearch.store(false);
-    };
-
-    auto resetSearchState = [&](){
-        stopSearch();
-        searchCtx = SearchContext{};
-        searchCtx.tt.resizeMB(static_cast<size_t>(hashMB));
-    };
-
-    auto launchSearch = [&](int depth, TimeBudget budget){
-        stopSearch();
-
-        Board root = board;
-        std::vector<u64> rootHistory = positionHistory;
-        const int threadsThisSearch = searchThreads;
-        thinking.store(true);
-        abortSearch.store(false);
-
-        worker = std::thread([&, root, rootHistory, depth, budget, threadsThisSearch]() mutable {
-            searchCtx.abortFlag = &abortSearch;
-            searchCtx.gameHistory = rootHistory;
-
-            Move best = searchBestMove(root, searchCtx, depth, budget.softMs, budget.hardMs, threadsThisSearch);
-
-            std::vector<Move> legal;
-            root.genLegalMoves(legal);
-            auto legalIt = std::find_if(legal.begin(), legal.end(), [&](const Move& m){
-                return sameMove(m, best);
-            });
-            if(legalIt == legal.end()){
-                if(!legal.empty()) best = legal.front();
-                else best = Move{};
-            }
-
-            const u64 nodes = searchCtx.stats.nodes + searchCtx.stats.qnodes;
-            const long long nps = (searchCtx.stats.timeMs > 0)
-                ? static_cast<long long>((nodes * 1000ULL) / static_cast<u64>(searchCtx.stats.timeMs))
-                : 0LL;
-
-            const std::string pv = extractPVFromTT(root, searchCtx, 16);
-            const std::string bestUCI = (legal.empty()) ? "0000" : moveToUCI(best);
-
-            {
-                std::lock_guard<std::mutex> lock(ioMutex);
-                std::cout << "info depth " << searchCtx.stats.depthReached
-                          << " score cp " << searchCtx.stats.bestScore
-                          << " nodes " << nodes
-                          << " nps " << nps
-                          << " time " << searchCtx.stats.timeMs;
-                if(!pv.empty()) std::cout << " pv " << pv;
-                std::cout << "\n";
-                std::cout << "bestmove " << bestUCI << "\n" << std::flush;
-            }
-
-            thinking.store(false);
-            abortSearch.store(false);
-        });
-    };
-
-    std::string line;
-    while(std::getline(std::cin, line)){
-        line = trim(line);
-        if(line.empty()) continue;
-
-        const std::string lower = toLowerASCII(line);
-
-        if(lower == "uci"){
-            std::lock_guard<std::mutex> lock(ioMutex);
-            std::cout << "id name TiramisuChess v0.5.0-dev\n";
-            std::cout << "id author Alfie + Codex\n";
-            std::cout << "option name Hash type spin default 256 min 1 max 4096\n";
-            std::cout << "option name Threads type spin default " << searchThreads
-                      << " min 1 max " << maxThreads << "\n";
-            std::cout << "uciok\n" << std::flush;
-            continue;
-        }
-
-        if(lower == "isready"){
-            std::lock_guard<std::mutex> lock(ioMutex);
-            std::cout << "readyok\n" << std::flush;
-            continue;
-        }
-
-        if(startsWith(lower, "setoption")){
-            if(lower.find("name hash") != std::string::npos){
-                const size_t valuePos = lower.find(" value ");
-                if(valuePos != std::string::npos){
-                    const std::string value = trim(line.substr(valuePos + 7));
-                    int mb = 0;
-                    if(parseIntStrict(value, mb)){
-                        mb = std::clamp(mb, 1, 4096);
-                        hashMB = mb;
-                        resetSearchState();
-                    }
-                }
-            } else if(lower.find("name threads") != std::string::npos){
-                const size_t valuePos = lower.find(" value ");
-                if(valuePos != std::string::npos){
-                    const std::string value = trim(line.substr(valuePos + 7));
-                    int t = 1;
-                    if(parseIntStrict(value, t)){
-                        searchThreads = std::clamp(t, 1, maxThreads);
-                    }
-                }
-            } else if(lower.find("name clear hash") != std::string::npos){
-                resetSearchState();
-            }
-            continue;
-        }
-
-        if(lower == "ucinewgame"){
-            board.reset();
-            positionHistory = {board.hash};
-            resetSearchState();
-            continue;
-        }
-
-        if(startsWith(lower, "position ")){
-            stopSearch();
-            if(!applyUCIPositionCommand(line, board, positionHistory)){
-                std::lock_guard<std::mutex> lock(ioMutex);
-                std::cout << "info string invalid position command\n" << std::flush;
-            }
-            continue;
-        }
-
-        if(startsWith(lower, "go")){
-            const UCIGoParams go = parseUCIGoCommand(line);
-            const int depth = (go.depth > 0) ? go.depth : 64;
-            TimeBudget budget = pickUCITimeBudget(board, go);
-            budget.softMs = std::clamp(budget.softMs, 1, 24 * 60 * 60 * 1000);
-            budget.hardMs = std::clamp(budget.hardMs, budget.softMs, 24 * 60 * 60 * 1000);
-            launchSearch(depth, budget);
-            continue;
-        }
-
-        if(lower == "stop"){
-            stopSearch();
-            continue;
-        }
-
-        if(lower == "quit"){
-            stopSearch();
-            return 0;
-        }
-
-        if(lower == "ponderhit" || lower == "d" || lower == "debug on" || lower == "debug off"){
-            continue;
-        }
-
-        std::lock_guard<std::mutex> lock(ioMutex);
-        std::cout << "info string unknown command: " << line << "\n" << std::flush;
-    }
-
-    stopSearch();
-    return 0;
-}
 
 int main(int argc, char** argv){
     Zobrist zob;
@@ -698,6 +300,7 @@ int main(int argc, char** argv){
     std::vector<std::string> moveListUCI;
     std::vector<std::string> moveListSAN;
     std::vector<u64> positionHistory{board.hash};
+    GameStatus gameStatus{};
     aiSearchCtx.gameHistory = positionHistory;
 
     auto pushMove = [&](const Move& m)->bool{
@@ -708,6 +311,7 @@ int main(int argc, char** argv){
             moveListUCI.push_back(moveToUCI(m));
             moveListSAN.push_back(san);
             positionHistory.push_back(board.hash);
+            gameStatus = assessGameStatus(board, positionHistory);
             return true;
         }
         return false;
@@ -720,6 +324,7 @@ int main(int argc, char** argv){
         if(!moveListUCI.empty()) moveListUCI.pop_back();
         if(!moveListSAN.empty()) moveListSAN.pop_back();
         if(positionHistory.size() > 1) positionHistory.pop_back();
+        gameStatus = assessGameStatus(board, positionHistory);
     };
     auto getBookMove = [&]()->std::optional<Move>{
         if(moveListUCI.size() >= 18) return std::nullopt;
@@ -784,27 +389,12 @@ int main(int argc, char** argv){
             }
         }
 
+        const GameStatus finalStatus = assessGameStatus(replay, positionHistory);
         std::string result = "*";
-        std::string termination = "Game in progress";
-        {
-            std::vector<Move> legal;
-            replay.genLegalMoves(legal);
-            if(legal.empty()){
-                if(replay.inCheck(replay.stm)){
-                    result = (replay.stm == Color::White) ? "0-1" : "1-0";
-                    termination = "Checkmate";
-                } else {
-                    result = "1/2-1/2";
-                    termination = "Stalemate";
-                }
-            } else if(replay.insufficientMaterial()){
-                result = "1/2-1/2";
-                termination = "Insufficient material";
-            } else if(replay.halfmoveClock >= 100){
-                result = "1/2-1/2";
-                termination = "50-move rule";
-            }
-        }
+        if(finalStatus.termination == GameTermination::WhiteCheckmated) result = "0-1";
+        else if(finalStatus.termination == GameTermination::BlackCheckmated) result = "1-0";
+        else if(finalStatus.draw()) result = "1/2-1/2";
+        const std::string termination = gameTerminationName(finalStatus.termination);
 
         std::ofstream out(outPath);
         if(!out) return false;
@@ -942,6 +532,7 @@ int main(int argc, char** argv){
         moveListUCI.clear();
         positionHistory.clear();
         positionHistory.push_back(board.hash);
+        gameStatus = GameStatus{};
         selectedSq.reset();
         selectedMoves.clear();
         lastMove.reset();
@@ -1047,10 +638,7 @@ int main(int argc, char** argv){
     auto startAiThink = [&](){
         if(aiThinking.load() || aiPaused.load()) return;
 
-        // don't search if game is over
-        std::vector<Move> legal;
-        board.genLegalMoves(legal);
-        if(legal.empty()) return;
+        if(gameStatus.finished()) return;
 
         if(auto bm = getBookMove()){
             {
@@ -1232,7 +820,7 @@ int main(int argc, char** argv){
                 }
 
                 // Only allow human input if it's human side AND we aren't mid-AI-search (prevents weirdness in PvAI)
-                if(isHumanSide(board.stm) && !aiThinking.load()){
+                if(isHumanSide(board.stm) && !aiThinking.load() && !gameStatus.finished()){
                     if(e.type == sf::Event::MouseButtonPressed){
                         if(e.mouseButton.button == sf::Mouse::Left){
                             sf::Vector2f mp(float(e.mouseButton.x), float(e.mouseButton.y));
@@ -1292,7 +880,7 @@ int main(int argc, char** argv){
         }
 
         // AI turn (NON-BLOCKING)
-        if(mode!=GameMode::Menu && !isHumanSide(board.stm) && !aiPaused.load()){
+        if(mode!=GameMode::Menu && !isHumanSide(board.stm) && !aiPaused.load() && !gameStatus.finished()){
             bool shouldMove = true;
             if(mode==GameMode::AIvAI){
                 shouldMove = (aiClock.getElapsedTime().asMilliseconds() >= aiDelayMs);
@@ -1830,9 +1418,10 @@ int main(int argc, char** argv){
                     statusY += font.getLineSpacing(14);
                 }
             }
-            if(board.insufficientMaterial()){
+            if(gameStatus.finished()){
                 if(statusY + font.getLineSpacing(14) <= statusCardY + statusCardH - 10.f){
-                    drawText(cardTextX, statusY, 14, sf::Color(220,212,170), "Likely draw: insufficient material");
+                    drawText(cardTextX, statusY, 14, sf::Color(220,212,170),
+                             std::string("Game over: ") + gameTerminationName(gameStatus.termination));
                 }
             }
 

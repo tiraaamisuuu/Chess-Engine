@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ENGINE_BIN="${1:-./build/gui}"
+TOOLS_BIN="${1:-./build/tiramisu-tools}"
+UCI_BIN="${UCI_BIN:-./build/tiramisu-uci}"
 
 echo "== Regression =="
-"$(dirname "$0")/run_regression.sh" "$ENGINE_BIN"
+"$(dirname "$0")/run_regression.sh" "$TOOLS_BIN"
 
 echo
 echo "== UCI Smoke =="
-"$(dirname "$0")/run_uci_smoke.sh" "$ENGINE_BIN"
+"$(dirname "$0")/run_uci_smoke.sh" "$UCI_BIN"
 
 if [[ "${RUN_ELO:-0}" == "1" ]]; then
-  BASELINE_BIN="${BASELINE_BIN:-$ENGINE_BIN}"
+  CANDIDATE_BIN="${CANDIDATE_BIN:-$UCI_BIN}"
+  BASELINE_BIN="${BASELINE_BIN:-$UCI_BIN}"
   echo
   echo "== Elo Match =="
-  "$(dirname "$0")/run_elo_match.sh" "$ENGINE_BIN" "$BASELINE_BIN"
+  "$(dirname "$0")/run_elo_match.sh" "$CANDIDATE_BIN" "$BASELINE_BIN"
 fi
 
 echo
