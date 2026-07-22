@@ -1,4 +1,5 @@
 #include "chess_core.hpp"
+#include "time_management.hpp"
 
 #include <functional>
 #include <random>
@@ -293,6 +294,28 @@ void testStaticExchange(const Zobrist& zobrist){
            "SEE should value an undefended queen capture");
 }
 
+void testClockTimeManagement(const Zobrist& zobrist){
+    Board board;
+    board.setZobrist(&zobrist);
+    board.reset();
+
+    const TimeBudget protectedClock = pickClockTimeBudget(board, 20, 20, -1, 25);
+    expect(protectedClock.softMs == 1 && protectedClock.hardMs == 1,
+           "move overhead should preserve a one-millisecond emergency clock budget");
+
+    const TimeBudget smallerOverhead = pickClockTimeBudget(board, 20, 20, -1, 10);
+    expect(smallerOverhead.softMs >= 1 && smallerOverhead.hardMs >= smallerOverhead.softMs,
+           "low-clock budget should remain positive and ordered");
+    expect(smallerOverhead.hardMs <= 10,
+           "low-clock hard limit should not consume the configured reserve");
+
+    const TimeBudget normalClock = pickClockTimeBudget(board, 60'000, 500, 30, 25);
+    expect(normalClock.softMs > 0 && normalClock.hardMs >= normalClock.softMs,
+           "normal clock budget should remain positive and ordered");
+    expect(normalClock.hardMs <= 59'975,
+           "normal clock hard limit should retain the configured move overhead");
+}
+
 } // namespace
 
 int main(){
@@ -309,6 +332,7 @@ int main(){
     testTranspositionClusters();
     testNnueFormat(zobrist);
     testStaticExchange(zobrist);
+    testClockTimeManagement(zobrist);
 
     if(failures != 0){
         std::cerr << failures << " test assertion(s) failed\n";

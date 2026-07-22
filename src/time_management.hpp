@@ -34,6 +34,46 @@ inline int positionComplexityScale(const Board& board, int legalMoves){
     return std::clamp(scale, 35, 145);
 }
 
+inline TimeBudget pickClockTimeBudget(const Board& board,
+                                      int sideTime,
+                                      int sideIncrement,
+                                      int movesToGo,
+                                      int moveOverheadMs){
+    Board probe = board;
+    MoveList legal;
+    probe.genLegalMoves(legal);
+    const int legalMoves = static_cast<int>(legal.size());
+    const int complexityScale = positionComplexityScale(board, legalMoves);
+
+    if(movesToGo <= 0){
+        const int pieces = countNonKingPieces(board);
+        movesToGo = pieces >= 22 ? 32 : (pieces >= 12 ? 24 : 16);
+    }
+
+    // Preserve enough wall-clock margin for UCI transport and process
+    // scheduling. This matters when the remaining clock is roughly one
+    // increment: spending the entire increment can still lose on time after
+    // the bestmove line leaves the engine process.
+    const int reserve = std::max(std::clamp(moveOverheadMs, 0, 5000),
+                                 std::min(250, std::max(1, sideTime / 50)));
+    const int safeTime = std::max(1, sideTime - reserve);
+    const int baseSlice = safeTime / std::max(1, movesToGo + 3);
+    int soft = baseSlice + (sideIncrement * 3) / 4;
+    if(movesToGo <= 8) soft += baseSlice / 3;
+    if(sideTime < 2000) soft = std::max(5, baseSlice + sideIncrement / 2);
+    soft = (soft * complexityScale) / 100;
+    if(legalMoves <= 1) soft = std::min(soft, std::max(5, std::min(80, safeTime / 20)));
+    soft = std::clamp(soft, 1, std::max(1, safeTime / 2));
+
+    int hard = std::max(soft + 40, soft + soft / 2);
+    hard = std::max(hard, baseSlice * 3 + sideIncrement);
+    if(sideTime < 1000) hard = std::max(soft + 20, soft * 2);
+    hard = (hard * std::max(100, complexityScale + 10)) / 100;
+    if(legalMoves <= 1) hard = std::min(hard, std::max(soft, std::min(120, safeTime / 12)));
+    hard = std::clamp(hard, soft, safeTime);
+    return TimeBudget{soft, hard};
+}
+
 inline TimeBudget pickGuiTimeBudget(const Board& board, int requestedMs){
     Board probe = board;
     std::vector<Move> legal;
