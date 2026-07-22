@@ -44,6 +44,11 @@ are handled automatically: before v1, UCI mode lived in the SFML `gui` binary;
 new refs use the independent `tiramisu-uci` executable. Set `SFML_PREFIX` or
 pass `--sfml-prefix` if SFML 2.6 is not in the normal CMake search path.
 
+After the two binaries are built, they are also registered as local web GUI
+profiles. Open **New game → CvC** to watch those revisions play each other, or
+select either one as the opponent in PvC. This is useful for visual inspection;
+use the paired Cute Chess workflow for meaningful strength measurements.
+
 ## Check the installation
 
 ```sh

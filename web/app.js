@@ -29,7 +29,14 @@ const elements = {
   bottomTurn: document.querySelector("#bottom-turn"),
   newGameModal: document.querySelector("#new-game-modal"),
   newGameForm: document.querySelector("#new-game-form"),
+  pvcOptions: document.querySelector("#pvc-options"),
+  cvcOptions: document.querySelector("#cvc-options"),
   strengthField: document.querySelector("#strength-field"),
+  modeHelp: document.querySelector("#mode-help"),
+  pvcProfile: document.querySelector("#pvc-profile"),
+  whiteProfile: document.querySelector("#white-profile"),
+  blackProfile: document.querySelector("#black-profile"),
+  autoPlay: document.querySelector("#auto-play"),
   promotionModal: document.querySelector("#promotion-modal"),
   promotionOptions: document.querySelector("#promotion-options"),
   toast: document.querySelector("#toast"),
@@ -37,16 +44,18 @@ const elements = {
 
 let state = null;
 let orientation = "white";
+let orientationPreference = "auto";
 let selectedSquare = null;
-let draggedSquare = null;
+let dragState = null;
+let suppressClickUntil = 0;
 let busy = false;
 let pendingPromotion = [];
 let analysisSequence = 0;
+let engineLoopToken = 0;
+let engineTimer = null;
+let autoPlay = true;
+let profileOptionsKey = "";
 let toastTimer = null;
-
-const pieceLetters = {
-  pawn: "P", knight: "N", bishop: "B", rook: "R", queen: "Q", king: "K",
-};
 
 async function request(path, options = {}) {
   const response = await fetch(path, {
@@ -133,13 +142,12 @@ function renderBoard() {
       image.className = "piece";
       image.src = `/assets/pieces/${piece.color}_${piece.type}.svg`;
       image.alt = `${piece.color} ${piece.type}`;
-      image.draggable = state.canMove && piece.color === state.turn;
-      image.addEventListener("dragstart", (event) => {
-        draggedSquare = squareName;
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", squareName);
-      });
-      image.addEventListener("dragend", () => { draggedSquare = null; });
+      image.draggable = false;
+      const movable = state.canMove && piece.color === state.turn && legalFrom(squareName).length > 0;
+      image.classList.toggle("movable", movable);
+      if (movable) {
+        image.addEventListener("pointerdown", (event) => beginPieceDrag(event, squareName, image));
+      }
       square.append(image);
     }
 
@@ -158,19 +166,73 @@ function renderBoard() {
       square.append(fileLabel);
     }
     square.addEventListener("click", () => handleSquare(squareName));
-    square.addEventListener("dragover", (event) => event.preventDefault());
-    square.addEventListener("drop", (event) => {
-      event.preventDefault();
-      const from = draggedSquare || event.dataTransfer.getData("text/plain");
-      attemptMove(from, squareName);
-      draggedSquare = null;
-    });
     elements.board.append(square);
   });
 }
 
+function beginPieceDrag(event, squareName, image) {
+  if (busy || !state?.canMove || (event.pointerType === "mouse" && event.button !== 0)) return;
+  event.preventDefault();
+  selectedSquare = squareName;
+  const bounds = image.getBoundingClientRect();
+  renderBoard();
+  const source = elements.board.querySelector(`[data-square="${squareName}"] .piece`);
+  if (source) source.classList.add("drag-source");
+
+  const floating = image.cloneNode(true);
+  floating.className = "dragging-piece";
+  floating.style.width = `${bounds.width}px`;
+  floating.style.height = `${bounds.height}px`;
+  document.body.append(floating);
+  dragState = {
+    from: squareName,
+    floating,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+  };
+  moveFloatingPiece(event.clientX, event.clientY);
+}
+
+function moveFloatingPiece(clientX, clientY) {
+  if (!dragState) return;
+  dragState.floating.style.left = `${clientX}px`;
+  dragState.floating.style.top = `${clientY}px`;
+}
+
+function finishPieceDrag(event, cancelled = false) {
+  if (!dragState || event.pointerId !== dragState.pointerId) return;
+  event.preventDefault();
+  const currentDrag = dragState;
+  const target = cancelled ? null : document.elementFromPoint(event.clientX, event.clientY)?.closest(".square");
+  const targetSquare = target?.dataset.square;
+  const travelled = Math.hypot(
+    event.clientX - currentDrag.startX,
+    event.clientY - currentDrag.startY,
+  );
+  currentDrag.floating.remove();
+  dragState = null;
+  suppressClickUntil = performance.now() + 300;
+
+  const candidates = legalFrom(currentDrag.from).filter((move) => move.to === targetSquare);
+  if (!cancelled && travelled > 3 && candidates.length) {
+    chooseMove(candidates);
+  } else {
+    renderBoard();
+  }
+}
+
+document.addEventListener("pointermove", (event) => {
+  if (!dragState || event.pointerId !== dragState.pointerId) return;
+  event.preventDefault();
+  moveFloatingPiece(event.clientX, event.clientY);
+}, { passive: false });
+
+document.addEventListener("pointerup", (event) => finishPieceDrag(event));
+document.addEventListener("pointercancel", (event) => finishPieceDrag(event, true));
+
 function handleSquare(squareName) {
-  if (busy || !state?.canMove) return;
+  if (performance.now() < suppressClickUntil || busy || !state?.canMove) return;
   if (selectedSquare) {
     const candidates = legalFrom(selectedSquare).filter((move) => move.to === squareName);
     if (candidates.length) {
@@ -180,12 +242,6 @@ function handleSquare(squareName) {
   }
   selectedSquare = legalFrom(squareName).length ? squareName : null;
   renderBoard();
-}
-
-function attemptMove(from, to) {
-  if (busy || !state?.canMove) return;
-  const candidates = legalFrom(from).filter((move) => move.to === to);
-  if (candidates.length) chooseMove(candidates);
 }
 
 function chooseMove(candidates) {
@@ -213,14 +269,20 @@ function chooseMove(candidates) {
   submitMove(candidates[0].uci);
 }
 
+function cancelScheduledEnginePlay() {
+  engineLoopToken += 1;
+  clearTimeout(engineTimer);
+  engineTimer = null;
+}
+
 async function submitMove(uci) {
   selectedSquare = null;
+  cancelScheduledEnginePlay();
   setBusy(true, "Applying your move");
   try {
     state = await request("/api/move", { method: "POST", body: JSON.stringify({ uci }) });
     render();
-    if (state.needsEngineMove) await askEngineToMove();
-    else scheduleAnalysis();
+    maybeContinueGame();
   } catch (error) {
     showToast(error.message);
   } finally {
@@ -228,21 +290,47 @@ async function submitMove(uci) {
   }
 }
 
-async function askEngineToMove() {
-  setBusy(true, "Searching the position");
-  try {
-    state = await request("/api/engine-move", { method: "POST", body: "{}" });
-    render();
+function maybeContinueGame(delay = 0) {
+  if (!state || state.gameOver || !state.needsEngineMove) {
     scheduleAnalysis();
+    return;
+  }
+  if (state.mode === "cvc" && !autoPlay) {
+    scheduleAnalysis();
+    return;
+  }
+  const token = engineLoopToken;
+  clearTimeout(engineTimer);
+  engineTimer = window.setTimeout(() => performEngineMove(token), delay);
+}
+
+async function performEngineMove(token) {
+  if (token !== engineLoopToken || !state?.needsEngineMove) return;
+  const controller = state.controllers[state.turn];
+  setBusy(true, `${controller.name} is calculating`);
+  try {
+    const nextState = await request("/api/engine-move", { method: "POST", body: "{}" });
+    if (token !== engineLoopToken) return;
+    state = nextState;
+    render();
   } catch (error) {
+    if (token !== engineLoopToken) return;
+    autoPlay = false;
     showToast(error.message);
+    renderAutoPlay();
   } finally {
-    setBusy(false);
+    if (token === engineLoopToken) setBusy(false);
+  }
+  if (token !== engineLoopToken) return;
+  if (state.mode === "cvc" && autoPlay && state.needsEngineMove) {
+    maybeContinueGame(180);
+  } else {
+    scheduleAnalysis();
   }
 }
 
 function scheduleAnalysis() {
-  if (!state || state.gameOver || !state.engine.connected) return;
+  if (!state || state.gameOver || !state.engine.connected || (state.mode === "cvc" && autoPlay)) return;
   const sequence = ++analysisSequence;
   window.setTimeout(async () => {
     try {
@@ -258,38 +346,46 @@ function scheduleAnalysis() {
 
 function setBusy(value, detail = "Searching the position") {
   busy = value;
-  elements.thinking.classList.toggle("visible", value);
+  const obscureBoard = value && state?.mode !== "cvc";
+  elements.thinking.classList.toggle("visible", obscureBoard);
   elements.statusPulse.classList.toggle("thinking", value);
   document.querySelector("#thinking-detail").textContent = detail;
   if (state) {
     elements.status.textContent = state.gameOver
       ? `${state.result} · ${state.resultReason}`
-      : value ? "Engine thinking" : state.status;
+      : value ? detail : state.status;
   }
 }
 
+function initials(name, isEngine) {
+  if (isEngine && name.startsWith("Current")) return "TC";
+  const words = name.match(/[A-Za-z0-9]+/g) || [];
+  return words.slice(0, 2).map((word) => word[0]).join("").toUpperCase() || "—";
+}
+
+function renderPlayer(position, color) {
+  const controller = state.controllers[color];
+  const isEngine = controller.type === "engine";
+  const nameElement = position === "top" ? elements.topName : elements.bottomName;
+  const detailElement = position === "top" ? elements.topDetail : elements.bottomDetail;
+  const monogramElement = position === "top" ? elements.topMonogram : elements.bottomMonogram;
+  const turnElement = position === "top" ? elements.topTurn : elements.bottomTurn;
+  nameElement.textContent = controller.name;
+  detailElement.textContent = isEngine
+    ? `${controller.detail} · ${state.engine.moveTimeMs} ms`
+    : `${color[0].toUpperCase()}${color.slice(1)} pieces`;
+  monogramElement.textContent = initials(controller.name, isEngine);
+  monogramElement.closest(".avatar").classList.toggle("human", !isEngine);
+  const active = !state.gameOver && state.turn === color;
+  turnElement.textContent = active ? "TO MOVE" : "WAITING";
+  turnElement.classList.toggle("active", active);
+}
+
 function renderPlayers() {
-  const engineColor = state.mode === "local" ? null : state.playerColor === "white" ? "black" : "white";
   const topColor = orientation === "white" ? "black" : "white";
-  const topIsEngine = engineColor === topColor;
-  const topName = state.mode === "local" ? `${topColor[0].toUpperCase()}${topColor.slice(1)}` : topIsEngine ? state.engine.name : "You";
   const bottomColor = topColor === "white" ? "black" : "white";
-  const bottomIsEngine = engineColor === bottomColor;
-  const bottomName = state.mode === "local" ? `${bottomColor[0].toUpperCase()}${bottomColor.slice(1)}` : bottomIsEngine ? state.engine.name : "You";
-
-  elements.topName.textContent = topName;
-  elements.topDetail.textContent = topIsEngine ? `Engine · ${state.engine.moveTimeMs} ms` : `${topColor[0].toUpperCase()}${topColor.slice(1)} pieces`;
-  elements.topMonogram.textContent = topIsEngine ? "TC" : topColor === "white" ? "W" : "B";
-  elements.bottomName.textContent = bottomName;
-  elements.bottomDetail.textContent = bottomIsEngine ? `Engine · ${state.engine.moveTimeMs} ms` : `${bottomColor[0].toUpperCase()}${bottomColor.slice(1)} pieces`;
-  elements.bottomMonogram.textContent = bottomIsEngine ? "TC" : bottomColor === "white" ? "W" : "B";
-
-  const topActive = !state.gameOver && state.turn === topColor;
-  const bottomActive = !state.gameOver && state.turn === bottomColor;
-  elements.topTurn.textContent = topActive ? "TO MOVE" : "WAITING";
-  elements.bottomTurn.textContent = bottomActive ? "TO MOVE" : "WAITING";
-  elements.topTurn.classList.toggle("active", topActive);
-  elements.bottomTurn.classList.toggle("active", bottomActive);
+  renderPlayer("top", topColor);
+  renderPlayer("bottom", bottomColor);
 }
 
 function renderMoves() {
@@ -318,45 +414,103 @@ function renderAnalysis() {
   const cp = Math.max(-1200, Math.min(1200, analysis.scoreCp || 0));
   const whitePercent = 50 + 48 * Math.tanh(cp / 420);
   elements.evaluationFill.style.height = `${whitePercent}%`;
-  elements.analysisDepth.textContent = analysis.depth ? `Depth ${analysis.depth} · White perspective` : "Waiting for a position";
-  elements.analysisPv.textContent = analysis.pv?.length ? analysis.pv.join("  ") : "Analysis begins after the first move.";
+  elements.analysisDepth.textContent = analysis.depth
+    ? `Depth ${analysis.depth} · White perspective`
+    : "Waiting for a position";
+  elements.analysisPv.textContent = analysis.pv?.length
+    ? analysis.pv.join("  ")
+    : "Analysis begins after the first move.";
   elements.metricDepth.textContent = analysis.depth ?? "—";
   elements.metricNodes.textContent = formatNumber(analysis.nodes);
   elements.metricNps.textContent = formatNumber(analysis.nps);
   elements.metricTime.textContent = analysis.timeMs ? `${analysis.timeMs} ms` : "—";
 }
 
+function renderAutoPlay() {
+  const visible = state?.mode === "cvc";
+  elements.autoPlay.hidden = !visible;
+  elements.autoPlay.innerHTML = autoPlay ? "<span>Ⅱ</span>Pause" : "<span>▶</span>Resume";
+  elements.autoPlay.title = autoPlay ? "Pause computer play" : "Resume computer play";
+  elements.autoPlay.setAttribute("aria-label", elements.autoPlay.title);
+  document.querySelector(".board-actions").classList.toggle("has-auto-play", visible);
+}
+
 function render() {
   if (!state) return;
   elements.connection.classList.toggle("offline", !state.engine.connected);
-  elements.connectionLabel.textContent = state.engine.connected ? "Engine online" : "Local mode only";
+  elements.connectionLabel.textContent = state.engine.connected
+    ? `${state.engine.profileCount} engine profile${state.engine.profileCount === 1 ? "" : "s"} ready`
+    : "Engine unavailable";
   elements.engineName.textContent = state.engine.name;
-  elements.engineState.textContent = state.engine.connected ? "UCI" : "OFFLINE";
-  elements.status.textContent = state.gameOver ? `${state.result} · ${state.resultReason}` : busy ? "Engine thinking" : state.status;
+  elements.engineState.textContent = state.engine.connected ? "READY" : "OFFLINE";
+  elements.status.textContent = state.gameOver
+    ? `${state.result} · ${state.resultReason}`
+    : busy ? "Engine thinking" : state.status;
   elements.statusPulse.style.background = state.gameOver ? "var(--muted)" : "var(--accent)";
   renderPlayers();
   renderBoard();
   renderMoves();
   renderAnalysis();
+  renderAutoPlay();
+  populateProfileOptions();
+}
+
+function populateProfileOptions() {
+  if (!state?.profiles?.length) return;
+  const key = state.profiles.map((profile) => profile.id).join("|");
+  if (key === profileOptionsKey) return;
+  profileOptionsKey = key;
+  const revision = state.profiles.find((profile) => profile.id.startsWith("baseline-"))
+    || state.profiles.find((profile) => profile.kind === "revision");
+  const selectors = [elements.pvcProfile, elements.whiteProfile, elements.blackProfile];
+  selectors.forEach((select, index) => {
+    const previous = select.value;
+    select.replaceChildren();
+    state.profiles.forEach((profile) => {
+      const option = document.createElement("option");
+      option.value = profile.id;
+      option.textContent = `${profile.name} — ${profile.detail}`;
+      option.disabled = !profile.available;
+      select.append(option);
+    });
+    if (previous && state.profiles.some((profile) => profile.id === previous)) {
+      select.value = previous;
+    } else if (index === 2 && revision) {
+      select.value = revision.id;
+    } else {
+      select.value = state.profiles[0].id;
+    }
+  });
+}
+
+function resolveOrientation(preference) {
+  if (preference === "white" || preference === "black") return preference;
+  return state.mode === "pvc" ? state.playerColor || "white" : "white";
 }
 
 async function newGameFromForm() {
   const form = new FormData(elements.newGameForm);
   const mode = form.get("mode");
-  const side = form.get("side");
-  const engineTimeMs = Number(form.get("engine-time"));
-  setBusy(true, "Preparing a new board");
+  const payload = {
+    mode,
+    side: form.get("side"),
+    engineProfile: form.get("pvc-profile"),
+    whiteProfile: form.get("white-profile"),
+    blackProfile: form.get("black-profile"),
+    engineTimeMs: Number(form.get("engine-time")),
+    analysisTimeMs: 180,
+  };
+  orientationPreference = form.get("orientation");
+  autoPlay = mode === "cvc";
+  cancelScheduledEnginePlay();
   analysisSequence += 1;
+  setBusy(true, "Preparing a new board");
   try {
-    state = await request("/api/new", {
-      method: "POST",
-      body: JSON.stringify({ mode, side, engineTimeMs, analysisTimeMs: 180 }),
-    });
-    orientation = state.playerColor || "white";
+    state = await request("/api/new", { method: "POST", body: JSON.stringify(payload) });
+    orientation = resolveOrientation(orientationPreference);
     selectedSquare = null;
     render();
-    if (state.needsEngineMove) await askEngineToMove();
-    else scheduleAnalysis();
+    maybeContinueGame();
   } catch (error) {
     showToast(error.message);
   } finally {
@@ -364,9 +518,32 @@ async function newGameFromForm() {
   }
 }
 
-for (const button of document.querySelectorAll("#new-game, #new-game-top")) {
-  button.addEventListener("click", () => elements.newGameModal.showModal());
+function updateSetupVisibility() {
+  const mode = new FormData(elements.newGameForm).get("mode");
+  elements.pvcOptions.hidden = mode !== "pvc";
+  elements.cvcOptions.hidden = mode !== "cvc";
+  elements.strengthField.hidden = mode === "pvp";
+  const help = {
+    pvp: "Two people share this board; no engine moves are made.",
+    pvc: "Play against a selected local engine or model.",
+    cvc: "Assign an engine or model to each colour and watch them play.",
+  };
+  elements.modeHelp.textContent = help[mode];
 }
+
+for (const button of document.querySelectorAll("#new-game, #new-game-top")) {
+  button.addEventListener("click", () => {
+    if (state?.mode === "cvc" && autoPlay) {
+      autoPlay = false;
+      renderAutoPlay();
+    }
+    populateProfileOptions();
+    updateSetupVisibility();
+    elements.newGameModal.showModal();
+  });
+}
+
+document.querySelector("#close-new-game").addEventListener("click", () => elements.newGameModal.close());
 
 elements.newGameForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -374,13 +551,12 @@ elements.newGameForm.addEventListener("submit", (event) => {
   newGameFromForm();
 });
 
-elements.newGameForm.addEventListener("change", () => {
-  const mode = new FormData(elements.newGameForm).get("mode");
-  elements.strengthField.hidden = mode === "local";
-});
+elements.newGameForm.addEventListener("change", updateSetupVisibility);
 
 document.querySelector("#undo").addEventListener("click", async () => {
   if (busy) return;
+  cancelScheduledEnginePlay();
+  if (state?.mode === "cvc") autoPlay = false;
   analysisSequence += 1;
   try {
     state = await request("/api/undo", { method: "POST", body: "{}" });
@@ -394,8 +570,17 @@ document.querySelector("#undo").addEventListener("click", async () => {
 
 document.querySelector("#flip").addEventListener("click", () => {
   orientation = orientation === "white" ? "black" : "white";
+  orientationPreference = orientation;
   selectedSquare = null;
   render();
+});
+
+elements.autoPlay.addEventListener("click", () => {
+  if (state?.mode !== "cvc" || state.gameOver) return;
+  autoPlay = !autoPlay;
+  renderAutoPlay();
+  if (autoPlay) maybeContinueGame();
+  else scheduleAnalysis();
 });
 
 document.querySelector("#copy-fen").addEventListener("click", async () => {
@@ -423,10 +608,11 @@ for (const tab of document.querySelectorAll(".tab")) {
 async function initialise() {
   try {
     state = await request("/api/state");
-    orientation = state.playerColor || "white";
+    orientation = resolveOrientation("auto");
+    autoPlay = state.mode === "cvc";
     render();
-    if (state.needsEngineMove) await askEngineToMove();
-    else scheduleAnalysis();
+    updateSetupVisibility();
+    maybeContinueGame();
   } catch (error) {
     elements.connection.classList.add("offline");
     elements.connectionLabel.textContent = "Service unavailable";

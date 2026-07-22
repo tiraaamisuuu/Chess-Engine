@@ -21,6 +21,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 html, body { min-height: 100%; }
 
@@ -31,7 +32,7 @@ body {
   overflow-x: hidden;
 }
 
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button { color: inherit; }
 
 .ambient {
@@ -151,6 +152,8 @@ button { color: inherit; }
 }
 
 .avatar.human { color: var(--text); }
+.player-copy { min-width: 0; }
+.player-copy strong, .player-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player-copy strong { display: block; font-size: 13px; font-weight: 650; }
 .player-copy span { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; letter-spacing: 0.04em; }
 
@@ -208,7 +211,7 @@ button { color: inherit; }
   grid-template-rows: repeat(8, 1fr);
   box-shadow: 0 26px 80px rgba(0, 0, 0, 0.36);
   user-select: none;
-  touch-action: manipulation;
+  touch-action: none;
 }
 
 .square {
@@ -256,12 +259,26 @@ button { color: inherit; }
   position: relative;
   z-index: 2;
   filter: drop-shadow(0 5px 5px rgba(0,0,0,.16));
-  cursor: grab;
+  cursor: default;
   transition: transform 120ms ease;
+  -webkit-user-drag: none;
 }
 
-.square:hover .piece { transform: translateY(-1px); }
-.piece:active { cursor: grabbing; }
+.piece.movable { cursor: grab; }
+.square:hover .piece.movable { transform: translateY(-1px); }
+.piece.movable:active { cursor: grabbing; }
+.piece.drag-source { opacity: 0; }
+
+.dragging-piece {
+  position: fixed;
+  z-index: 100;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  transform: translate(-50%, -50%) scale(1.06);
+  filter: drop-shadow(0 12px 10px rgba(0,0,0,.34));
+  will-change: left, top;
+}
 
 .coordinate {
   position: absolute;
@@ -307,6 +324,7 @@ button { color: inherit; }
   grid-template-columns: repeat(4, 1fr);
   gap: 7px;
 }
+.board-actions.has-auto-play { grid-template-columns: repeat(5, 1fr); }
 
 .icon-button {
   min-height: 42px;
@@ -391,7 +409,8 @@ button { color: inherit; }
 .engine-state { padding: 5px 6px; border: 1px solid var(--line); color: var(--muted); font-size: 7px; font-weight: 800; letter-spacing: .12em; }
 
 .modal, .promotion-modal {
-  width: min(440px, calc(100vw - 32px));
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(860px, calc(100vh - 32px));
   padding: 0;
   border: 1px solid var(--line-strong);
   border-radius: 3px;
@@ -400,7 +419,7 @@ button { color: inherit; }
   box-shadow: 0 40px 120px rgba(0,0,0,.65);
 }
 .modal::backdrop, .promotion-modal::backdrop { background: rgba(5,7,6,.78); backdrop-filter: blur(8px); }
-.modal form { padding: 27px; }
+.modal form { padding: 27px; overflow: auto; max-height: min(860px, calc(100vh - 34px)); }
 .modal-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 29px; }
 .modal h2, .promotion-modal h2 { margin: 8px 0 0; font-size: 22px; font-weight: 520; }
 .modal-close { border: 0; background: transparent; color: var(--muted); font-size: 25px; cursor: pointer; }
@@ -411,6 +430,21 @@ legend { margin-bottom: 10px; color: var(--muted); font-size: 9px; font-weight: 
 .segmented input { position: absolute; opacity: 0; pointer-events: none; }
 .segmented span { height: 43px; border: 1px solid var(--line); display: grid; place-items: center; color: var(--muted); font-size: 10px; cursor: pointer; }
 .segmented input:checked + span { border-color: var(--accent); background: var(--accent-dark); color: var(--accent); }
+.field-help { margin: 10px 0 0; color: var(--subtle); font-size: 9px; line-height: 1.5; }
+.profile-select {
+  width: 100%;
+  height: 45px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 0 38px 0 12px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 10px;
+  cursor: pointer;
+}
+.profile-select:focus { outline: 1px solid var(--accent); outline-offset: 1px; }
+.matchup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.matchup-grid fieldset { min-width: 0; }
 .modal-submit { width: 100%; margin-top: 4px; }
 
 .promotion-modal > div { padding: 26px; }
@@ -458,6 +492,8 @@ legend { margin-bottom: 10px; color: var(--muted); font-size: 9px; font-weight: 
   .side-panel { height: 520px; }
   .brand strong { font-size: 11px; }
   .brand small { font-size: 7px; }
+  .matchup-grid { grid-template-columns: 1fr; gap: 0; }
+  .modal form { padding: 22px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

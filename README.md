@@ -12,7 +12,7 @@ classical search, and an optional NNUE evaluation path.
 - Quiescence, transposition table, null-move pruning, LMR, aspiration windows,
   killer/history/countermove ordering, and time management
 - UCI Hash, Threads, Clear Hash, searchmoves, EvalFile, and Use NNUE controls
-- Responsive local web GUI with engine play and live analysis
+- Responsive local web GUI with PvP, PvC, CvC, engine profiles, and live analysis
 - SFML modes for local play, play against the engine, and engine self-play
 - Perft, fixed-position benchmarks, UCI smoke tests, paired opening matches,
   and cross-platform headless CI
@@ -35,9 +35,11 @@ On Windows PowerShell, run `scripts\run_web_gui.ps1` instead.
 
 The launcher creates an isolated Python environment on first use, builds the
 headless engine when needed, starts the local bridge, and opens the interface.
-It supports click and drag movement, legal-move guidance, engine play, live
-evaluation and PV, move history, undo, board flipping, promotion, side choice,
-local two-player mode, and desktop/mobile layouts.
+It supports click and true pointer-following drag movement, legal-move guidance,
+PvP/PvC/CvC, live evaluation and PV, move history, undo, board flipping,
+promotion, side choice, selectable engines/models, and desktop/mobile layouts.
+The setup panel automatically lists the current engine, revisions built by
+`scripts/compare_engines.py`, and any `.nnue` models placed under `networks/`.
 
 ## Build the headless engine and tools
 

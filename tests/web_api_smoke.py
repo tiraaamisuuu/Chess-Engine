@@ -69,6 +69,11 @@ def main() -> int:
         assert len(state["pieces"]) == 32
         assert len(state["legalMoves"]) == 20
         assert state["canMove"] is True
+        assert state["mode"] == "pvc"
+        assert state["controllers"]["white"]["type"] == "human"
+        assert state["controllers"]["black"]["type"] == "engine"
+        assert state["profiles"] and state["profiles"][0]["id"] == "current-classical"
+        profile_id = state["profiles"][0]["id"]
 
         state = request(base, "/api/move", {"uci": "e2e4"})
         assert state["ply"] == 1 and state["needsEngineMove"] is True
@@ -84,18 +89,38 @@ def main() -> int:
         assert state["ply"] == 0
         assert state["fen"].startswith("rnbqkbnr/pppppppp/")
 
-        state = request(base, "/api/new", {"mode": "engine", "side": "black", "engineTimeMs": 100})
+        state = request(base, "/api/new", {
+            "mode": "pvc", "side": "black", "engineProfile": profile_id,
+            "engineTimeMs": 100,
+        })
         assert state["playerColor"] == "black" and state["needsEngineMove"] is True
         state = request(base, "/api/engine-move", {})
         assert state["ply"] == 1 and state["canMove"] is True
         state = request(base, "/api/undo", {})
         assert state["ply"] == 1, "the engine's opening move is not a human turn to undo"
 
-        state = request(base, "/api/new", {"mode": "local", "side": "black"})
-        assert state["mode"] == "local" and state["playerColor"] is None
+        state = request(base, "/api/new", {"mode": "pvp"})
+        assert state["mode"] == "pvp" and state["playerColor"] is None
+        assert state["controllers"]["white"]["type"] == "human"
+        assert state["controllers"]["black"]["type"] == "human"
         assert state["canMove"] is True
+
+        state = request(base, "/api/new", {
+            "mode": "cvc", "whiteProfile": profile_id, "blackProfile": profile_id,
+            "engineTimeMs": 100,
+        })
+        assert state["mode"] == "cvc" and state["canMove"] is False
+        assert state["controllers"]["white"]["profileId"] == profile_id
+        assert state["controllers"]["black"]["profileId"] == profile_id
+        state = request(base, "/api/engine-move", {})
+        assert state["ply"] == 1 and state["needsEngineMove"] is True
+        state = request(base, "/api/engine-move", {})
+        assert state["ply"] == 2 and state["needsEngineMove"] is True
+        assert state["engine"]["lastMove"]["profileId"] == profile_id
+
         with urlopen(base + "/", timeout=5) as response:
-            assert b"TIRAMISU" in response.read()
+            page = response.read()
+            assert b"TIRAMISU" in page and b'value="cvc"' in page
         print("Web GUI smoke: PASS")
         return 0
     finally:

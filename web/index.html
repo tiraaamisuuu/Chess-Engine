@@ -62,6 +62,7 @@
       <div class="board-actions">
         <button class="icon-button" id="undo" title="Undo move" aria-label="Undo move"><span>↶</span>Undo</button>
         <button class="icon-button" id="flip" title="Flip board" aria-label="Flip board"><span>⇅</span>Flip</button>
+        <button class="icon-button" id="auto-play" title="Pause computer play" aria-label="Pause computer play" hidden><span>Ⅱ</span>Pause</button>
         <button class="icon-button" id="copy-fen" title="Copy FEN" aria-label="Copy FEN"><span>□</span>Copy FEN</button>
         <button class="icon-button" id="new-game" title="New game" aria-label="New game"><span>＋</span>New</button>
       </div>
@@ -111,7 +112,7 @@
       <div class="engine-card">
         <div class="engine-icon" aria-hidden="true"><span></span></div>
         <div>
-          <span class="eyebrow">CONNECTED ENGINE</span>
+          <span class="eyebrow">ACTIVE ENGINE / MODEL</span>
           <strong id="engine-name">TiramisuChess</strong>
         </div>
         <span class="engine-state" id="engine-state">UCI</span>
@@ -126,32 +127,61 @@
           <span class="eyebrow">FRESH BOARD</span>
           <h2>Start a new game</h2>
         </div>
-        <button class="modal-close" value="cancel" aria-label="Close">×</button>
+        <button class="modal-close" id="close-new-game" type="button" aria-label="Close">×</button>
       </div>
 
       <fieldset>
-        <legend>Play as</legend>
+        <legend>Match type</legend>
         <div class="segmented three">
-          <label><input type="radio" name="side" value="white" checked><span>White</span></label>
-          <label><input type="radio" name="side" value="random"><span>Random</span></label>
-          <label><input type="radio" name="side" value="black"><span>Black</span></label>
+          <label><input type="radio" name="mode" value="pvp"><span>PvP</span></label>
+          <label><input type="radio" name="mode" value="pvc" checked><span>PvC</span></label>
+          <label><input type="radio" name="mode" value="cvc"><span>CvC</span></label>
         </div>
+        <p class="field-help" id="mode-help">Play against a selected local engine or model.</p>
       </fieldset>
 
-      <fieldset>
-        <legend>Mode</legend>
-        <div class="segmented">
-          <label><input type="radio" name="mode" value="engine" checked><span>Vs engine</span></label>
-          <label><input type="radio" name="mode" value="local"><span>Local board</span></label>
-        </div>
-      </fieldset>
+      <div id="pvc-options">
+        <fieldset>
+          <legend>Play as</legend>
+          <div class="segmented three">
+            <label><input type="radio" name="side" value="white" checked><span>White</span></label>
+            <label><input type="radio" name="side" value="random"><span>Random</span></label>
+            <label><input type="radio" name="side" value="black"><span>Black</span></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Computer engine / model</legend>
+          <select class="profile-select" id="pvc-profile" name="pvc-profile" aria-label="Computer engine or model"></select>
+        </fieldset>
+      </div>
+
+      <div class="matchup-grid" id="cvc-options" hidden>
+        <fieldset>
+          <legend>White engine / model</legend>
+          <select class="profile-select" id="white-profile" name="white-profile" aria-label="White engine or model"></select>
+        </fieldset>
+        <fieldset>
+          <legend>Black engine / model</legend>
+          <select class="profile-select" id="black-profile" name="black-profile" aria-label="Black engine or model"></select>
+        </fieldset>
+      </div>
 
       <fieldset id="strength-field">
-        <legend>Engine response</legend>
+        <legend>Thinking time per move</legend>
         <div class="segmented three">
           <label><input type="radio" name="engine-time" value="250"><span>Quick</span></label>
           <label><input type="radio" name="engine-time" value="650" checked><span>Balanced</span></label>
           <label><input type="radio" name="engine-time" value="1500"><span>Deep</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Board orientation</legend>
+        <div class="segmented three">
+          <label><input type="radio" name="orientation" value="white"><span>White</span></label>
+          <label><input type="radio" name="orientation" value="auto" checked><span>Auto</span></label>
+          <label><input type="radio" name="orientation" value="black"><span>Black</span></label>
         </div>
       </fieldset>
 

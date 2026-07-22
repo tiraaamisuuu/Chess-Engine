@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import platform
@@ -180,6 +181,35 @@ def engine_definition(name: str, binary: Path, threads: int, hash_mb: int,
     return definition
 
 
+def write_web_profiles(baseline_ref: str, baseline: Path, baseline_commit: str,
+                       candidate_ref: str, candidate: Path, candidate_commit: str) -> Path:
+    """Expose locally built revisions to the web GUI without committing machine paths."""
+    destination = TOOLS / "engine-match" / "profiles.json"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": 1,
+        "profiles": [
+            {
+                "id": f"candidate-{safe_name(candidate_ref)}",
+                "name": f"Candidate · {candidate_ref}",
+                "detail": f"Revision {candidate_commit[:10]}",
+                "path": str(candidate.resolve()),
+                "args": ["--uci"],
+            },
+            {
+                "id": f"baseline-{safe_name(baseline_ref)}",
+                "name": f"Baseline · {baseline_ref}",
+                "detail": f"Revision {baseline_commit[:10]}",
+                "path": str(baseline.resolve()),
+                "args": ["--uci"],
+            },
+        ],
+    }
+    destination.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(f"Web GUI profiles -> {destination}")
+    return destination
+
+
 def main() -> int:
     args = arguments()
     if args.games < 2 or args.games % 2:
@@ -196,6 +226,10 @@ def main() -> int:
     sfml = args.sfml_prefix.expanduser() if args.sfml_prefix else default_sfml_prefix()
     baseline, baseline_commit = build_ref(args.baseline, "baseline", args.build_jobs, sfml)
     candidate, candidate_commit = build_ref(args.candidate, "candidate", args.build_jobs, sfml)
+    write_web_profiles(
+        args.baseline, baseline, baseline_commit,
+        args.candidate, candidate, candidate_commit,
+    )
     if args.build_only:
         return 0
 
