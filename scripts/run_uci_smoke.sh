@@ -23,6 +23,9 @@ trap 'rm -f "$OUT_FILE"' EXIT
   printf 'position startpos\n'
   printf 'go searchmoves a2a3 movetime 200\n'
   sleep 0.4
+  printf 'position startpos\n'
+  printf 'go searchmoves b2b3 wtime 20 btime 20 winc 20 binc 20\n'
+  sleep 0.1
   printf 'quit\n'
 } | "$ENGINE_BIN" --uci > "$OUT_FILE"
 
@@ -46,6 +49,16 @@ fi
 
 if ! grep -Eq '^bestmove a2a3$' "$OUT_FILE"; then
   echo "[FAIL] UCI searchmoves restriction was not respected" >&2
+  cat "$OUT_FILE" >&2
+  exit 1
+fi
+
+if ! grep -Eq '^bestmove b2b3$' "$OUT_FILE" ||
+   ! awk '$1 == "info" && $0 ~ / pv b2b3( |$)/ {
+              for(i = 1; i <= NF; i++) if($i == "time" && $(i + 1) <= 15) safe = 1
+          }
+          END { exit !safe }' "$OUT_FILE"; then
+  echo "[FAIL] Low-clock search did not preserve its 5 ms transport reserve" >&2
   cat "$OUT_FILE" >&2
   exit 1
 fi

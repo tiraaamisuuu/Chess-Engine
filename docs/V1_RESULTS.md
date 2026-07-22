@@ -79,6 +79,23 @@ time, so this is strong evidence that v1 is materially better, but the exact
 Elo figure remains preliminary. A longer SPRT at a slower time control is still
 required for a release-grade strength claim.
 
+## Node-efficiency match
+
+A second 100-game paired match compared optimized revision `dea7450bba` with
+the pre-optimization `814f95f7c5`. It used the same UHO suite, reversed colours,
+one thread, 256 MB hash, and a deliberately fast `2+0.02` time control.
+
+| Optimized wins | Pre-optimization wins | Draws | Optimized score | Relative Elo |
+|---:|---:|---:|---:|---:|
+| 48 | 25 | 27 | 61.5% | +81.4 ± 59.8 |
+
+Cute Chess reported 99.6% likelihood of superiority. The optimized engine
+scored 63.0% as White and 60.0% as Black. It also suffered one time forfeit
+after spending the entire 20 ms increment on search; the following revision
+added a low-clock transport/scheduling reserve. The match is encouraging
+evidence that the throughput work converts to strength, but is not a final Elo
+claim.
+
 ## Remaining evidence
 
 - Run a longer candidate-versus-baseline SPRT at a slower time control.
