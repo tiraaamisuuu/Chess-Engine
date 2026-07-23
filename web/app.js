@@ -761,6 +761,15 @@ function populateProfileOptions() {
     const revision = state.profiles.find((profile) => profile.role === "legacy")
       || state.profiles.find((profile) => profile.role === "baseline")
       || state.profiles.find((profile) => profile.kind === "revision");
+    const activePvcProfile = state.mode === "pvc"
+      ? [state.controllers.white, state.controllers.black]
+        .find((controller) => controller.type === "engine")?.profileId
+      : null;
+    const preferredProfiles = [
+      activePvcProfile,
+      state.mode === "cvc" ? state.controllers.white.profileId : null,
+      state.mode === "cvc" ? state.controllers.black.profileId : revision?.id,
+    ];
     const selectors = [elements.pvcProfile, elements.whiteProfile, elements.blackProfile];
     selectors.forEach((select, index) => {
       const previous = select.value;
@@ -774,8 +783,9 @@ function populateProfileOptions() {
       });
       if (previous && state.profiles.some((profile) => profile.id === previous)) {
         select.value = previous;
-      } else if (index === 2 && revision) {
-        select.value = revision.id;
+      } else if (preferredProfiles[index]
+          && state.profiles.some((profile) => profile.id === preferredProfiles[index])) {
+        select.value = preferredProfiles[index];
       } else {
         select.value = state.profiles[0].id;
       }
