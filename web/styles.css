@@ -434,6 +434,7 @@ button { color: inherit; }
 .modal form { padding: 27px; overflow: auto; max-height: min(860px, calc(100vh - 34px)); }
 .modal-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 29px; }
 .modal h2, .promotion-modal h2 { margin: 8px 0 0; font-size: 22px; font-weight: 520; }
+.modal-intro { max-width: 470px; margin: 9px 28px 0 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
 .modal-close { border: 0; background: transparent; color: var(--muted); font-size: 25px; cursor: pointer; }
 fieldset { margin: 0 0 23px; padding: 0; border: 0; }
 legend { margin-bottom: 10px; color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
@@ -556,7 +557,40 @@ legend { margin-bottom: 10px; color: var(--muted); font-size: 9px; font-weight: 
 .matchup-grid fieldset { min-width: 0; }
 .modal-submit { width: 100%; margin-top: 4px; }
 
+.new-game-modal { width: min(630px, calc(100vw - 32px)); }
+.engine-onboarding {
+  margin: -4px 0 23px;
+  padding: 13px;
+  border: 1px solid rgba(107,212,255,.2);
+  background: rgba(55,126,157,.07);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+}
+.engine-onboarding[data-ready="true"] { border-color: rgba(201,255,90,.25); background: var(--accent-dark); }
+.engine-onboarding-copy { min-width: 0; }
+.engine-onboarding-copy strong { display: block; margin-top: 5px; font-size: 11px; }
+.engine-onboarding-copy p { margin: 5px 0 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.engine-onboarding-actions { display: flex; gap: 7px; }
+.engine-onboarding-actions .button { display: grid; place-items: center; min-width: 118px; padding: 0 12px; text-decoration: none; white-space: nowrap; }
+
 .engine-library-modal { width: min(680px, calc(100vw - 32px)); }
+.stockfish-download-strip {
+  margin: -9px 0 14px;
+  padding: 11px 12px;
+  border: 1px solid rgba(107,212,255,.2);
+  background: rgba(55,126,157,.07);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+}
+.stockfish-download-strip strong { color: var(--text); }
+.stockfish-download-strip a { flex: 0 0 auto; color: #79d8ff; font-weight: 750; text-decoration: none; }
+.stockfish-download-strip a:hover { text-decoration: underline; }
 .engine-import-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 10px; }
 .file-picker {
   min-height: 74px;
@@ -674,6 +708,9 @@ legend { margin-bottom: 10px; color: var(--muted); font-size: 9px; font-weight: 
   .brand strong { font-size: 11px; }
   .brand small { font-size: 7px; }
   .matchup-grid { grid-template-columns: 1fr; gap: 0; }
+  .engine-onboarding { grid-template-columns: 1fr; gap: 12px; }
+  .engine-onboarding-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .stockfish-download-strip { display: grid; gap: 7px; }
   .engine-import-grid { grid-template-columns: 1fr; }
   .export-metadata { grid-template-columns: 1fr; }
   .export-preview { height: 190px; }

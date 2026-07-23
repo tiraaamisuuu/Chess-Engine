@@ -42,13 +42,17 @@ export, undo, board flipping, promotion, side choice, selectable engines/models,
 magnetic thinking-time presets with a 50 ms–10 second custom range, and
 desktop/mobile layouts. PGN exports can be pasted into or uploaded to common
 game-analysis tools.
+Game setup opens immediately when the interface loads so PvP, PvC, CvC, engine
+selection, side choice, orientation, and thinking time are visible before play.
 The setup panel automatically lists the current engine, revisions built by
 `scripts/compare_engines.py`, and any `.nnue` models placed under `networks/`.
 Role badges distinguish the newest development build, committed candidate,
 legacy baseline, and NNUE models at a glance.
 
-Use **Engines** in the top bar to import Stockfish or another UCI-compatible
-executable. The local service copies the selected file into its ignored
+Use **Import engine** directly in game setup, or **Engines** in the top bar, to
+import Stockfish or another UCI-compatible executable. Stockfish itself is not
+bundled: download and extract an official build before choosing its executable.
+The local service copies the selected file into its ignored
 `.tools/user-engines/` library, verifies the UCI handshake, records the name and
 author reported by the engine, and makes it available to PvC, CvC, and analysis.
 Imported engines persist between launches and can be removed from the same

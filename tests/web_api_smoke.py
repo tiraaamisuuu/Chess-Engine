@@ -213,6 +213,7 @@ def main() -> int:
             assert b"export-modal" in page and b"run-analysis" in page
             assert b"engine-time-slider" in page and b'data-time="5000"' in page
             assert b"engine-library-modal" in page and b"engine-import-form" in page
+            assert b"setup-engine-action" in page and b"stockfishchess.org/download/" in page
         print("Web GUI smoke: PASS")
         return 0
     finally:

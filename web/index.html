@@ -124,14 +124,15 @@
     </aside>
   </main>
 
-  <dialog class="modal" id="new-game-modal">
+  <dialog class="modal new-game-modal" id="new-game-modal">
     <form method="dialog" id="new-game-form">
       <div class="modal-head">
         <div>
-          <span class="eyebrow">FRESH BOARD</span>
-          <h2>Start a new game</h2>
+          <span class="eyebrow">CHOOSE YOUR MATCH</span>
+          <h2>What do you want to play?</h2>
+          <p class="modal-intro">Choose the players, engine and thinking time before the board begins.</p>
         </div>
-        <button class="modal-close" id="close-new-game" type="button" aria-label="Close">×</button>
+        <button class="modal-close" id="close-new-game" type="button" aria-label="Return to current board">×</button>
       </div>
 
       <fieldset>
@@ -183,6 +184,18 @@
         </fieldset>
       </div>
 
+      <section class="engine-onboarding" id="engine-onboarding" aria-live="polite">
+        <div class="engine-onboarding-copy">
+          <span class="eyebrow" id="stockfish-kicker">EXTERNAL OPPONENT</span>
+          <strong id="stockfish-title">Want to play Stockfish?</strong>
+          <p id="stockfish-copy">Stockfish is not bundled. Download and extract the official build, then import its executable once.</p>
+        </div>
+        <div class="engine-onboarding-actions">
+          <a class="button compact" id="download-stockfish" href="https://stockfishchess.org/download/" target="_blank" rel="noreferrer">Get Stockfish</a>
+          <button class="button button-primary compact" id="setup-engine-action" type="button">Import engine</button>
+        </div>
+      </section>
+
       <fieldset id="strength-field">
         <legend>Thinking time per move</legend>
         <div class="time-presets" aria-label="Thinking time presets">
@@ -223,9 +236,15 @@
       <div class="modal-head">
         <div>
           <span class="eyebrow">UCI ENGINE LIBRARY</span>
-          <h2>Import another engine</h2>
+          <h2>Add Stockfish or another engine</h2>
+          <p class="modal-intro">Choose an extracted UCI executable. It will be verified before appearing in game setup.</p>
         </div>
         <button class="modal-close" id="close-engine-library" type="button" aria-label="Close">×</button>
+      </div>
+
+      <div class="stockfish-download-strip">
+        <span><strong>Need Stockfish?</strong> Download the official build for this computer, extract it, then choose the executable below.</span>
+        <a href="https://stockfishchess.org/download/" target="_blank" rel="noreferrer">Official download ↗</a>
       </div>
 
       <div class="engine-import-grid">

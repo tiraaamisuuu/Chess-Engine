@@ -38,6 +38,12 @@ const elements = {
   importEngine: document.querySelector("#import-engine"),
   engineLibraryList: document.querySelector("#engine-library-list"),
   engineCount: document.querySelector("#engine-count"),
+  engineOnboarding: document.querySelector("#engine-onboarding"),
+  stockfishKicker: document.querySelector("#stockfish-kicker"),
+  stockfishTitle: document.querySelector("#stockfish-title"),
+  stockfishCopy: document.querySelector("#stockfish-copy"),
+  downloadStockfish: document.querySelector("#download-stockfish"),
+  setupEngineAction: document.querySelector("#setup-engine-action"),
   pvcOptions: document.querySelector("#pvc-options"),
   cvcOptions: document.querySelector("#cvc-options"),
   strengthField: document.querySelector("#strength-field"),
@@ -85,6 +91,7 @@ let analysisBusy = false;
 let analysisError = "";
 let exportPayload = null;
 let exportSequence = 0;
+let returnToSetupAfterEngineLibrary = false;
 
 const ENGINE_TIME_MIN = 50;
 const ENGINE_TIME_MAX = 10_000;
@@ -619,6 +626,42 @@ function renderEngineLibrary() {
   });
 }
 
+function stockfishProfile() {
+  return state?.profiles?.find((profile) => /stockfish/i.test(`${profile.name} ${profile.detail}`));
+}
+
+function selectProfileForSetup(profileId) {
+  const mode = new FormData(elements.newGameForm).get("mode");
+  if (mode === "cvc") {
+    elements.blackProfile.value = profileId;
+  } else {
+    elements.pvcProfile.value = profileId;
+  }
+  renderProfileSummaries();
+}
+
+function renderEngineOnboarding() {
+  if (!state?.profiles) return;
+  const mode = new FormData(elements.newGameForm).get("mode");
+  elements.engineOnboarding.hidden = mode === "pvp";
+  const stockfish = stockfishProfile();
+  elements.engineOnboarding.dataset.ready = String(Boolean(stockfish));
+  elements.downloadStockfish.hidden = Boolean(stockfish);
+  if (stockfish) {
+    elements.stockfishKicker.textContent = "STOCKFISH READY";
+    elements.stockfishTitle.textContent = `${stockfish.name} is available`;
+    elements.stockfishCopy.textContent = mode === "cvc"
+      ? "Use it as Black now, or select it for either colour in the engine lists above."
+      : "Select it as your opponent now, or choose another engine from the list above.";
+    elements.setupEngineAction.textContent = "Use Stockfish";
+  } else {
+    elements.stockfishKicker.textContent = "EXTERNAL OPPONENT";
+    elements.stockfishTitle.textContent = "Want to play Stockfish?";
+    elements.stockfishCopy.textContent = "Stockfish is not bundled. Download and extract the official build, then import its executable once.";
+    elements.setupEngineAction.textContent = "Import engine";
+  }
+}
+
 async function removeImportedEngine(profileId) {
   const profile = state?.profiles?.find((candidate) => candidate.id === profileId);
   if (!profile || !window.confirm(`Remove ${profile.name} from this local engine library?`)) return;
@@ -732,27 +775,50 @@ function updateSetupVisibility() {
     cvc: "Assign an engine or model to each colour and watch them play.",
   };
   elements.modeHelp.textContent = help[mode];
+  renderEngineOnboarding();
+}
+
+function openNewGameSetup() {
+  if (state?.mode === "cvc" && autoPlay) {
+    autoPlay = false;
+    renderAutoPlay();
+  }
+  populateProfileOptions();
+  updateSetupVisibility();
+  if (!elements.newGameModal.open) elements.newGameModal.showModal();
+}
+
+function openEngineLibrary(returnToSetup = false) {
+  returnToSetupAfterEngineLibrary = returnToSetup;
+  renderEngineLibrary();
+  if (!elements.engineLibraryModal.open) elements.engineLibraryModal.showModal();
 }
 
 for (const button of document.querySelectorAll("#new-game, #new-game-top")) {
-  button.addEventListener("click", () => {
-    if (state?.mode === "cvc" && autoPlay) {
-      autoPlay = false;
-      renderAutoPlay();
-    }
-    populateProfileOptions();
-    updateSetupVisibility();
-    elements.newGameModal.showModal();
-  });
+  button.addEventListener("click", openNewGameSetup);
 }
 
 document.querySelector("#manage-engines").addEventListener("click", () => {
-  renderEngineLibrary();
-  elements.engineLibraryModal.showModal();
+  openEngineLibrary(false);
 });
 
 document.querySelector("#close-engine-library").addEventListener("click", () => {
   elements.engineLibraryModal.close();
+  if (returnToSetupAfterEngineLibrary) {
+    returnToSetupAfterEngineLibrary = false;
+    openNewGameSetup();
+  }
+});
+
+elements.setupEngineAction.addEventListener("click", () => {
+  const stockfish = stockfishProfile();
+  if (stockfish) {
+    selectProfileForSetup(stockfish.id);
+    showToast(`${stockfish.name} selected`);
+    return;
+  }
+  elements.newGameModal.close();
+  openEngineLibrary(true);
 });
 
 elements.engineFile.addEventListener("change", () => {
@@ -794,6 +860,12 @@ elements.engineImportForm.addEventListener("submit", async (event) => {
     elements.engineImportForm.reset();
     elements.engineFileLabel.textContent = "Choose engine executable";
     render();
+    if (returnToSetupAfterEngineLibrary) {
+      elements.engineLibraryModal.close();
+      returnToSetupAfterEngineLibrary = false;
+      openNewGameSetup();
+      selectProfileForSetup(payload.profile.id);
+    }
     showToast(`${payload.profile.name} imported and ready`);
   } catch (error) {
     showToast(error.message);
@@ -954,7 +1026,7 @@ async function initialise() {
     autoPlay = state.mode === "cvc";
     render();
     updateSetupVisibility();
-    maybeContinueGame();
+    openNewGameSetup();
   } catch (error) {
     elements.connection.classList.add("offline");
     elements.connectionLabel.textContent = "Service unavailable";
