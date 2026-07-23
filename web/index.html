@@ -186,13 +186,13 @@
 
       <section class="engine-onboarding" id="engine-onboarding" aria-live="polite">
         <div class="engine-onboarding-copy">
-          <span class="eyebrow" id="stockfish-kicker">EXTERNAL OPPONENT</span>
+          <span class="eyebrow" id="stockfish-kicker">OFFICIAL OPPONENT</span>
           <strong id="stockfish-title">Want to play Stockfish?</strong>
-          <p id="stockfish-copy">Stockfish is not bundled. Download and extract the official build, then import its executable once.</p>
+          <p id="stockfish-copy">Install the verified official build for this computer with one click.</p>
         </div>
         <div class="engine-onboarding-actions">
-          <a class="button compact" id="download-stockfish" href="https://stockfishchess.org/download/" target="_blank" rel="noreferrer">Get Stockfish</a>
-          <button class="button button-primary compact" id="setup-engine-action" type="button">Import engine</button>
+          <button class="button compact" id="import-other-engine" type="button">Other engine</button>
+          <button class="button button-primary compact" id="setup-engine-action" type="button">Install Stockfish</button>
         </div>
       </section>
 
@@ -236,21 +236,25 @@
       <div class="modal-head">
         <div>
           <span class="eyebrow">UCI ENGINE LIBRARY</span>
-          <h2>Add Stockfish or another engine</h2>
-          <p class="modal-intro">Choose an extracted UCI executable. It will be verified before appearing in game setup.</p>
+          <h2>Manage chess engines</h2>
+          <p class="modal-intro">Install official Stockfish automatically, or import another UCI executable.</p>
         </div>
         <button class="modal-close" id="close-engine-library" type="button" aria-label="Close">×</button>
       </div>
 
-      <div class="stockfish-download-strip">
-        <span><strong>Need Stockfish?</strong> Download the official build for this computer, extract it, then choose the executable below.</span>
-        <a href="https://stockfishchess.org/download/" target="_blank" rel="noreferrer">Official download ↗</a>
+      <div class="stockfish-download-strip" id="stockfish-installer">
+        <span><strong id="stockfish-installer-title">Official Stockfish 18</strong><small id="stockfish-installer-detail">Verified download for this computer · GPL-3.0</small></span>
+        <span class="stockfish-installer-actions">
+          <a href="https://github.com/official-stockfish/Stockfish/releases/tag/sf_18" target="_blank" rel="noreferrer">Source &amp; licence ↗</a>
+          <button class="button button-primary compact" id="library-install-stockfish" type="button">Install</button>
+        </span>
       </div>
 
+      <div class="library-divider"><span>Import another UCI engine</span></div>
       <div class="engine-import-grid">
         <label class="file-picker" for="engine-file">
           <span class="file-picker-mark" aria-hidden="true">＋</span>
-          <span><strong id="engine-file-label">Choose engine executable</strong><small>Stockfish or another UCI-compatible binary</small></span>
+          <span><strong id="engine-file-label">Choose engine executable</strong><small>Any trusted UCI-compatible binary</small></span>
           <input id="engine-file" name="engine-file" type="file" required>
         </label>
         <label class="text-field" for="engine-label">

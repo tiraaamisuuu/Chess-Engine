@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -16,6 +17,7 @@ import time
 from urllib.parse import urlencode
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+import zipfile
 
 import chess.pgn
 
@@ -67,8 +69,20 @@ def main() -> int:
     port = free_port()
     base = f"http://127.0.0.1:{port}"
     engine_library = tempfile.TemporaryDirectory(prefix="chess-user-engines-")
+    stockfish_executable = "stockfish-smoke.exe" if os.name == "nt" else "stockfish-smoke"
+    stockfish_archive = Path(engine_library.name) / "stockfish-smoke.zip"
+    with zipfile.ZipFile(stockfish_archive, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(stockfish_executable, args.engine.read_bytes())
+        archive.writestr("Copying.txt", "Stockfish smoke-test licence fixture\n")
+        archive.writestr("AUTHORS", "Smoke test\n")
+        archive.writestr("README.md", "Smoke test archive\n")
+    stockfish_digest = hashlib.sha256(stockfish_archive.read_bytes()).hexdigest()
     environment = dict(os.environ)
     environment["CHESS_USER_ENGINE_ROOT"] = engine_library.name
+    environment["CHESS_STOCKFISH_ASSET_URL"] = stockfish_archive.resolve().as_uri()
+    environment["CHESS_STOCKFISH_ASSET_SHA256"] = stockfish_digest
+    environment["CHESS_STOCKFISH_EXECUTABLE"] = stockfish_executable
+    environment["CHESS_STOCKFISH_ARCHIVE_KIND"] = "zip"
     server = subprocess.Popen(
         [sys.executable, str(ROOT / "web" / "server.py"), "--engine", str(args.engine),
          "--port", str(port), "--no-open"],
@@ -105,7 +119,36 @@ def main() -> int:
         assert state["profiles"][0]["badge"] == "DEV · NEWEST"
         assert state["controllers"]["black"]["badge"] == "DEV · NEWEST"
         assert state["engine"]["activeProfileRole"] == "development"
+        assert state["engineLibrary"]["stockfish"]["installed"] is False
+        assert state["engineLibrary"]["stockfish"]["installerAvailable"] is True
         profile_id = state["profiles"][0]["id"]
+
+        installed = request(base, "/api/engines/install-stockfish", {}, headers={
+            "X-Engine-Library-Token": state["engineLibrary"]["token"],
+        })
+        stockfish_profile = installed["profile"]
+        assert stockfish_profile["role"] == "stockfish"
+        assert stockfish_profile["badge"] == "STOCKFISH · OFFICIAL"
+        assert stockfish_profile["removable"] is True
+        assert installed["state"]["engineLibrary"]["stockfish"]["installed"] is True
+        installed_again = request(base, "/api/engines/install-stockfish", {}, headers={
+            "X-Engine-Library-Token": installed["state"]["engineLibrary"]["token"],
+        })
+        assert installed_again["profile"]["id"] == stockfish_profile["id"]
+        assert installed_again["state"]["engine"]["profileCount"] \
+            == installed["state"]["engine"]["profileCount"]
+        state = request(base, "/api/new", {
+            "mode": "pvc", "side": "white", "engineProfile": stockfish_profile["id"],
+            "engineTimeMs": 100,
+        })
+        state = request(base, "/api/move", {"uci": "e2e4"})
+        state = request(base, "/api/engine-move", {})
+        assert state["engine"]["lastMove"]["profileId"] == stockfish_profile["id"]
+        state = request(base, "/api/new", {"mode": "pvp"})
+        state = request(base, "/api/engines/remove", {"profileId": stockfish_profile["id"]}, headers={
+            "X-Engine-Library-Token": state["engineLibrary"]["token"],
+        })
+        assert state["engineLibrary"]["stockfish"]["installed"] is False
 
         imported = upload_engine(
             base, args.engine.resolve(), state["engineLibrary"]["token"], "Smoke Test Engine"
@@ -213,7 +256,8 @@ def main() -> int:
             assert b"export-modal" in page and b"run-analysis" in page
             assert b"engine-time-slider" in page and b'data-time="5000"' in page
             assert b"engine-library-modal" in page and b"engine-import-form" in page
-            assert b"setup-engine-action" in page and b"stockfishchess.org/download/" in page
+            assert b"setup-engine-action" in page and b"library-install-stockfish" in page
+            assert b"official-stockfish/Stockfish/releases/tag/sf_18" in page
         print("Web GUI smoke: PASS")
         return 0
     finally:

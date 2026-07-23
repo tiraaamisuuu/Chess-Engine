@@ -42,8 +42,12 @@ const elements = {
   stockfishKicker: document.querySelector("#stockfish-kicker"),
   stockfishTitle: document.querySelector("#stockfish-title"),
   stockfishCopy: document.querySelector("#stockfish-copy"),
-  downloadStockfish: document.querySelector("#download-stockfish"),
+  importOtherEngine: document.querySelector("#import-other-engine"),
   setupEngineAction: document.querySelector("#setup-engine-action"),
+  stockfishInstaller: document.querySelector("#stockfish-installer"),
+  stockfishInstallerTitle: document.querySelector("#stockfish-installer-title"),
+  stockfishInstallerDetail: document.querySelector("#stockfish-installer-detail"),
+  libraryInstallStockfish: document.querySelector("#library-install-stockfish"),
   pvcOptions: document.querySelector("#pvc-options"),
   cvcOptions: document.querySelector("#cvc-options"),
   strengthField: document.querySelector("#strength-field"),
@@ -92,6 +96,7 @@ let analysisError = "";
 let exportPayload = null;
 let exportSequence = 0;
 let returnToSetupAfterEngineLibrary = false;
+let stockfishInstallBusy = false;
 
 const ENGINE_TIME_MIN = 50;
 const ENGINE_TIME_MAX = 10_000;
@@ -571,6 +576,7 @@ function render() {
     legacy: "LEGACY",
     baseline: "BASELINE",
     nnue: "NNUE",
+    stockfish: "STOCKFISH",
     revision: "REVISION",
     external: "EXTERNAL",
   };
@@ -624,10 +630,12 @@ function renderEngineLibrary() {
     }
     elements.engineLibraryList.append(row);
   });
+  renderStockfishInstaller();
 }
 
 function stockfishProfile() {
-  return state?.profiles?.find((profile) => /stockfish/i.test(`${profile.name} ${profile.detail}`));
+  return state?.profiles?.find((profile) => profile.role === "stockfish"
+    || /stockfish/i.test(`${profile.name} ${profile.detail}`));
 }
 
 function selectProfileForSetup(profileId) {
@@ -645,8 +653,8 @@ function renderEngineOnboarding() {
   const mode = new FormData(elements.newGameForm).get("mode");
   elements.engineOnboarding.hidden = mode === "pvp";
   const stockfish = stockfishProfile();
+  const installer = state.engineLibrary?.stockfish;
   elements.engineOnboarding.dataset.ready = String(Boolean(stockfish));
-  elements.downloadStockfish.hidden = Boolean(stockfish);
   if (stockfish) {
     elements.stockfishKicker.textContent = "STOCKFISH READY";
     elements.stockfishTitle.textContent = `${stockfish.name} is available`;
@@ -654,11 +662,74 @@ function renderEngineOnboarding() {
       ? "Use it as Black now, or select it for either colour in the engine lists above."
       : "Select it as your opponent now, or choose another engine from the list above.";
     elements.setupEngineAction.textContent = "Use Stockfish";
+    elements.setupEngineAction.disabled = false;
+  } else if (installer?.installerAvailable) {
+    elements.stockfishKicker.textContent = "OFFICIAL OPPONENT";
+    elements.stockfishTitle.textContent = `Install Stockfish ${installer.version}`;
+    elements.stockfishCopy.textContent = `One verified download for ${installer.platform}. No file selection or extraction needed.`;
+    elements.setupEngineAction.textContent = stockfishInstallBusy ? "Installing…" : "Install Stockfish";
+    elements.setupEngineAction.disabled = stockfishInstallBusy;
   } else {
     elements.stockfishKicker.textContent = "EXTERNAL OPPONENT";
-    elements.stockfishTitle.textContent = "Want to play Stockfish?";
-    elements.stockfishCopy.textContent = "Stockfish is not bundled. Download and extract the official build, then import its executable once.";
-    elements.setupEngineAction.textContent = "Import engine";
+    elements.stockfishTitle.textContent = "Manual engine setup required";
+    elements.stockfishCopy.textContent = "The automatic Stockfish installer does not support this platform yet. Import a compatible UCI executable instead.";
+    elements.setupEngineAction.textContent = "Import manually";
+    elements.setupEngineAction.disabled = false;
+  }
+}
+
+function renderStockfishInstaller() {
+  if (!state?.engineLibrary?.stockfish) return;
+  const installer = state.engineLibrary.stockfish;
+  const stockfish = stockfishProfile();
+  elements.stockfishInstaller.dataset.ready = String(Boolean(stockfish));
+  if (stockfish) {
+    elements.stockfishInstallerTitle.textContent = stockfish.name;
+    elements.stockfishInstallerDetail.textContent = "Installed and verified · ready in game setup";
+    elements.libraryInstallStockfish.textContent = "Installed";
+    elements.libraryInstallStockfish.disabled = true;
+  } else {
+    elements.stockfishInstallerTitle.textContent = `Official Stockfish ${installer.version}`;
+    elements.stockfishInstallerDetail.textContent = installer.installerAvailable
+      ? `Verified download for ${installer.platform} · GPL-3.0`
+      : "Automatic installation is unavailable on this platform";
+    elements.libraryInstallStockfish.textContent = stockfishInstallBusy ? "Installing…" : "Install";
+    elements.libraryInstallStockfish.disabled = stockfishInstallBusy || !installer.installerAvailable;
+  }
+}
+
+async function installStockfish(selectAfterInstall) {
+  if (stockfishInstallBusy) return;
+  const installed = stockfishProfile();
+  if (installed) {
+    if (selectAfterInstall) selectProfileForSetup(installed.id);
+    return;
+  }
+  stockfishInstallBusy = true;
+  renderEngineOnboarding();
+  renderStockfishInstaller();
+  try {
+    const payload = await request("/api/engines/install-stockfish", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Engine-Library-Token": state.engineLibrary.token,
+      },
+      body: "{}",
+    });
+    state = payload.state;
+    profileOptionsKey = "";
+    render();
+    if (selectAfterInstall) {
+      selectProfileForSetup(payload.profile.id);
+    }
+    showToast(`${payload.profile.name} installed and ready`);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    stockfishInstallBusy = false;
+    renderEngineOnboarding();
+    renderStockfishInstaller();
   }
 }
 
@@ -817,9 +888,20 @@ elements.setupEngineAction.addEventListener("click", () => {
     showToast(`${stockfish.name} selected`);
     return;
   }
+  if (state.engineLibrary?.stockfish?.installerAvailable) {
+    installStockfish(true);
+    return;
+  }
   elements.newGameModal.close();
   openEngineLibrary(true);
 });
+
+elements.importOtherEngine.addEventListener("click", () => {
+  elements.newGameModal.close();
+  openEngineLibrary(true);
+});
+
+elements.libraryInstallStockfish.addEventListener("click", () => installStockfish(false));
 
 elements.engineFile.addEventListener("change", () => {
   const file = elements.engineFile.files[0];

@@ -49,15 +49,19 @@ The setup panel automatically lists the current engine, revisions built by
 Role badges distinguish the newest development build, committed candidate,
 legacy baseline, and NNUE models at a glance.
 
-Use **Import engine** directly in game setup, or **Engines** in the top bar, to
-import Stockfish or another UCI-compatible executable. Stockfish itself is not
-bundled: download and extract an official build before choosing its executable.
-The local service copies the selected file into its ignored
-`.tools/user-engines/` library, verifies the UCI handshake, records the name and
-author reported by the engine, and makes it available to PvC, CvC, and analysis.
-Imported engines persist between launches and can be removed from the same
-panel. Only import executables you trust: imported engines run locally with your
-user account's permissions.
+Use **Install Stockfish** directly in game setup to download the pinned official
+build for the current macOS, Windows, or Linux host. The service verifies the
+release SHA-256, extracts the expected executable and GPL files, completes a UCI
+handshake, and selects it without requiring a manual file import. The downloaded
+binary remains in the ignored `.tools/user-engines/` library rather than Git.
+
+Use **Other engine** in game setup, or **Engines** in the top bar, to import
+another UCI-compatible executable. The local service copies the selected file
+into its ignored `.tools/user-engines/` library, verifies the UCI handshake,
+records the name and author reported by the engine, and makes it available to
+PvC, CvC, and analysis. Imported engines persist between launches and can be
+removed from the same panel. Only import executables you trust: imported engines
+run locally with your user account's permissions.
 
 ## Build the headless engine and tools
 

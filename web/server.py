@@ -6,20 +6,27 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from datetime import datetime
+import hashlib
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
 import os
 from pathlib import Path
+import platform
 import secrets
 import shutil
 import signal
 import stat
+import tarfile
+import tempfile
 import threading
 import webbrowser
 from typing import Any
+from urllib.error import URLError
 from urllib.parse import parse_qs, urlparse
+from urllib.request import Request, urlopen
+import zipfile
 
 import chess
 import chess.engine
@@ -35,6 +42,92 @@ USER_ENGINE_ROOT = Path(os.environ.get(
 )).expanduser().resolve()
 USER_ENGINE_MANIFEST = USER_ENGINE_ROOT / "engines.json"
 MAX_ENGINE_UPLOAD_BYTES = 256 * 1024 * 1024
+MAX_STOCKFISH_DOWNLOAD_BYTES = 128 * 1024 * 1024
+STOCKFISH_RELEASE = "18"
+STOCKFISH_RELEASE_TAG = "sf_18"
+STOCKFISH_RELEASE_URL = (
+    f"https://github.com/official-stockfish/Stockfish/releases/tag/{STOCKFISH_RELEASE_TAG}"
+)
+
+
+@dataclass(frozen=True)
+class StockfishAsset:
+    filename: str
+    sha256: str
+    executable: str
+    archive_kind: str
+    platform_label: str
+
+    @property
+    def url(self) -> str:
+        override = os.environ.get("CHESS_STOCKFISH_ASSET_URL")
+        if override:
+            return override
+        return (
+            "https://github.com/official-stockfish/Stockfish/releases/download/"
+            f"{STOCKFISH_RELEASE_TAG}/{self.filename}"
+        )
+
+
+def stockfish_asset_for_host() -> StockfishAsset | None:
+    override_url = os.environ.get("CHESS_STOCKFISH_ASSET_URL")
+    if override_url:
+        digest = os.environ.get("CHESS_STOCKFISH_ASSET_SHA256", "")
+        executable = os.environ.get("CHESS_STOCKFISH_EXECUTABLE", "")
+        archive_kind = os.environ.get("CHESS_STOCKFISH_ARCHIVE_KIND", "")
+        if len(digest) != 64 or not executable or archive_kind not in {"tar", "zip"}:
+            return None
+        return StockfishAsset(
+            Path(urlparse(override_url).path).name or "stockfish-test-archive",
+            digest.lower(),
+            Path(executable).name,
+            archive_kind,
+            "test host",
+        )
+
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    if system == "darwin" and machine in {"arm64", "aarch64"}:
+        return StockfishAsset(
+            "stockfish-macos-m1-apple-silicon.tar",
+            "4d77c4aa3ad9bd1ea8111f2ac5a4620fe7ebf998d6893bf828d49ccd579c8cb0",
+            "stockfish-macos-m1-apple-silicon",
+            "tar",
+            "macOS · Apple Silicon",
+        )
+    if system == "darwin" and machine in {"x86_64", "amd64"}:
+        return StockfishAsset(
+            "stockfish-macos-x86-64.tar",
+            "e7d7a2bca13915419d41ac6cb8cedb123dd2ba1c39a22c574df7a2aa3f526592",
+            "stockfish-macos-x86-64",
+            "tar",
+            "macOS · Intel",
+        )
+    if system == "linux" and machine in {"x86_64", "amd64"}:
+        return StockfishAsset(
+            "stockfish-ubuntu-x86-64.tar",
+            "5c6f38b02a4da5f3ffe763f27da6c3e743eebefd92b50cb3661623b96696adff",
+            "stockfish-ubuntu-x86-64",
+            "tar",
+            "Linux · x64",
+        )
+    if system == "windows" and machine in {"arm64", "aarch64"}:
+        return StockfishAsset(
+            "stockfish-windows-armv8.zip",
+            "7bc5880c11a58b2fdc4fcd606bf5cb593230026eb501a5a8865dc79fda5ea5fd",
+            "stockfish-windows-armv8.exe",
+            "zip",
+            "Windows · ARM64",
+        )
+    if system == "windows" and machine in {"x86_64", "amd64"}:
+        return StockfishAsset(
+            "stockfish-windows-x86-64.zip",
+            "40cc975817e7eee270b03f354810d20956df565420d320f6dd37d454dc81a139",
+            "stockfish-windows-x86-64.exe",
+            "zip",
+            "Windows · x64",
+        )
+    return None
 
 
 def color_name(color: chess.Color | None) -> str | None:
@@ -119,13 +212,18 @@ def external_engine_profile(entry: dict[str, Any]) -> EngineProfile | None:
     raw_arguments = entry.get("args", [])
     arguments = tuple(str(value) for value in raw_arguments) \
         if isinstance(raw_arguments, list) else ()
+    kind = str(entry.get("kind") or "external")
+    role = str(entry.get("role") or ("stockfish" if kind == "stockfish" else "external"))
+    badge = str(entry.get("badge") or (
+        "STOCKFISH · OFFICIAL" if role == "stockfish" else "EXTERNAL · UCI"
+    ))
     return EngineProfile(
         profile_id,
         str(entry.get("name") or binary.stem),
         str(entry.get("detail") or "Imported UCI engine"),
-        "external",
-        "external",
-        "EXTERNAL · UCI",
+        kind,
+        role,
+        badge,
         (str(binary), *arguments),
         removable=True,
         author=str(entry.get("author") or ""),
@@ -380,6 +478,158 @@ class GameService:
                     engine.quit()
                 except (OSError, chess.engine.EngineError, TimeoutError):
                     pass
+
+    @staticmethod
+    def _download_stockfish(asset: StockfishAsset, destination: Path) -> None:
+        digest = hashlib.sha256()
+        total = 0
+        request = Request(asset.url, headers={"User-Agent": "Chess-Engine-Local-GUI/1.0"})
+        try:
+            with urlopen(request, timeout=45) as response, destination.open("wb") as output:
+                announced = response.headers.get("Content-Length")
+                if announced and int(announced) > MAX_STOCKFISH_DOWNLOAD_BYTES:
+                    raise ValueError("The official Stockfish archive is unexpectedly large")
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > MAX_STOCKFISH_DOWNLOAD_BYTES:
+                        raise ValueError("The official Stockfish archive exceeded 128 MB")
+                    digest.update(chunk)
+                    output.write(chunk)
+        except (OSError, URLError, TimeoutError) as error:
+            raise ValueError(f"Could not download Stockfish: {error}") from error
+        if digest.hexdigest() != asset.sha256:
+            raise ValueError("Stockfish download checksum did not match the official release")
+
+    @staticmethod
+    def _copy_archive_member(archive_path: Path, archive_kind: str,
+                             member_name: str, destination: Path,
+                             required: bool = True) -> bool:
+        if archive_kind == "tar":
+            with tarfile.open(archive_path, "r:*") as archive:
+                matches = [
+                    member for member in archive.getmembers()
+                    if member.isfile() and Path(member.name).name == member_name
+                ]
+                if len(matches) != 1:
+                    if not required and not matches:
+                        return False
+                    raise ValueError(f"Stockfish archive has an invalid {member_name} entry")
+                source = archive.extractfile(matches[0])
+                if source is None:
+                    raise ValueError(f"Could not read {member_name} from Stockfish archive")
+                with source, destination.open("wb") as output:
+                    shutil.copyfileobj(source, output, length=1024 * 1024)
+                return True
+        if archive_kind == "zip":
+            with zipfile.ZipFile(archive_path) as archive:
+                matches = [
+                    member for member in archive.infolist()
+                    if not member.is_dir() and Path(member.filename).name == member_name
+                ]
+                if len(matches) != 1:
+                    if not required and not matches:
+                        return False
+                    raise ValueError(f"Stockfish archive has an invalid {member_name} entry")
+                with archive.open(matches[0]) as source, destination.open("wb") as output:
+                    shutil.copyfileobj(source, output, length=1024 * 1024)
+                return True
+        raise ValueError("Unsupported Stockfish archive format")
+
+    def install_stockfish(self) -> dict[str, Any]:
+        with self.lock:
+            existing = next(
+                (profile for profile in self.profiles.values()
+                 if profile.role == "stockfish"
+                 or "stockfish" in f"{profile.name} {profile.detail}".lower()),
+                None,
+            )
+            if existing:
+                return {"profile": existing.serialize(), "state": self._serialize()}
+
+            asset = stockfish_asset_for_host()
+            if asset is None:
+                raise ValueError(
+                    "One-click Stockfish installation is unavailable on this platform; "
+                    "use the manual UCI engine importer instead"
+                )
+
+            USER_ENGINE_ROOT.mkdir(parents=True, exist_ok=True)
+            existing_ids = set(self.profiles)
+            existing_ids.update(
+                path.name for path in USER_ENGINE_ROOT.iterdir() if path.is_dir()
+            )
+            profile_id = self._unique_external_id(
+                f"stockfish-{STOCKFISH_RELEASE}", existing_ids
+            )
+            staging_dir = Path(tempfile.mkdtemp(
+                prefix=".stockfish-install-", dir=USER_ENGINE_ROOT
+            ))
+            destination_dir = USER_ENGINE_ROOT / profile_id
+            archive_path = staging_dir / asset.filename
+            binary_path = staging_dir / asset.executable
+            installed = False
+            try:
+                self._download_stockfish(asset, archive_path)
+                try:
+                    self._copy_archive_member(
+                        archive_path, asset.archive_kind, asset.executable, binary_path
+                    )
+                    for filename in ("Copying.txt", "AUTHORS", "README.md"):
+                        self._copy_archive_member(
+                            archive_path, asset.archive_kind, filename,
+                            staging_dir / filename, required=False
+                        )
+                except (tarfile.TarError, zipfile.BadZipFile, OSError) as error:
+                    raise ValueError(
+                        "The downloaded Stockfish archive could not be read safely"
+                    ) from error
+                archive_path.unlink()
+                if os.name != "nt":
+                    binary_path.chmod(
+                        binary_path.stat().st_mode
+                        | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+                    )
+                detected_name, author = self._probe_engine((str(binary_path),))
+                staging_dir.rename(destination_dir)
+                installed = True
+                installed_binary = destination_dir / asset.executable
+                entry = {
+                    "id": profile_id,
+                    "name": detected_name or f"Stockfish {STOCKFISH_RELEASE}",
+                    "detail": (
+                        f"Official Stockfish {STOCKFISH_RELEASE} · {asset.platform_label}"
+                    ),
+                    "author": author,
+                    "path": str(installed_binary.resolve()),
+                    "args": [],
+                    "kind": "stockfish",
+                    "role": "stockfish",
+                    "badge": "STOCKFISH · OFFICIAL",
+                    "installedAt": datetime.now().astimezone().isoformat(timespec="seconds"),
+                    "sourceUrl": asset.url,
+                    "releaseUrl": STOCKFISH_RELEASE_URL,
+                    "sha256": asset.sha256,
+                    "license": "GPL-3.0",
+                }
+                entries = load_user_engine_entries()
+                entries.append(entry)
+                write_user_engine_entries(entries)
+                profile = external_engine_profile(entry)
+                if profile is None:
+                    raise ValueError("Installed Stockfish metadata could not be loaded")
+                self.profiles[profile.profile_id] = profile
+                return {
+                    "profile": profile.serialize(),
+                    "state": self._serialize(),
+                }
+            except Exception:
+                shutil.rmtree(
+                    destination_dir if installed else staging_dir, ignore_errors=True
+                )
+                raise
 
     def import_engine(self, filename: str, requested_name: str, content: bytes) -> dict[str, Any]:
         with self.lock:
@@ -782,6 +1032,13 @@ class GameService:
         default_session = self.sessions.get(self.default_profile_id)
         result = outcome.result() if outcome else None
         reason = outcome.termination.name.replace("_", " ").title() if outcome else None
+        stockfish = next(
+            (profile for profile in self.profiles.values()
+             if profile.role == "stockfish"
+             or "stockfish" in f"{profile.name} {profile.detail}".lower()),
+            None,
+        )
+        stockfish_asset = stockfish_asset_for_host()
         return {
             "fen": self.board.fen(en_passant="fen"),
             "turn": color_name(self.board.turn),
@@ -796,6 +1053,14 @@ class GameService:
                 "token": self.library_token,
                 "importedCount": sum(profile.removable for profile in self.profiles.values()),
                 "maxUploadMB": MAX_ENGINE_UPLOAD_BYTES // (1024 * 1024),
+                "stockfish": {
+                    "installed": stockfish is not None,
+                    "profileId": stockfish.profile_id if stockfish else None,
+                    "installerAvailable": stockfish_asset is not None,
+                    "version": STOCKFISH_RELEASE,
+                    "platform": stockfish_asset.platform_label if stockfish_asset else None,
+                    "releaseUrl": STOCKFISH_RELEASE_URL,
+                },
             },
             "canMove": can_move,
             "needsEngineMove": needs_engine,
@@ -854,6 +1119,11 @@ class WebHandler(BaseHTTPRequestHandler):
                 filename = query.get("filename", [""])[0]
                 name = query.get("name", [""])[0]
                 response = self.service.import_engine(filename, name, self.rfile.read(length))
+                self._json(response, HTTPStatus.CREATED)
+                return
+            if path == "/api/engines/install-stockfish":
+                self._verify_library_token()
+                response = self.service.install_stockfish()
                 self._json(response, HTTPStatus.CREATED)
                 return
             payload = self._payload()

@@ -418,6 +418,7 @@ button { color: inherit; }
 .engine-state[data-role="candidate"] { border-color: rgba(107,212,255,.32); color: #79d8ff; }
 .engine-state[data-role="legacy"] { border-color: rgba(255,180,95,.32); color: #ffb45f; }
 .engine-state[data-role="nnue"] { border-color: rgba(191,140,255,.32); color: #c89cff; }
+.engine-state[data-role="stockfish"] { border-color: rgba(107,212,255,.4); color: #79d8ff; }
 .engine-state[data-role="external"] { border-color: rgba(255,255,255,.24); color: #dce3dc; }
 
 .modal, .promotion-modal {
@@ -551,6 +552,8 @@ legend { margin-bottom: 10px; color: var(--muted); font-size: 9px; font-weight: 
 .profile-summary[data-role="legacy"] .profile-badge { border-color: rgba(255,180,95,.35); color: #ffb45f; background: rgba(157,99,35,.12); }
 .profile-summary[data-role="nnue"] { border-color: rgba(191,140,255,.22); }
 .profile-summary[data-role="nnue"] .profile-badge { border-color: rgba(191,140,255,.35); color: #c89cff; background: rgba(103,61,157,.12); }
+.profile-summary[data-role="stockfish"] { border-color: rgba(107,212,255,.28); }
+.profile-summary[data-role="stockfish"] .profile-badge { border-color: rgba(107,212,255,.4); color: #79d8ff; background: rgba(55,126,157,.12); }
 .profile-summary[data-role="external"] { border-color: rgba(255,255,255,.16); }
 .profile-summary[data-role="external"] .profile-badge { color: #dce3dc; background: rgba(255,255,255,.04); }
 .matchup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -587,10 +590,16 @@ legend { margin-bottom: 10px; color: var(--muted); font-size: 9px; font-weight: 
   display: flex;
   justify-content: space-between;
   gap: 18px;
+  align-items: center;
 }
+.stockfish-download-strip[data-ready="true"] { border-color: rgba(201,255,90,.25); background: var(--accent-dark); }
 .stockfish-download-strip strong { color: var(--text); }
-.stockfish-download-strip a { flex: 0 0 auto; color: #79d8ff; font-weight: 750; text-decoration: none; }
+.stockfish-download-strip small { display: block; margin-top: 3px; color: var(--muted); }
+.stockfish-installer-actions { display: flex; align-items: center; gap: 11px; }
+.stockfish-download-strip a { flex: 0 0 auto; color: #79d8ff; font-weight: 750; text-decoration: none; white-space: nowrap; }
 .stockfish-download-strip a:hover { text-decoration: underline; }
+.stockfish-download-strip .button { min-height: 34px; padding: 0 12px; }
+.stockfish-download-strip .button:disabled, .engine-onboarding .button:disabled { cursor: default; opacity: .58; transform: none; }
 .engine-import-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 10px; }
 .file-picker {
   min-height: 74px;
@@ -710,7 +719,8 @@ legend { margin-bottom: 10px; color: var(--muted); font-size: 9px; font-weight: 
   .matchup-grid { grid-template-columns: 1fr; gap: 0; }
   .engine-onboarding { grid-template-columns: 1fr; gap: 12px; }
   .engine-onboarding-actions { display: grid; grid-template-columns: 1fr 1fr; }
-  .stockfish-download-strip { display: grid; gap: 7px; }
+  .stockfish-download-strip { display: grid; gap: 10px; }
+  .stockfish-installer-actions { justify-content: space-between; }
   .engine-import-grid { grid-template-columns: 1fr; }
   .export-metadata { grid-template-columns: 1fr; }
   .export-preview { height: 190px; }
