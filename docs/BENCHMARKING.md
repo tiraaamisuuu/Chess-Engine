@@ -98,6 +98,23 @@ The runner discovers and records the engine's supported `UCI_Elo` bounds at
 runtime. A limited-strength value is a calibration anchor in this local test
 pool, not a universal human rating.
 
+To compare resource configurations of the same executable, use the explicit
+per-engine overrides. The manifest records both sides separately:
+
+```powershell
+python scripts\compare_engines.py `
+  --baseline-exe .\build-pc-max\Release\chess-engine-uci.exe `
+  --candidate-exe .\build-pc-max\Release\chess-engine-uci.exe `
+  --baseline-name "Single thread" --candidate-name "Root split 6 threads" `
+  --baseline-threads 1 --candidate-threads 6 `
+  --baseline-hash 256 --candidate-hash 256 `
+  --games 100 --tc 10+0.1 --concurrency 2
+```
+
+This gives both engines equal wall-clock time but intentionally gives the
+candidate more CPU resources. Describe it as a scaling experiment, not a
+same-resource engine comparison.
+
 ## Run a calibrated Stockfish ladder
 
 `scripts/calibrate_rating.py` reuses the paired runner across several

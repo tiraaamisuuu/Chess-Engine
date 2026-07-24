@@ -19,6 +19,23 @@ SPEC.loader.exec_module(compare_engines)
 
 
 class CompareEnginesTests(unittest.TestCase):
+    def test_resolves_per_engine_resource_overrides(self) -> None:
+        resources = compare_engines.per_engine_resources(
+            threads=1,
+            hash_mb=256,
+            baseline_threads=None,
+            candidate_threads=6,
+            baseline_hash_mb=128,
+            candidate_hash_mb=None,
+        )
+
+        self.assertEqual(resources["baseline"], {"threads": 1, "hashMb": 128})
+        self.assertEqual(resources["candidate"], {"threads": 6, "hashMb": 256})
+
+    def test_rejects_invalid_per_engine_resources(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "must be positive"):
+            compare_engines.per_engine_resources(1, 256, None, 0, None, None)
+
     def test_parses_uci_option_bounds_and_values(self) -> None:
         output = "\n".join(
             [

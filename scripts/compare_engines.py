@@ -51,8 +51,18 @@ def arguments() -> argparse.Namespace:
                         help="UCI option for engine B; may be repeated")
     parser.add_argument("--games", type=int, default=200, help="Even number of games")
     parser.add_argument("--tc", default="10+0.1", help="Cute Chess time control")
-    parser.add_argument("--threads", type=int, default=1)
-    parser.add_argument("--hash", type=int, default=256, dest="hash_mb")
+    parser.add_argument("--threads", type=int, default=1,
+                        help="Default threads for both engines")
+    parser.add_argument("--hash", type=int, default=256, dest="hash_mb",
+                        help="Default hash size for both engines")
+    parser.add_argument("--baseline-threads", type=int,
+                        help="Override threads for engine A")
+    parser.add_argument("--candidate-threads", type=int,
+                        help="Override threads for engine B")
+    parser.add_argument("--baseline-hash", type=int, dest="baseline_hash_mb",
+                        help="Override hash size for engine A")
+    parser.add_argument("--candidate-hash", type=int, dest="candidate_hash_mb",
+                        help="Override hash size for engine B")
     parser.add_argument("--concurrency", type=int, default=2)
     parser.add_argument("--build-jobs", type=int, default=min(8, os.cpu_count() or 1))
     parser.add_argument("--openings", type=Path)
@@ -309,6 +319,34 @@ def configured_options(
         set_option("Use NNUE", "true", required=True)
 
     return list(configured.values())
+
+
+def per_engine_resources(
+    threads: int,
+    hash_mb: int,
+    baseline_threads: int | None,
+    candidate_threads: int | None,
+    baseline_hash_mb: int | None,
+    candidate_hash_mb: int | None,
+) -> dict[str, dict[str, int]]:
+    resources = {
+        "baseline": {
+            "threads": baseline_threads if baseline_threads is not None else threads,
+            "hashMb": baseline_hash_mb if baseline_hash_mb is not None else hash_mb,
+        },
+        "candidate": {
+            "threads": candidate_threads if candidate_threads is not None else threads,
+            "hashMb": candidate_hash_mb if candidate_hash_mb is not None else hash_mb,
+        },
+    }
+    values = [
+        resources[side][field]
+        for side in ("baseline", "candidate")
+        for field in ("threads", "hashMb")
+    ]
+    if min(values) < 1:
+        raise RuntimeError("per-engine threads and hash sizes must be positive")
+    return resources
 
 
 def resolve_engine(
@@ -578,6 +616,14 @@ def main() -> int:
         args.tc = "2+0.02"
         args.concurrency = 1
 
+    resources = per_engine_resources(
+        args.threads,
+        args.hash_mb,
+        args.baseline_threads,
+        args.candidate_threads,
+        args.baseline_hash_mb,
+        args.candidate_hash_mb,
+    )
     sfml = args.sfml_prefix.expanduser() if args.sfml_prefix else default_sfml_prefix()
     baseline = resolve_engine(
         "Baseline",
@@ -590,8 +636,8 @@ def main() -> int:
         args.baseline_eval_file,
         args.build_jobs,
         sfml,
-        args.threads,
-        args.hash_mb,
+        resources["baseline"]["threads"],
+        resources["baseline"]["hashMb"],
     )
     candidate = resolve_engine(
         "Candidate",
@@ -604,8 +650,8 @@ def main() -> int:
         args.candidate_eval_file,
         args.build_jobs,
         sfml,
-        args.threads,
-        args.hash_mb,
+        resources["candidate"]["threads"],
+        resources["candidate"]["hashMb"],
     )
     if str(candidate["matchName"]).casefold() == str(baseline["matchName"]).casefold():
         raise RuntimeError("Candidate and baseline match names must be different")
@@ -693,6 +739,7 @@ def main() -> int:
             "timeControl": args.tc,
             "threads": args.threads,
             "hashMb": args.hash_mb,
+            "engineResources": resources,
             "concurrency": args.concurrency,
             "seed": args.seed,
             "sprt": {
@@ -777,6 +824,13 @@ def main() -> int:
     print(f"  Candidate: {candidate['matchName']} [{candidate['selector']}]")
     print(f"  Baseline : {baseline['matchName']} [{baseline['selector']}]")
     print(f"  Games    : {args.games} at {args.tc}")
+    print(
+        "  Resources: "
+        f"candidate {resources['candidate']['threads']}t/"
+        f"{resources['candidate']['hashMb']}MB; "
+        f"baseline {resources['baseline']['threads']}t/"
+        f"{resources['baseline']['hashMb']}MB"
+    )
     print(f"  Openings : {openings}")
     print(f"  Manifest : {manifest_path}")
     print(f"  Output   : {output}\n")
