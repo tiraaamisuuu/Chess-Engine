@@ -64,6 +64,6 @@ moves, or disconnects.
 The safety regression is resolved: the six-thread path no longer exhibits the
 catastrophic move-selection and timing behavior from the original 0/100 match.
 The sample does not show a strength gain, so `Threads=1` remains the default.
-The next parallel-search optimization should remove repeated worker creation
-inside iterative deepening, then repeat the same equal-time gate.
-
+Revision `0f06dd7` subsequently removed repeated worker creation inside
+iterative deepening. See
+[`2026-07-24-persistent-root-workers.md`](2026-07-24-persistent-root-workers.md).

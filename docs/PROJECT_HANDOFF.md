@@ -995,7 +995,11 @@ and falls back to one worker when thread startup cannot fit the hard time
 budget. A clean 100-game rematch then scored 45.5% at six threads
 (-31.4 ±55.4 Elo) with no time forfeits or process failures. The catastrophic
 regression is fixed, but one thread remains the default because useful
-multi-thread strength scaling is still unproven.
+multi-thread strength scaling is still unproven. Revision `0f06dd7` then reused
+one worker team across iterative-deepening depths. An interleaved A/B benchmark
+measured 9.4% higher six-thread NPS and half a ply more median mean depth; a
+100-game six-thread A/B match against `95eb16b` was neutral at
+-6.9 ±58.2 Elo with no failures.
 
 ### Phase 3 — NNUE data and training foundation
 
