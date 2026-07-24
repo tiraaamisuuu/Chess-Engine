@@ -21,6 +21,8 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <condition_variable>
+#include <functional>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>

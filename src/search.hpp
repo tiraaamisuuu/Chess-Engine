@@ -41,6 +41,80 @@ struct SearchContext {
     std::vector<u64> repetition;
 };
 
+class RootWorkerPool {
+public:
+    explicit RootWorkerPool(int workerCount)
+        : pendingWorkers(0), stopping(false), generation(0){
+        threads.reserve(static_cast<size_t>(workerCount));
+        for(int worker = 0; worker < workerCount; worker++){
+            threads.emplace_back([this, worker](){ workerLoop(worker); });
+        }
+    }
+
+    RootWorkerPool(const RootWorkerPool&) = delete;
+    RootWorkerPool& operator=(const RootWorkerPool&) = delete;
+
+    ~RootWorkerPool(){
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            stopping = true;
+            generation++;
+        }
+        workReady.notify_all();
+        for(std::thread& thread : threads){
+            if(thread.joinable()) thread.join();
+        }
+    }
+
+    void run(const std::function<void(int)>& nextTask){
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            task = nextTask;
+            pendingWorkers = static_cast<int>(threads.size());
+            generation++;
+        }
+        workReady.notify_all();
+
+        std::unique_lock<std::mutex> lock(mutex);
+        workFinished.wait(lock, [&](){ return pendingWorkers == 0; });
+        task = {};
+    }
+
+private:
+    void workerLoop(int worker){
+        size_t observedGeneration = 0;
+        while(true){
+            std::function<void(int)> currentTask;
+            {
+                std::unique_lock<std::mutex> lock(mutex);
+                workReady.wait(lock, [&](){
+                    return stopping || generation != observedGeneration;
+                });
+                if(stopping) return;
+                observedGeneration = generation;
+                currentTask = task;
+            }
+
+            currentTask(worker);
+
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                pendingWorkers--;
+                if(pendingWorkers == 0) workFinished.notify_one();
+            }
+        }
+    }
+
+    std::vector<std::thread> threads;
+    std::mutex mutex;
+    std::condition_variable workReady;
+    std::condition_variable workFinished;
+    std::function<void(int)> task;
+    int pendingWorkers;
+    bool stopping;
+    size_t generation;
+};
+
 inline int evaluatePosition(const Board& board, const SearchContext& context){
     return context.evaluator ? context.evaluator->evaluate(board) : evaluateClassical(board);
 }
@@ -777,6 +851,7 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
     }
 
     int bestWorker = 0;
+    RootWorkerPool workerPool(workers);
 
     for(int d=1; d<=maxDepth; d++){
         if(timeUp(ctx)) break;
@@ -843,31 +918,23 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
         std::atomic<int> sharedAlpha{scores[firstIndex]};
         std::atomic<size_t> nextIndex{1};
 
-        std::vector<std::thread> threads;
-        threads.reserve(static_cast<size_t>(workers));
         if(scores[firstIndex] != -INF){
-            for(int worker = 0; worker < workers; worker++){
-                threads.emplace_back([&, worker](){
-                    while(true){
-                        SearchContext& local = workerCtx[static_cast<size_t>(worker)];
-                        if(timeUp(local)) break;
-                        const size_t orderIndex = nextIndex.fetch_add(1, std::memory_order_relaxed);
-                        if(orderIndex >= order.size()) break;
+            workerPool.run([&](int worker){
+                while(true){
+                    SearchContext& local = workerCtx[static_cast<size_t>(worker)];
+                    if(timeUp(local)) break;
+                    const size_t orderIndex = nextIndex.fetch_add(1, std::memory_order_relaxed);
+                    if(orderIndex >= order.size()) break;
 
-                        const size_t rootIndex = order[orderIndex];
-                        const int alphaSnapshot = sharedAlpha.load(std::memory_order_relaxed);
-                        searchRootMove(worker, rootIndex, alphaSnapshot, false);
-                        const int score = scores[rootIndex];
-                        int current = sharedAlpha.load(std::memory_order_relaxed);
-                        while(score > current &&
-                              !sharedAlpha.compare_exchange_weak(current, score, std::memory_order_relaxed)){}
-                    }
-                });
-            }
-        }
-
-        for(std::thread& thread : threads){
-            if(thread.joinable()) thread.join();
+                    const size_t rootIndex = order[orderIndex];
+                    const int alphaSnapshot = sharedAlpha.load(std::memory_order_relaxed);
+                    searchRootMove(worker, rootIndex, alphaSnapshot, false);
+                    const int score = scores[rootIndex];
+                    int current = sharedAlpha.load(std::memory_order_relaxed);
+                    while(score > current &&
+                          !sharedAlpha.compare_exchange_weak(current, score, std::memory_order_relaxed)){}
+                }
+            });
         }
 
         bool incomplete = false;
