@@ -988,8 +988,11 @@ available through `scripts/build_max_performance.ps1`, and
 `scripts/benchmark_threads.py` records checksummed repeatable thread-scaling
 reports. On the Ryzen 9 5900X, a short diagnostic peaked at six threads with
 1.677x the one-thread node rate; twelve threads regressed to 1.565x. This is
-profiling evidence, not Elo evidence, so one thread remains the default and
-root parallelism remains a measured optimization target.
+profiling evidence, not Elo evidence. A following 100-game equal-time self-match
+at `2+0.02` found the six-thread root split lost every game to one thread, with
+no crashes or illegal moves. One thread is therefore the only supported
+strength setting until fixed-depth diagnostics and a replacement parallel
+design pass equal-time testing.
 
 ### Phase 3 — NNUE data and training foundation
 

@@ -60,6 +60,13 @@ parallelism and shared search information.
 Node rate is not chess strength. One thread remains the default until a
 multi-thread setting wins equal-time paired matches.
 
+A subsequent 100-game equal-time sanity match provided decisive negative
+evidence: the same executable at six threads scored 0/100 against itself at one
+thread. See
+[`2026-07-24-root-parallel-sanity.md`](2026-07-24-root-parallel-sanity.md).
+Until that path is corrected and retested, `Threads=1` is the only supported
+playing-strength setting.
+
 ## Web thinking countdown
 
 Timed engine moves now show:

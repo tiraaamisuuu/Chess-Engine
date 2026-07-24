@@ -23,9 +23,10 @@ search, and an optional NNUE evaluation path.
 - Perft, fixed-position benchmarks, UCI smoke tests, paired opening matches,
   and cross-platform headless CI
 
-The optional root-parallel search is still experimental. One thread remains the
-default until paired Elo testing proves a multi-thread configuration stronger at
-equal time.
+The optional root-parallel search is unsafe for play: a controlled equal-time
+self-match found a severe strength regression. Keep `Threads=1`; the parallel
+path remains available only for diagnosis until a replacement passes fixed-depth
+correctness checks and paired Elo testing.
 
 ## Run the new web GUI
 
