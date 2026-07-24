@@ -143,6 +143,10 @@ scripts/compare_engines.py --quick
 On Windows PowerShell, first run `scripts\install_cutechess.ps1`, then invoke
 the comparison with `py -3 scripts\compare_engines.py --quick`.
 
+The runner can also use existing external UCI executables on either side,
+validate repeated per-engine UCI options against a live handshake, and write
+machine-readable manifests/results alongside every PGN and complete log.
+
 Compare the latest release with the rework:
 
 ```sh

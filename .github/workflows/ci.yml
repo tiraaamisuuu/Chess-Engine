@@ -20,6 +20,8 @@ jobs:
         run: cmake --build build --config Release --parallel
       - name: Core and UCI tests
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: Match tooling tests
+        run: python tests/compare_engines_tests.py
 
   sanitizers:
     runs-on: ubuntu-latest

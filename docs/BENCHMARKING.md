@@ -39,6 +39,15 @@ scripts/compare_engines.py \
 Every opening is played with reversed colours. PGN games and the complete
 match log are written under `artifacts/elo/`.
 
+Each match directory also contains:
+
+- `manifest.json` with engine paths, Git commits or external selectors,
+  executable SHA-256 values, UCI identity/options, configured option values,
+  opening and Cute Chess checksums, and match settings
+- `result.json` with score, relative Elo and uncertainty when finite,
+  termination reasons, crashes, illegal moves, disconnects, time forfeits, and
+  process completion status
+
 The reported Elo is a **relative difference**. For example, `+100` means the
 candidate performed about 100 Elo above the selected baseline under those test
 conditions; it does not assign either engine an absolute human-style rating.
@@ -62,6 +71,32 @@ scripts/compare_engines.py --quick
 This runs four paired games at a short time control. It proves the binaries,
 protocol, openings, and tournament runner work; four games say effectively
 nothing about Elo.
+
+## Compare external UCI engines
+
+Either side can be an existing executable instead of a Git revision. Repeated
+`--candidate-option` and `--baseline-option` values use `NAME=VALUE` syntax and
+are validated against the options advertised by the engine's live UCI
+handshake. Executable arguments can likewise be repeated with
+`--candidate-arg` or `--baseline-arg`; external engines receive no implicit
+arguments.
+
+For example, calibrate the current revision against a pinned Stockfish binary:
+
+```powershell
+python scripts\compare_engines.py `
+  --candidate HEAD `
+  --baseline-exe C:\Engines\stockfish-windows-x86-64.exe `
+  --baseline-name "Stockfish 18 @ 1800" `
+  --baseline-version 18 `
+  --baseline-option UCI_LimitStrength=true `
+  --baseline-option UCI_Elo=1800 `
+  --games 100 --tc 10+0.1 --threads 1 --hash 256
+```
+
+The runner discovers and records the engine's supported `UCI_Elo` bounds at
+runtime. A limited-strength value is a calibration anchor in this local test
+pool, not a universal human rating.
 
 ## Serious acceptance testing
 
