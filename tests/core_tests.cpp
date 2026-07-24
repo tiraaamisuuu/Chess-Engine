@@ -316,6 +316,38 @@ void testClockTimeManagement(const Zobrist& zobrist){
            "normal clock hard limit should retain the configured move overhead");
 }
 
+void testParallelSearchSafety(const Zobrist& zobrist){
+    Board singleBoard;
+    singleBoard.setZobrist(&zobrist);
+    singleBoard.reset();
+    Board parallelBoard = singleBoard;
+
+    SearchContext single;
+    single.tt.resizeMB(16);
+    single.gameHistory = {singleBoard.hash};
+    const Move singleBest = searchBestMove(singleBoard, single, 2, 2000, 2000, 1);
+
+    SearchContext parallel;
+    parallel.tt.resizeMB(16);
+    parallel.gameHistory = {parallelBoard.hash};
+    const Move parallelBest = searchBestMove(parallelBoard, parallel, 2, 2000, 2000, 4);
+
+    expect(sameMove(singleBest, parallelBest),
+           "parallel root tie must preserve the fully searched principal move");
+    expect(single.stats.bestScore == parallel.stats.bestScore,
+           "parallel root tie must preserve the principal score");
+
+    SearchContext shortSearch;
+    shortSearch.tt.resizeMB(16);
+    shortSearch.gameHistory = {parallelBoard.hash};
+    const Move shortBest = searchBestMove(parallelBoard, shortSearch, 64, 10, 20, 4);
+    expect(shortBest.from < 64, "short parallel request should still return a legal move");
+    expect(shortSearch.stats.configuredThreads == 4,
+           "short search should report the requested thread count");
+    expect(shortSearch.stats.workersUsed == 1,
+           "short search should avoid thread-startup overhead");
+}
+
 } // namespace
 
 int main(){
@@ -333,6 +365,7 @@ int main(){
     testNnueFormat(zobrist);
     testStaticExchange(zobrist);
     testClockTimeManagement(zobrist);
+    testParallelSearchSafety(zobrist);
 
     if(failures != 0){
         std::cerr << failures << " test assertion(s) failed\n";

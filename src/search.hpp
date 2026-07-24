@@ -874,7 +874,10 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
         int localBest = -INF;
         size_t localBestIdx = 0;
         int localBestWorker = bestWorker;
-        for(size_t idx = 0; idx < rootMoves.size(); idx++){
+        // Preserve principal-search order for equal scores. Iterating the raw
+        // move-generation order can otherwise replace the exact first result
+        // with a fail-low bound that merely happens to equal alpha.
+        for(const size_t idx : order){
             if(scores[idx] == -INF){
                 incomplete = true;
                 continue;
@@ -964,10 +967,14 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
 
 inline Move searchBestMove(Board& bd, SearchContext& ctx, int maxDepth, int softTimeLimitMs, int hardTimeLimitMs,
                            int threadCount=1, const std::vector<Move>* rootRestriction = nullptr){
-    if(threadCount <= 1){
-        return searchBestMoveSingle(bd, ctx, maxDepth, softTimeLimitMs, hardTimeLimitMs, rootRestriction);
+    constexpr int MinimumParallelSearchMs = 100;
+    const int requestedThreads = std::max(1, threadCount);
+    if(requestedThreads <= 1 || hardTimeLimitMs < MinimumParallelSearchMs){
+        Move best = searchBestMoveSingle(bd, ctx, maxDepth, softTimeLimitMs, hardTimeLimitMs, rootRestriction);
+        ctx.stats.configuredThreads = requestedThreads;
+        return best;
     }
-    return searchBestMoveParallel(bd, ctx, maxDepth, softTimeLimitMs, hardTimeLimitMs, threadCount, rootRestriction);
+    return searchBestMoveParallel(bd, ctx, maxDepth, softTimeLimitMs, hardTimeLimitMs, requestedThreads, rootRestriction);
 }
 
 inline std::string extractPVFromTT(Board bd, SearchContext& ctx, int maxPlies=12){
