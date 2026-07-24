@@ -22,6 +22,7 @@ struct SearchStats {
 
 struct SearchContext {
     TranspositionTable tt;
+    TranspositionTable* sharedTT=nullptr;
     SearchStats stats;
     std::chrono::steady_clock::time_point start;
     int softTimeLimitMs=1000;
@@ -40,6 +41,10 @@ struct SearchContext {
     std::vector<u64> gameHistory; // position hashes from actual game (includes current root)
     std::vector<u64> repetition;
 };
+
+inline TranspositionTable& searchTT(SearchContext& context){
+    return context.sharedTT ? *context.sharedTT : context.tt;
+}
 
 class RootWorkerPool {
 public:
@@ -391,14 +396,16 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     }
 
     Move ttMove = invalidMove();
-    if(auto* e = ctx.tt.probe(bd.hash)){
-        if(e->key==bd.hash){
-            ttMove = e->best;
-            if(e->depth >= depth){
-                int s = scoreFromTT(e->score, ply);
-                if(e->flag==TTFlag::Exact) return s;
-                if(e->flag==TTFlag::Lower) alpha = std::max(alpha, s);
-                else if(e->flag==TTFlag::Upper) beta = std::min(beta, s);
+    TranspositionTable& tt = searchTT(ctx);
+    if(const auto entry = tt.probe(bd.hash)){
+        const TTEntry& e = *entry;
+        if(e.key==bd.hash){
+            ttMove = e.best;
+            if(e.depth >= depth){
+                int s = scoreFromTT(e.score, ply);
+                if(e.flag==TTFlag::Exact) return s;
+                if(e.flag==TTFlag::Lower) alpha = std::max(alpha, s);
+                else if(e.flag==TTFlag::Upper) beta = std::min(beta, s);
                 if(alpha >= beta) return s;
             }
         }
@@ -408,9 +415,9 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         const int iidDepth = std::max(1, depth - 2);
         (void)negamax(bd, ctx, iidDepth, alpha, beta, ply, prevMove, false);
         if(ctx.stop) return 0;
-        if(auto* e = ctx.tt.probe(bd.hash)){
-            if(e->key == bd.hash){
-                ttMove = e->best;
+        if(const auto entry = tt.probe(bd.hash)){
+            if(entry->key == bd.hash){
+                ttMove = entry->best;
             }
         }
     }
@@ -596,7 +603,7 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     TTFlag flag = TTFlag::Exact;
     if(best <= originalAlpha) flag = TTFlag::Upper;
     else if(best >= beta) flag = TTFlag::Lower;
-    ctx.tt.store(bd.hash, depth, scoreToTT(best, ply), flag, bestM);
+    tt.store(bd.hash, depth, scoreToTT(best, ply), flag, bestM);
 
     return best;
 }
@@ -614,7 +621,7 @@ inline Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
     ctx.hardTimeLimitMs = std::max(softTimeLimitMs, hardTimeLimitMs);
     ctx.stop = false;
     ctx.timeCheckCounter = 0;
-    ctx.tt.newSearch();
+    searchTT(ctx).newSearch();
     const Move noMove = invalidMove();
 
     for(int s=0; s<2; s++){
@@ -680,8 +687,8 @@ inline Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
             }
 
             Move ttMove = noMove;
-            if(auto* e = ctx.tt.probe(bd.hash)){
-                if(e->key==bd.hash) ttMove = e->best;
+            if(const auto entry = searchTT(ctx).probe(bd.hash)){
+                if(entry->key==bd.hash) ttMove = entry->best;
             }
 
             sortMovesByScore(rootMoves, [&](const Move& move){
@@ -755,7 +762,7 @@ inline Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
             ctx.stats.bestScore = bestScore;
             ctx.stats.bestMoveChanges = bestMoveChanges;
             ctx.stats.aspirationResearches = aspirationResearches;
-            ctx.tt.store(bd.hash, d, scoreToTT(bestScore, 0), TTFlag::Exact, bestMove);
+            searchTT(ctx).store(bd.hash, d, scoreToTT(bestScore, 0), TTFlag::Exact, bestMove);
 
             const int scoreSwing = std::abs(bestScore - previousScore);
             int extraTime = 0;
@@ -836,13 +843,10 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
 
     const int workers = std::max(1, std::min<int>(std::clamp(threadCount, 1, 64), int(rootMoves.size())));
     ctx.stats.workersUsed = workers;
-    const size_t ttBytes = std::max<size_t>(sizeof(TTEntry), ctx.tt.table.size() * sizeof(TTEntry));
-    const size_t ttPerThreadMB = std::max<size_t>(1, (ttBytes / size_t(workers)) / (1024ull * 1024ull));
-
     std::vector<SearchContext> workerCtx;
     workerCtx.resize(static_cast<size_t>(workers));
     for(int w = 0; w < workers; w++){
-        workerCtx[size_t(w)].tt.resizeMB(ttPerThreadMB);
+        workerCtx[size_t(w)].sharedTT = &ctx.tt;
         workerCtx[size_t(w)].evaluator = ctx.evaluator;
         std::memcpy(workerCtx[size_t(w)].killer, ctx.killer, sizeof(ctx.killer));
         std::memcpy(workerCtx[size_t(w)].countermove, ctx.countermove, sizeof(ctx.countermove));
@@ -880,7 +884,6 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
             local.stop = false;
             local.timeCheckCounter = 0;
             local.abortFlag = ctx.abortFlag;
-            local.tt.newSearch();
         }
 
         auto searchRootMove = [&](int worker, size_t index, int rootAlpha, bool fullWindow){
@@ -1005,28 +1008,6 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
     std::memcpy(ctx.history, workerCtx[size_t(bestWorker)].history, sizeof(ctx.history));
     std::memcpy(ctx.captureHistory, workerCtx[size_t(bestWorker)].captureHistory, sizeof(ctx.captureHistory));
 
-    // Preserve the selected worker's continuation in the public TT so UCI/GUI
-    // can report a useful PV after a root-parallel search.
-    Board pvBoard = bd;
-    Undo pvUndo{};
-    if(pvBoard.makeMove(bestMove, pvUndo)){
-        TranspositionTable& source = workerCtx[static_cast<size_t>(bestWorker)].tt;
-        for(int ply = 1; ply < 16; ply++){
-            TTEntry* entry = source.probe(pvBoard.hash);
-            if(!entry || entry->key != pvBoard.hash) break;
-            ctx.tt.store(entry->key, entry->depth, entry->score, entry->flag, entry->best);
-
-            MoveList legal;
-            pvBoard.genLegalMoves(legal);
-            const auto next = std::find_if(legal.begin(), legal.end(), [&](const Move& move){
-                return sameMove(move, entry->best);
-            });
-            if(next == legal.end()) break;
-            Undo undo{};
-            if(!pvBoard.makeMove(*next, undo)) break;
-        }
-    }
-
     auto end = std::chrono::steady_clock::now();
     ctx.stats.timeMs = (int)std::chrono::duration_cast<std::chrono::milliseconds>(end - ctx.start).count();
     return bestMove;
@@ -1053,10 +1034,10 @@ inline std::string extractPVFromTT(Board bd, SearchContext& ctx, int maxPlies=12
         if(std::find(seen.begin(), seen.end(), bd.hash) != seen.end()) break;
         seen.push_back(bd.hash);
 
-        TTEntry* e = ctx.tt.probe(bd.hash);
-        if(!e || e->key != bd.hash) break;
+        const auto entry = ctx.tt.probe(bd.hash);
+        if(!entry || entry->key != bd.hash) break;
 
-        Move m = e->best;
+        Move m = entry->best;
 
         MoveList leg;
         bd.genLegalMoves(leg);

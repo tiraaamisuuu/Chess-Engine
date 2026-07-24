@@ -9,6 +9,7 @@
 #include <cctype>
 #include <cstring>
 #include <optional>
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -220,30 +221,41 @@ struct TTEntry {
     Move best{};
 };
 
+struct TTSlot {
+    std::atomic<u64> keyXor{0};
+    std::atomic<u64> data{0};
+};
+
 struct TranspositionTable {
     static constexpr size_t ClusterSize = 4;
-    std::vector<TTEntry> table;
+    std::unique_ptr<TTSlot[]> table;
+    size_t entryCount=0;
     size_t mask=0;
     u8 generation=0;
 
     void resizeMB(size_t mb){
         size_t bytes = mb*1024ull*1024ull;
-        const size_t requestedClusters = std::max<size_t>(1, bytes / (sizeof(TTEntry) * ClusterSize));
+        const size_t requestedClusters = std::max<size_t>(1, bytes / (sizeof(TTSlot) * ClusterSize));
         size_t clusters = 1;
         while((clusters << 1) <= requestedClusters) clusters <<= 1;
-        table.assign(clusters * ClusterSize, TTEntry{});
+        entryCount = clusters * ClusterSize;
+        table = std::make_unique<TTSlot[]>(entryCount);
         mask = clusters - 1;
         generation = 0;
     }
 
-    TTEntry* probe(u64 key){
-        if(table.empty()) return nullptr;
+    [[nodiscard]] size_t byteSize() const {
+        return entryCount * sizeof(TTSlot);
+    }
+
+    [[nodiscard]] std::optional<TTEntry> probe(u64 key) const {
+        if(!table) return std::nullopt;
         const size_t base = (size_t(key) & mask) * ClusterSize;
         for(size_t slot = 0; slot < ClusterSize; slot++){
-            TTEntry& entry = table[base + slot];
-            if(entry.key == key) return &entry;
+            const TTEntry entry = load(base + slot);
+            if(entry.key == key) return entry;
         }
-        return &table[base];
+        return std::nullopt;
     }
 
     void newSearch(){
@@ -255,35 +267,75 @@ struct TranspositionTable {
     }
 
     void store(u64 key, int depth, int score, TTFlag flag, const Move& best){
-        if(table.empty()) return;
+        if(!table) return;
         const size_t base = (size_t(key) & mask) * ClusterSize;
-        TTEntry* replacement = nullptr;
+        size_t replacementIndex = base;
+        TTEntry replacementEntry{};
+        bool replacementFound = false;
         int replacementQuality = 1000000;
         for(size_t slot = 0; slot < ClusterSize; slot++){
-            TTEntry& candidate = table[base + slot];
+            const size_t index = base + slot;
+            const TTEntry candidate = load(index);
             if(candidate.key == key){
-                replacement = &candidate;
+                replacementIndex = index;
+                replacementEntry = candidate;
+                replacementFound = true;
                 break;
             }
             if(candidate.key == 0){
-                replacement = &candidate;
+                replacementIndex = index;
+                replacementEntry = candidate;
+                replacementFound = true;
                 break;
             }
             const int quality = int(candidate.depth) - 2 * ageOf(generation, candidate.generation);
             if(quality < replacementQuality){
                 replacementQuality = quality;
-                replacement = &candidate;
+                replacementIndex = index;
+                replacementEntry = candidate;
+                replacementFound = true;
             }
         }
 
-        if(!replacement) return;
-        if(replacement->key != 0 && replacement->key != key && depth < replacementQuality) return;
-        replacement->key=key;
-        replacement->depth=(int8_t)std::clamp(depth, 0, 127);
-        replacement->score=score;
-        replacement->generation=generation;
-        replacement->flag=flag;
-        replacement->best=best;
+        if(!replacementFound) return;
+        if(replacementEntry.key != 0 && replacementEntry.key != key && depth < replacementQuality) return;
+
+        const u64 packed = pack(depth, score, generation, flag, best);
+        TTSlot& replacement = table[replacementIndex];
+        replacement.data.store(packed, std::memory_order_relaxed);
+        replacement.keyXor.store(key ^ packed, std::memory_order_release);
+    }
+
+private:
+    static u64 pack(int depth, int score, u8 entryGeneration, TTFlag flag, const Move& best){
+        u64 packed = static_cast<u32>(score);
+        packed |= u64(std::clamp(depth, 0, 127)) << 32;
+        packed |= u64(entryGeneration) << 39;
+        packed |= u64(static_cast<u8>(flag) & 0x3U) << 47;
+        packed |= u64(best.from & 0x3FU) << 49;
+        packed |= u64(best.to & 0x3FU) << 55;
+        packed |= u64(static_cast<u8>(best.promo) & 0x7U) << 61;
+        return packed;
+    }
+
+    static TTEntry unpack(u64 key, u64 packed){
+        TTEntry entry{};
+        entry.key = key;
+        entry.score = static_cast<int32_t>(static_cast<u32>(packed));
+        entry.depth = static_cast<int8_t>((packed >> 32) & 0x7FU);
+        entry.generation = static_cast<u8>((packed >> 39) & 0xFFU);
+        entry.flag = static_cast<TTFlag>((packed >> 47) & 0x3U);
+        entry.best.from = static_cast<u8>((packed >> 49) & 0x3FU);
+        entry.best.to = static_cast<u8>((packed >> 55) & 0x3FU);
+        entry.best.promo = static_cast<PieceType>((packed >> 61) & 0x7U);
+        return entry;
+    }
+
+    [[nodiscard]] TTEntry load(size_t index) const {
+        const TTSlot& slot = table[index];
+        const u64 keyXor = slot.keyXor.load(std::memory_order_acquire);
+        const u64 packed = slot.data.load(std::memory_order_relaxed);
+        return unpack(keyXor ^ packed, packed);
     }
 };
 

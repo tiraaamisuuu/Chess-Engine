@@ -234,9 +234,61 @@ void testTranspositionClusters(){
     }
     for(u64 collision = 0; collision < TranspositionTable::ClusterSize; collision++){
         const u64 key = 17 + collision * stride;
-        const TTEntry* entry = table.probe(key);
+        const auto entry = table.probe(key);
         expect(entry && entry->key == key, "TT cluster should retain colliding positions");
     }
+
+    Move packedMove{};
+    packedMove.from = 12;
+    packedMove.to = 34;
+    packedMove.promo = PieceType::Queen;
+    table.store(0x123456789ABCDEF0ULL, 63, -12345, TTFlag::Upper, packedMove);
+    const auto packedEntry = table.probe(0x123456789ABCDEF0ULL);
+    expect(packedEntry && packedEntry->depth == 63 && packedEntry->score == -12345 &&
+           packedEntry->flag == TTFlag::Upper &&
+           packedEntry->best.from == 12 && packedEntry->best.to == 34 &&
+           packedEntry->best.promo == PieceType::Queen,
+           "packed TT entry should preserve score, depth, flag, and best move");
+}
+
+void testConcurrentTranspositionTable(){
+    TranspositionTable table;
+    table.resizeMB(1);
+    const u64 stride = static_cast<u64>(table.mask + 1);
+    constexpr int WorkerCount = 8;
+    constexpr int StoresPerWorker = 2000;
+    std::atomic<bool> valid{true};
+    std::vector<std::thread> workers;
+    workers.reserve(WorkerCount);
+
+    for(int worker = 0; worker < WorkerCount; worker++){
+        workers.emplace_back([&, worker](){
+            for(int index = 1; index <= StoresPerWorker; index++){
+                const u64 serial = static_cast<u64>(worker * StoresPerWorker + index);
+                const u64 key = 29 + serial * stride;
+                const int depth = 1 + int(serial % 63);
+                const int score = int(serial % 60001) - 30000;
+                Move move{};
+                move.from = static_cast<u8>(serial % 64);
+                move.to = static_cast<u8>((serial / 3) % 64);
+                move.promo = static_cast<PieceType>(serial % 7);
+                const TTFlag flag = static_cast<TTFlag>(serial % 3);
+                table.store(key, depth, score, flag, move);
+
+                const auto entry = table.probe(key);
+                if(entry && (entry->depth != depth || entry->score != score ||
+                   entry->flag != flag || entry->best.from != move.from ||
+                   entry->best.to != move.to || entry->best.promo != move.promo)){
+                    valid.store(false, std::memory_order_relaxed);
+                    return;
+                }
+            }
+        });
+    }
+
+    for(std::thread& worker : workers) worker.join();
+    expect(valid.load(std::memory_order_relaxed),
+           "concurrent TT collisions must produce complete entries or clean misses");
 }
 
 void testNnueFormat(const Zobrist& zobrist){
@@ -362,6 +414,7 @@ int main(){
     testNotation(zobrist);
     testFENValidation(zobrist);
     testTranspositionClusters();
+    testConcurrentTranspositionTable();
     testNnueFormat(zobrist);
     testStaticExchange(zobrist);
     testClockTimeManagement(zobrist);
