@@ -999,7 +999,10 @@ multi-thread strength scaling is still unproven. Revision `0f06dd7` then reused
 one worker team across iterative-deepening depths. An interleaved A/B benchmark
 measured 9.4% higher six-thread NPS and half a ply more median mean depth; a
 100-game six-thread A/B match against `95eb16b` was neutral at
--6.9 ±58.2 Elo with no failures.
+-6.9 ±58.2 Elo with no failures. A direct current six-thread-versus-one-thread
+100-game match remained negative at -59.6 ±61.0 Elo. Multi-threading is now
+stable but not strength-positive; keep one thread as the default and prioritize
+shared search information over adding more root workers.
 
 ### Phase 3 — NNUE data and training foundation
 

@@ -65,3 +65,18 @@ clean failure profile. The 100-game match is statistically neutral, so it is
 not evidence of an Elo gain. One thread remains the default pending a properly
 powered six-thread-versus-one-thread result.
 
+## Current six threads versus one thread
+
+A following 100-game self-match compared the current executable at six threads
+against itself at one thread, retaining the same `2+0.02`, 256 MiB, paired-UHO
+configuration.
+
+| Six-thread wins | One-thread wins | Draws | Six-thread score | Relative Elo |
+|---:|---:|---:|---:|---:|
+| 30 | 47 | 23 | 41.5% | -59.6 ± 61.0 |
+
+There were again no time forfeits, crashes, illegal moves, or disconnects.
+This fast-time-control sample is negative evidence for changing the default.
+Persistent workers reduce overhead, but independent per-worker transposition
+tables and root-only work sharing still fail to turn the additional CPU into
+playing strength.
