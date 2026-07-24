@@ -23,10 +23,10 @@ search, and an optional NNUE evaluation path.
 - Perft, fixed-position benchmarks, UCI smoke tests, paired opening matches,
   and cross-platform headless CI
 
-The optional root-parallel search is unsafe for play: a controlled equal-time
-self-match found a severe strength regression. Keep `Threads=1`; the parallel
-path remains available only for diagnosis until a replacement passes fixed-depth
-correctness checks and paired Elo testing.
+The optional root-parallel search is experimental. Its principal-move and
+short-budget safety regressions are covered by tests, but a 100-game equal-time
+sample did not establish a strength gain. Keep `Threads=1` unless you are
+measuring the parallel path.
 
 ## Run the new web GUI
 

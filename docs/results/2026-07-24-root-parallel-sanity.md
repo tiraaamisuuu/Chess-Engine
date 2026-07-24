@@ -60,3 +60,7 @@ fixed depth and replaced or corrected. The earlier 1.677x six-thread node-rate
 measurement is retained strictly as throughput telemetry; it is not evidence
 of useful parallel scaling.
 
+The principal-tie and short-budget defects were subsequently corrected in
+revision `4504065`. Its clean 100-game rematch scored 45.5% with no process or
+time failures. See
+[`2026-07-24-root-parallel-safety-fix.md`](2026-07-24-root-parallel-safety-fix.md).
