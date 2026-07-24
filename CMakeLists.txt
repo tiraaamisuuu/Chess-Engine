@@ -83,7 +83,15 @@ if(BUILD_TESTING)
     target_compile_options(chess-core-tests PRIVATE ${CHESS_WARNING_FLAGS})
   endif()
   add_test(NAME chess-core-tests COMMAND chess-core-tests)
-  if(UNIX)
+  if(WIN32)
+    find_program(CHESS_POWERSHELL_EXECUTABLE NAMES pwsh powershell REQUIRED)
+    add_test(NAME uci-smoke
+      COMMAND "${CHESS_POWERSHELL_EXECUTABLE}"
+              -NoProfile
+              -ExecutionPolicy Bypass
+              -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_uci_smoke.ps1"
+              $<TARGET_FILE:chess-engine-uci>)
+  elseif(UNIX)
     add_test(NAME uci-smoke
       COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_uci_smoke.sh" $<TARGET_FILE:chess-engine-uci>)
   endif()

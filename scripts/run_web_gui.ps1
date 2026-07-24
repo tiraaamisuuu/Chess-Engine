@@ -6,12 +6,43 @@ $Venv = if ($env:WEB_VENV) { $env:WEB_VENV } else { Join-Path $Root ".venv-web" 
 $Python = Join-Path $Venv "Scripts\python.exe"
 
 if (-not (Test-Path $Python)) {
-    py -3 -m venv $Venv
+    $PythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
+    if ($PythonCommand) {
+        $PreviousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        & $PythonCommand.Source -c "import sys; raise SystemExit(sys.version_info < (3, 10))"
+        $PythonVersionExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $PreviousErrorActionPreference
+        if ($PythonVersionExitCode -eq 0) {
+            & $PythonCommand.Source -m venv $Venv
+        } else {
+            $PythonCommand = $null
+        }
+    }
+
+    if (-not $PythonCommand) {
+        $PyLauncher = Get-Command py.exe -ErrorAction SilentlyContinue
+        if (-not $PyLauncher) {
+            throw "Python 3.10 or newer was not found. Install Python and retry."
+        }
+        & $PyLauncher.Source -3 -m venv $Venv
+    }
+
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $Python)) {
+        throw "Failed to create the web Python environment: $Venv"
+    }
 }
 
+$PreviousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 & $Python -c "import chess" 2>$null
-if ($LASTEXITCODE -ne 0) {
+$ChessImportExitCode = $LASTEXITCODE
+$ErrorActionPreference = $PreviousErrorActionPreference
+if ($ChessImportExitCode -ne 0) {
     & $Python -m pip install --disable-pip-version-check -r (Join-Path $Root "web\requirements.txt")
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to install the web Python dependencies."
+    }
 }
 
 $PackagedEngine = Join-Path $Root "bin\chess-engine-uci.exe"

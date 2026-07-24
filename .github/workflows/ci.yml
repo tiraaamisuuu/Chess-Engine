@@ -18,11 +18,8 @@ jobs:
         run: cmake -S . -B build -DCHESS_BUILD_GUI=OFF -DBUILD_TESTING=ON
       - name: Build
         run: cmake --build build --config Release --parallel
-      - name: Core tests
+      - name: Core and UCI tests
         run: ctest --test-dir build -C Release --output-on-failure
-      - name: UCI smoke test
-        if: runner.os != 'Windows'
-        run: scripts/run_uci_smoke.sh ./build/chess-engine-uci
 
   sanitizers:
     runs-on: ubuntu-latest
