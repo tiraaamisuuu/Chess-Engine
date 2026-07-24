@@ -235,6 +235,9 @@ treated as trusted executables.
 `scripts/compare_engines.py`:
 
 - accepts two committed Git refs
+- accepts existing external UCI executables on either side
+- discovers UCI identity, supported options, and option bounds at runtime
+- validates repeated arbitrary UCI options per engine
 - archives and builds each ref in isolated ignored directories
 - installs/discovers Cute Chess
 - downloads and verifies the Stockfish UHO 4060 opening suite
@@ -242,11 +245,19 @@ treated as trusted executables.
 - applies equal thread/hash/time settings
 - supports ordinary fixed-game matches and SPRT
 - writes complete logs and PGNs under `artifacts/elo/`
+- writes checksummed machine-readable match manifests and result summaries
 - registers the resulting local binaries as web GUI engine profiles
 - can compare two NNUE files with the same engine revision
 
-Only committed refs can be compared because the builder intentionally uses
-`git archive`.
+Git-based selections must resolve to committed refs because the builder
+intentionally uses `git archive`; external selections use an existing
+checksummed executable.
+
+`scripts/calibrate_rating.py` runs a deterministic multi-rung Stockfish
+limited-strength ladder on top of the same paired runner. It validates
+`UCI_Elo` rungs against the live engine bounds, pins Git candidates to an exact
+commit, skips completed rungs when resumed, preserves incomplete attempts, and
+writes aggregate JSON plus a deliberately qualified local-pool report.
 
 ### NNUE foundation
 
@@ -746,9 +757,11 @@ SPRT may stop before the maximum game count.
 
 ## Absolute Elo estimation plan
 
-The repository currently measures relative Elo between Git revisions. It does
-not yet provide a defensible absolute rating. Building that workflow is the
-first major PC product task.
+The repository now measures relative Elo between Git revisions or external
+executables and can run a resumable limited-strength Stockfish ladder. It does
+not yet have the larger, slower, multi-time-control game sample needed for a
+defensible anchored rating. Producing that evidence remains the first major PC
+product task.
 
 ### Required implementation
 
@@ -935,6 +948,13 @@ paired match with documented commands.
 - Add result parsing and confidence reporting.
 - Keep a small smoke suite and a separate serious UHO suite.
 - Establish current-vs-`v0.4.0` results on the Ryzen PC at useful time controls.
+
+Windows progress on 2026-07-24: external executables, live UCI option discovery
+and bounds validation, deterministic seeds, checksummed manifests, strict JSON
+results, explicit failure categories, and a rung-resumable Stockfish ladder are
+implemented and smoke-tested. Remaining work includes partial-match game-level
+resume, optional round-robin/Ordo output, the historical binary/SFML solution,
+and properly powered ladder/baseline evidence.
 
 Exit condition: reproducible relative results plus an honestly qualified rough
 rating estimate against a pinned local pool.

@@ -57,6 +57,8 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--build-jobs", type=int, default=min(8, os.cpu_count() or 1))
     parser.add_argument("--openings", type=Path)
     parser.add_argument("--cutechess", type=Path)
+    parser.add_argument("--output-dir", type=Path, help="Write artifacts to this new/empty directory")
+    parser.add_argument("--seed", type=int, default=1, help="Deterministic Cute Chess RNG seed")
     parser.add_argument("--sfml-prefix", type=Path)
     parser.add_argument("--candidate-eval-file", type=Path)
     parser.add_argument("--baseline-eval-file", type=Path)
@@ -567,6 +569,8 @@ def main() -> int:
         raise SystemExit("--games must be a positive even number so colours remain paired")
     if min(args.threads, args.hash_mb, args.concurrency, args.build_jobs) < 1:
         raise SystemExit("threads, hash, concurrency, and build-jobs must be positive")
+    if args.seed < 0:
+        raise SystemExit("--seed must be non-negative")
     if args.quick:
         args.games = 4
         # Keep the smoke test short without pushing process/protocol overhead
@@ -658,9 +662,13 @@ def main() -> int:
         else Path(str(baseline["binary"])).stem
     )
     output = (
-        ROOT / "artifacts" / "elo"
+        args.output_dir.expanduser().resolve()
+        if args.output_dir
+        else ROOT / "artifacts" / "elo"
         / f"{safe_name(candidate_artifact_name)}-vs-{safe_name(baseline_artifact_name)}-{stamp}"
     )
+    if output.exists() and any(output.iterdir()):
+        raise RuntimeError(f"Output directory must be empty: {output}")
     output.mkdir(parents=True, exist_ok=True)
     pgn = output / "games.pgn"
     log = output / "match.log"
@@ -686,6 +694,7 @@ def main() -> int:
             "threads": args.threads,
             "hashMb": args.hash_mb,
             "concurrency": args.concurrency,
+            "seed": args.seed,
             "sprt": {
                 "enabled": args.sprt,
                 "elo0": args.elo0,
@@ -752,6 +761,7 @@ def main() -> int:
         "-each", f"tc={args.tc}",
         "-openings", f"file={openings}", "format=epd", "order=random",
         "-games", str(args.games), "-repeat", "-recover",
+        "-srand", str(args.seed),
         "-concurrency", str(args.concurrency),
         "-resign", "movecount=6", "score=700",
         "-draw", "movenumber=40", "movecount=8", "score=10",

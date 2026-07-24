@@ -146,6 +146,9 @@ the comparison with `py -3 scripts\compare_engines.py --quick`.
 The runner can also use existing external UCI executables on either side,
 validate repeated per-engine UCI options against a live handshake, and write
 machine-readable manifests/results alongside every PGN and complete log.
+`scripts/calibrate_rating.py` builds on that runner to execute resumable
+multi-rung Stockfish limited-strength ladders and emit a qualified local-pool
+rating report.
 
 Compare the latest release with the rework:
 

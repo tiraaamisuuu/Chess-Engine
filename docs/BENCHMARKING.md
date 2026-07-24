@@ -98,6 +98,42 @@ The runner discovers and records the engine's supported `UCI_Elo` bounds at
 runtime. A limited-strength value is a calibration anchor in this local test
 pool, not a universal human rating.
 
+## Run a calibrated Stockfish ladder
+
+`scripts/calibrate_rating.py` reuses the paired runner across several
+limited-strength rungs:
+
+```powershell
+python scripts\calibrate_rating.py `
+  --stockfish-exe C:\Engines\stockfish-windows-x86-64.exe `
+  --stockfish-version 18 `
+  --engine-ref HEAD `
+  --rungs 1600,1900,2200,2500 `
+  --games 100 --tc 10+0.1 `
+  --threads 1 --hash 256 --concurrency 4 `
+  --run-dir artifacts\rating\windows-10s
+```
+
+The ladder:
+
+- resolves a Git candidate to one immutable commit before the first rung
+- validates every rung against the live `UCI_Elo` minimum and maximum
+- applies `UCI_LimitStrength=true` at every rung
+- uses the same deterministic opening seed and resource settings throughout
+- preserves per-rung PGN, logs, manifests, results, and driver output
+- writes an aggregate `summary.json` and qualified `report.md`
+- reports no point estimate when the observed scores do not bracket 50%
+
+Repeat the exact command with the same `--run-dir` to resume. Completed rungs
+are skipped. An incomplete rung attempt is retained unchanged and retried in a
+new numbered attempt directory, so evidence is not silently overwritten.
+Individual games inside an interrupted attempt are not spliced into the retry.
+
+Use `--quick` only to verify the ladder workflow; it selects four games per
+rung at `2+0.02`. For a rating claim, use substantially larger samples and
+repeat the ladder at a second time control. Even then, describe the result as a
+rating anchor in the named local pool.
+
 ## Serious acceptance testing
 
 For a candidate expected to be at least five Elo stronger:
