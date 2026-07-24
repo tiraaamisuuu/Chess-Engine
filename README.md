@@ -1,5 +1,10 @@
 # Chess Engine
 
+For a complete new-computer/new-chat handoff, including the Windows setup,
+current implementation status, benchmark methodology, NNUE plan, known
+limitations, and prioritized roadmap, see
+[docs/PROJECT_HANDOFF.md](docs/PROJECT_HANDOFF.md).
+
 This is a C++17 chess engine with independent UCI and developer-tool targets, a
 local web interface, and the legacy SFML 2.6 desktop application. The v1 rework
 prioritizes rule correctness, reproducible strength testing, efficient classical
