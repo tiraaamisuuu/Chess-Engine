@@ -134,6 +134,26 @@ rung at `2+0.02`. For a rating claim, use substantially larger samples and
 repeat the ladder at a second time control. Even then, describe the result as a
 rating anchor in the named local pool.
 
+## Measure multicore scaling
+
+`scripts/benchmark_threads.py` runs the fixed-position benchmark sequentially
+at several thread counts and preserves the executable checksum, raw logs,
+manifest, JSON, CSV, and Markdown report:
+
+```powershell
+python scripts\benchmark_threads.py `
+  --engine .\build-pc-max\Release\chess-engine-tools.exe `
+  --threads 1,2,4,6,12 `
+  --repetitions 3 --time-ms 1000 --depth 64 --hash 256
+```
+
+The Ryzen 9 5900X diagnostic on 2026-07-24 found the best median node
+throughput at six threads in a short 500 ms-per-position run: 1.677x the
+one-thread result. Twelve threads fell to 1.565x. This identifies a scaling
+bottleneck and a useful experimental setting; it does not demonstrate an Elo
+gain. Keep one thread as the default until equal-time paired games prove a
+multi-thread configuration stronger.
+
 ## Serious acceptance testing
 
 For a candidate expected to be at least five Elo stronger:

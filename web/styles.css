@@ -309,18 +309,92 @@ button { color: inherit; }
   transition: opacity 160ms ease, visibility 160ms ease;
 }
 .thinking-overlay.visible { opacity: 1; visibility: visible; }
-.thinking-spinner {
-  width: 34px;
-  height: 34px;
-  border: 2px solid rgba(255,255,255,.13);
-  border-top-color: var(--accent);
+.thinking-dial {
+  --thinking-angle: 82deg;
+  position: relative;
+  width: 104px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
   border-radius: 50%;
-  animation: spin 700ms linear infinite;
-  margin-bottom: 15px;
+  margin-bottom: 20px;
+  background:
+    conic-gradient(from -90deg, var(--accent) 0 var(--thinking-angle),
+      rgba(255,255,255,.09) var(--thinking-angle) 360deg);
+  box-shadow: 0 0 42px rgba(201, 255, 90, .1);
+  transition: box-shadow 180ms ease;
+}
+.thinking-dial::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: inherit;
+  border: 1px solid rgba(255,255,255,.08);
+  background: radial-gradient(circle at 50% 35%, #1b211b, #0d110e 68%);
+}
+.thinking-dial::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: calc(50% - 3px);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent);
+  transform-origin: 3px 55px;
+  animation: orbit 1.35s linear infinite;
+}
+.thinking-dial-core {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+}
+.thinking-dial output {
+  min-width: 62px;
+  color: var(--text);
+  font-size: 25px;
+  font-weight: 430;
+  line-height: 1;
+  letter-spacing: -.04em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.thinking-dial small {
+  margin-top: 7px;
+  color: var(--subtle);
+  font-size: 6px;
+  font-weight: 800;
+  letter-spacing: .2em;
+}
+.thinking-overlay.expired .thinking-dial {
+  box-shadow: 0 0 48px rgba(201, 255, 90, .22);
+  animation: thinking-breathe 900ms ease-in-out infinite alternate;
 }
 .thinking-overlay strong { font-size: 13px; letter-spacing: 0.04em; }
-.thinking-overlay small { margin-top: 7px; color: var(--muted); font-size: 10px; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.thinking-overlay > small { margin-top: 7px; color: var(--muted); font-size: 10px; }
+.thinking-phases {
+  width: 82px;
+  height: 10px;
+  margin-top: 18px;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  gap: 5px;
+}
+.thinking-phases i {
+  width: 2px;
+  height: 4px;
+  background: var(--accent);
+  opacity: .3;
+  animation: thinking-wave 900ms ease-in-out infinite alternate;
+}
+.thinking-phases i:nth-child(2), .thinking-phases i:nth-child(4) { animation-delay: 140ms; }
+.thinking-phases i:nth-child(3) { animation-delay: 280ms; }
+@keyframes orbit { to { transform: rotate(360deg); } }
+@keyframes thinking-wave { to { height: 10px; opacity: 1; } }
+@keyframes thinking-breathe { to { transform: scale(1.025); } }
 
 .board-actions {
   width: calc(var(--board-size) + 30px);
@@ -367,9 +441,24 @@ button { color: inherit; }
 }
 .eyebrow { color: var(--muted); font-size: 8px; font-weight: 800; letter-spacing: .19em; }
 .status-card h1 { margin: 8px 0 0; font-size: 21px; font-weight: 540; letter-spacing: -.02em; }
+.status-activity { display: flex; align-items: center; gap: 14px; }
+.status-countdown {
+  min-width: 62px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.status-countdown output { display: block; color: var(--accent); font-size: 16px; font-weight: 620; }
+.status-countdown small { display: block; margin-top: 3px; color: var(--subtle); font-size: 6px; font-weight: 800; letter-spacing: .15em; }
 .status-pulse { width: 8px; height: 8px; }
 .status-pulse.thinking { animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .25; transform: scale(.8); } }
+
+.turn-pill.counting {
+  min-width: 56px;
+  color: var(--accent);
+  border-color: rgba(201, 255, 90, .28);
+  font-variant-numeric: tabular-nums;
+}
 
 .tabs { height: 48px; padding: 0 22px; border-bottom: 1px solid var(--line); display: flex; gap: 25px; }
 .tab {

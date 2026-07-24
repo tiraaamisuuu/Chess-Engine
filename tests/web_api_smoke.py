@@ -255,6 +255,7 @@ def main() -> int:
             assert b"pvc-profile-summary" in page
             assert b"export-modal" in page and b"run-analysis" in page
             assert b"engine-time-slider" in page and b'data-time="5000"' in page
+            assert b"thinking-countdown" in page and b"status-countdown-value" in page
             assert b"engine-library-modal" in page and b"engine-import-form" in page
             assert b"setup-engine-action" in page and b"library-install-stockfish" in page
             assert b"official-stockfish/Stockfish/releases/tag/sf_18" in page

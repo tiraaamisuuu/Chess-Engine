@@ -24,6 +24,7 @@ jobs:
         run: |
           python tests/compare_engines_tests.py
           python tests/calibrate_rating_tests.py
+          python tests/benchmark_threads_tests.py
 
   sanitizers:
     runs-on: ubuntu-latest

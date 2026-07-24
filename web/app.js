@@ -5,8 +5,14 @@ const elements = {
   connection: document.querySelector("#connection"),
   connectionLabel: document.querySelector("#connection-label"),
   thinking: document.querySelector("#thinking-overlay"),
+  thinkingDial: document.querySelector("#thinking-dial"),
+  thinkingCountdown: document.querySelector("#thinking-countdown"),
+  thinkingTitle: document.querySelector("#thinking-title"),
+  thinkingDetail: document.querySelector("#thinking-detail"),
   status: document.querySelector("#position-status"),
   statusPulse: document.querySelector("#status-pulse"),
+  statusCountdown: document.querySelector("#status-countdown"),
+  statusCountdownValue: document.querySelector("#status-countdown-value"),
   moves: document.querySelector("#moves-list"),
   engineName: document.querySelector("#engine-name"),
   engineState: document.querySelector("#engine-state"),
@@ -97,6 +103,10 @@ let exportPayload = null;
 let exportSequence = 0;
 let returnToSetupAfterEngineLibrary = false;
 let stockfishInstallBusy = false;
+let thinkingAnimationFrame = null;
+let thinkingDeadline = 0;
+let thinkingDurationMs = 0;
+let thinkingStatus = "";
 
 const ENGINE_TIME_MIN = 50;
 const ENGINE_TIME_MAX = 10_000;
@@ -137,6 +147,13 @@ function formatDuration(milliseconds) {
   if (milliseconds < 1000) return `${milliseconds} ms`;
   const seconds = milliseconds / 1000;
   return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(2).replace(/0$/, "")} sec`;
+}
+
+function formatCountdown(milliseconds) {
+  const seconds = Math.max(0, milliseconds) / 1000;
+  if (seconds >= 10) return seconds.toFixed(0);
+  if (seconds >= 1) return seconds.toFixed(1);
+  return seconds.toFixed(2);
 }
 
 function timeToSlider(milliseconds) {
@@ -376,6 +393,7 @@ function cancelScheduledEnginePlay() {
   engineLoopToken += 1;
   clearTimeout(engineTimer);
   engineTimer = null;
+  stopThinkingCountdown();
 }
 
 async function submitMove(uci) {
@@ -412,7 +430,12 @@ function maybeContinueGame(delay = 0) {
 async function performEngineMove(token) {
   if (token !== engineLoopToken || !state?.needsEngineMove) return;
   const controller = state.controllers[state.turn];
-  setBusy(true, `${controller.name} is calculating`);
+  setBusy(
+    true,
+    `${controller.name} is calculating`,
+    state.engine.moveTimeMs,
+    `${controller.name} is thinking`,
+  );
   try {
     const nextState = await request("/api/engine-move", { method: "POST", body: "{}" });
     if (token !== engineLoopToken) return;
@@ -461,12 +484,80 @@ async function runAnalysis(showFailure = true, sequence = ++analysisSequence) {
   }
 }
 
-function setBusy(value, detail = "Searching the position") {
+function activeTurnElement() {
+  if (!state) return null;
+  const topColor = orientation === "white" ? "black" : "white";
+  return state.turn === topColor ? elements.topTurn : elements.bottomTurn;
+}
+
+function stopThinkingCountdown() {
+  if (thinkingAnimationFrame !== null) {
+    cancelAnimationFrame(thinkingAnimationFrame);
+    thinkingAnimationFrame = null;
+  }
+  thinkingDeadline = 0;
+  thinkingDurationMs = 0;
+  thinkingStatus = "";
+  elements.thinking.classList.remove("timed", "expired");
+  elements.statusCountdown.hidden = true;
+  const turn = activeTurnElement();
+  if (turn) {
+    turn.classList.remove("counting");
+    if (!state?.gameOver) turn.textContent = "TO MOVE";
+  }
+}
+
+function updateThinkingCountdown() {
+  if (!busy || thinkingDurationMs <= 0) return;
+  const remaining = Math.max(0, thinkingDeadline - performance.now());
+  const progress = Math.max(0, Math.min(1, remaining / thinkingDurationMs));
+  const display = formatCountdown(remaining);
+  elements.thinkingDial.style.setProperty("--thinking-angle", `${progress * 360}deg`);
+  elements.thinkingCountdown.value = display;
+  elements.statusCountdownValue.value = `${display}s`;
+  const turn = activeTurnElement();
+  if (turn) {
+    turn.textContent = remaining > 0 ? `${display}s` : "CHOOSING";
+    turn.classList.add("counting");
+  }
+
+  if (remaining <= 0) {
+    elements.thinking.classList.add("expired");
+    elements.thinkingDetail.textContent = "Selecting the strongest completed line";
+    elements.status.textContent = `${thinkingStatus} · finalising`;
+    elements.statusCountdownValue.value = "0.00s";
+    thinkingAnimationFrame = null;
+    return;
+  }
+
+  elements.status.textContent = `${thinkingStatus} · ${display}s`;
+  thinkingAnimationFrame = requestAnimationFrame(updateThinkingCountdown);
+}
+
+function startThinkingCountdown(durationMs, status) {
+  stopThinkingCountdown();
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    elements.thinkingCountdown.value = "•••";
+    elements.thinkingDial.style.setProperty("--thinking-angle", "82deg");
+    return;
+  }
+  thinkingDurationMs = durationMs;
+  thinkingDeadline = performance.now() + durationMs;
+  thinkingStatus = status;
+  elements.thinking.classList.add("timed");
+  elements.statusCountdown.hidden = false;
+  updateThinkingCountdown();
+}
+
+function setBusy(value, detail = "Searching the position", durationMs = 0, title = "Engine is thinking") {
   busy = value;
   const obscureBoard = value && state?.mode !== "cvc";
   elements.thinking.classList.toggle("visible", obscureBoard);
   elements.statusPulse.classList.toggle("thinking", value);
-  document.querySelector("#thinking-detail").textContent = detail;
+  elements.thinkingTitle.textContent = title;
+  elements.thinkingDetail.textContent = durationMs > 0 ? "Searching candidate lines" : detail;
+  if (value) startThinkingCountdown(durationMs, detail);
+  else stopThinkingCountdown();
   if (state) {
     elements.status.textContent = state.gameOver
       ? `${state.result} · ${state.resultReason}`

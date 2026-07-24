@@ -983,6 +983,14 @@ Every accepted search/evaluation patch needs:
 4. paired match against the previous known-good commit
 5. documentation of the result
 
+Windows progress on 2026-07-24: an opt-in native AVX2 plus IPO/LTO build is
+available through `scripts/build_max_performance.ps1`, and
+`scripts/benchmark_threads.py` records checksummed repeatable thread-scaling
+reports. On the Ryzen 9 5900X, a short diagnostic peaked at six threads with
+1.677x the one-thread node rate; twelve threads regressed to 1.565x. This is
+profiling evidence, not Elo evidence, so one thread remains the default and
+root parallelism remains a measured optimization target.
+
 ### Phase 3 — NNUE data and training foundation
 
 - Add dataset manifests, licensing/provenance, and checksums.
@@ -1028,7 +1036,6 @@ cost, correctness, and provenance.
 - No defensible absolute Elo estimate exists yet.
 - Current match samples are too small/fast for precise release claims.
 - The `v0.4.0` source baseline requires SFML 2.6.
-- The Windows CMake test matrix does not currently run the Bash UCI smoke test.
 - Root multi-threading is experimental and unproven at equal time.
 - Classical evaluation is not comprehensively tuned.
 - NNUE rebuilds accumulators at every evaluation.

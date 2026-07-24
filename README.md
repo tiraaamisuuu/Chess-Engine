@@ -47,6 +47,9 @@ export, undo, board flipping, promotion, side choice, selectable engines/models,
 magnetic thinking-time presets with a 50 ms–10 second custom range, and
 desktop/mobile layouts. PGN exports can be pasted into or uploaded to common
 game-analysis tools.
+Timed engine moves add an animated radial countdown, a compact status
+countdown, and a live timer on the active engine strip.
+
 Game setup opens immediately when the interface loads so PvP, PvC, CvC, engine
 selection, side choice, orientation, and thinking time are visible before play.
 The setup panel automatically lists the current engine, revisions built by
@@ -83,6 +86,25 @@ Executables:
 - `build/chess-engine-uci` — tournament/analysis engine
 - `build/chess-engine-tools` — perft, divide, and benchmarks
 - `build/chess-core-tests` — deterministic core test suite
+
+For a non-portable build tuned for the current PC, Windows PowerShell users can
+enable AVX2 and interprocedural/link-time optimization with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build_max_performance.ps1
+```
+
+The optimized engine is written to
+`build-pc-max\Release\chess-engine-uci.exe`. Launch it in the web GUI with the
+measured six-thread setting on the Ryzen 9 5900X:
+
+```powershell
+$env:ENGINE_BIN = "$PWD\build-pc-max\Release\chess-engine-uci.exe"
+powershell -ExecutionPolicy Bypass -File .\scripts\run_web_gui.ps1 --threads 6
+```
+
+This native binary targets the machine that built it. Keep portable release
+packages on the ordinary build path.
 
 Example UCI session:
 
