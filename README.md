@@ -23,10 +23,11 @@ search, and an optional NNUE evaluation path.
 - Perft, fixed-position benchmarks, UCI smoke tests, paired opening matches,
   and cross-platform headless CI
 
-The optional root-parallel search is experimental. Its principal-move and
-short-budget safety regressions are covered by tests, but a 100-game equal-time
-sample did not establish a strength gain. Keep `Threads=1` unless you are
-measuring the parallel path.
+The optional root-parallel search now uses persistent workers and a shared,
+concurrency-safe transposition table. Its principal-move and short-budget safety
+regressions are covered by tests. Four threads was level with one thread in a
+100-game fast match, but no multi-core setting has proved a strength gain yet,
+so `Threads=1` remains the default.
 
 ## Run the new web GUI
 
@@ -96,16 +97,17 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_max_performance.ps1
 ```
 
 The optimized engine is written to
-`build-pc-max\Release\chess-engine-uci.exe`. Launch it in the web GUI with the
-measured six-thread setting on the Ryzen 9 5900X:
+`build-pc-max\Release\chess-engine-uci.exe`. To exercise the best-tested
+experimental multi-core setting on the Ryzen 9 5900X:
 
 ```powershell
 $env:ENGINE_BIN = "$PWD\build-pc-max\Release\chess-engine-uci.exe"
-powershell -ExecutionPolicy Bypass -File .\scripts\run_web_gui.ps1 --threads 6
+powershell -ExecutionPolicy Bypass -File .\scripts\run_web_gui.ps1 --threads 4
 ```
 
 This native binary targets the machine that built it. Keep portable release
-packages on the ordinary build path.
+packages on the ordinary build path. Omit `--threads 4` to retain the
+strength-tested one-thread default.
 
 Example UCI session:
 

@@ -1001,8 +1001,13 @@ measured 9.4% higher six-thread NPS and half a ply more median mean depth; a
 100-game six-thread A/B match against `95eb16b` was neutral at
 -6.9 ±58.2 Elo with no failures. A direct current six-thread-versus-one-thread
 100-game match remained negative at -59.6 ±61.0 Elo. Multi-threading is now
-stable but not strength-positive; keep one thread as the default and prioritize
-shared search information over adding more root workers.
+stable but not strength-positive. Revision `8811c0e` added a packed atomic
+transposition table shared by all root workers. Six-thread median NPS reached
+1.507x one-thread NPS, and a six-thread patch-isolation match scored
++27.9 ±59.2 Elo against the isolated-table revision. Direct matches against one
+thread scored -6.9 ±56.6 at two threads, 0.0 ±58.2 at four, and -24.4 ±58.7 at
+six. Keep one thread as the default; four threads is the best current
+experimental setting and should receive a slower, longer SPRT.
 
 ### Phase 3 — NNUE data and training foundation
 
