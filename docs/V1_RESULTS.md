@@ -144,3 +144,29 @@ claims. HalfKP separates features by king square, so this small corpus of mostly
 castled engine-match positions does not cover the feature space or learn robust
 material values. A diverse corpus with millions of positions is required before
 another strength match is justified.
+
+A second experiment streamed the checksum-verified January 2013 Lichess
+standard archive under CC0. Eight Stockfish 18 shards sampled 50,000 games at
+5,000 nodes per label and completed in 718.6 seconds on the Ryzen 9 5900X.
+
+| Split | Retained positions | SHA-256 |
+|---|---:|---|
+| Training | 158,699 | `ab0dd1df8158fbd6898282c794f61b5b9bdba25bd5a864775d5548c71c67235c` |
+| Validation | 17,543 | `bef55492464d9dbda6df438a938a894f611227486302926039d352adaba95d9e` |
+
+The 256-wide model early-stopped at epoch 15 (best epoch 10), reaching 454.31 cp
+validation RMSE at roughly 16.7k training positions/second. Integer export RMSE
+was 1.68 cp across 512 samples. Network SHA-256:
+`90310fb9de8a5e913c811a8829a4bc9792f09b6e9e55ec9eff9ca5743b6dfe67`.
+
+Its 40-game paired diagnostic against classical at `2+0.02` scored 2 wins,
+37 losses, and 1 draw (6.25%, approximately -470 Elo in this small low-draw
+sample). There were no crashes or illegal moves; the NNUE side had one time
+forfeit. Diversity clearly helped, but 176k total positions remain far below
+the millions needed to cover king-conditioned HalfKP features. The network is
+rejected and classical remains the default.
+
+The training split covered 29,421 of 40,960 HalfKP inputs (71.8%). Of the full
+feature set, 11,539 inputs were unseen and 25,954 occurred at most 100 times.
+This is direct coverage evidence for scaling to millions of positions rather
+than tuning more epochs on this model.

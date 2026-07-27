@@ -49,6 +49,13 @@ separate when producing final networks. The generator assigns entire games to a
 split deterministically, deduplicates sampled positions, and writes a manifest
 containing source, teacher, option, checksum, seed, and distribution metadata.
 
+The official [Lichess open database](https://database.lichess.org/) publishes
+standard-game exports under CC0 and provides SHA-256 files. The January 2013
+archive is a convenient 17.8 MB compressed starter corpus (121,332 games), but a
+competitive pure HalfKP network will still require millions of diverse labelled
+positions. Always record the exact archive URL, published checksum, and CC0
+provenance in the generation command.
+
 For a real multi-core run, use the resumable coordinator instead of launching
 workers by hand:
 

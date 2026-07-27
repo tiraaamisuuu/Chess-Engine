@@ -1099,6 +1099,20 @@ scored 0/40. The local corpus is too small and king-position-biased for HalfKP;
 neither network is a candidate. The next data run should use a large, diverse,
 legally reusable corpus rather than more copies of the same local match games.
 
+The next experiment streamed the checksum-verified January 2013 Lichess
+standard archive (CC0). Fifty thousand games produced 158,699 training and
+17,543 validation positions at 5,000 Stockfish 18 nodes per label in 718.6
+seconds. The 256-wide model early-stopped after epoch 15 with best validation
+RMSE 454.31 cp and 1.68 cp quantization RMSE. Its material probes were much more
+sensible, but a 40-game `2+0.02` paired test against classical scored 2 wins,
+37 losses, and 1 draw (6.25%, roughly -470 Elo for this small low-draw sample),
+with one NNUE time forfeit and no crashes or illegal moves. Keep it rejected.
+The evidence says the next pure HalfKP attempt needs millions of diverse
+positions; do not spend time tuning a 176k-position network into the release.
+An input-coverage audit found only 29,421 of 40,960 HalfKP features present
+(71.8%); 11,539 were unseen and 25,954 appeared at most 100 times. This directly
+explains the remaining sparse-material and unusual-king failures.
+
 ### Phase 5 — v1 release
 
 - Resolve all release-blocking correctness issues.
