@@ -25,6 +25,7 @@ from train import (  # noqa: E402
     HalfKpV1,
     PositionsDataset,
     export_network,
+    find_dataset_manifest,
     quantize_network,
     quantized_predict,
     restore_rng_state,
@@ -119,6 +120,20 @@ class NnueTrainingTests(unittest.TestCase):
         restore_rng_state(state)
         actual = (random.random(), float(np.random.random()), float(torch.rand(1).item()))
         self.assertEqual(actual, expected)
+
+    def test_dataset_manifest_discovery_validates_output_checksum(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset = root / "train.nnuebin"
+            dataset.write_bytes(b"fixture")
+            import hashlib
+            checksum = hashlib.sha256(b"fixture").hexdigest()
+            manifest = root / "dataset.manifest.json"
+            manifest.write_text(json.dumps({
+                "outputs": [{"path": str(dataset.resolve()), "sha256": checksum}],
+            }), encoding="utf-8")
+            self.assertEqual(find_dataset_manifest(dataset, checksum), manifest.resolve())
+            self.assertIsNone(find_dataset_manifest(dataset, "0" * 64))
 
 
 if __name__ == "__main__":

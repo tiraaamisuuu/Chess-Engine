@@ -271,6 +271,8 @@ The repository contains:
 - versioned compact 42-byte shards with deterministic game-level splitting
 - source, teacher, option, data, and output provenance/checksum manifests
 - deterministic position deduplication
+- deterministic multi-process teacher shards with checksum-validated resume
+- global shard merge/deduplication and train/validation leakage removal
 - a PyTorch `EmbeddingBag` training implementation
 - game-disjoint validation with JSON/CSV metrics
 - direct quantized `.nnue` export
@@ -341,6 +343,7 @@ scripts/
   run_sanitizers.sh       ASan/UBSan gate
   nnue/
     generate_dataset.py   PGN sampling and Stockfish teacher labelling
+    generate_shards.py    resumable multi-process teacher orchestration
     train.py              PyTorch training and quantized export
     requirements.txt      NNUE Python dependencies
 
@@ -885,9 +888,11 @@ Current example:
   --sample-rate 0.25
 ```
 
-Run independent shards rather than allocating all CPU threads to one Stockfish
-process. Benchmark positions/hour on the 5900X before choosing nodes, threads,
-and process count.
+Use `scripts/nnue/generate_shards.py` to run independent deterministic game
+partitions rather than allocating all CPU threads to one Stockfish process. It
+resumes complete checksum-validated shards and globally deduplicates the final
+train/validation merge. Benchmark positions/hour on the 5900X before choosing
+nodes, threads, process count, and hash per process.
 
 ### Training and export
 
@@ -1053,6 +1058,12 @@ validation positions from six local paired games with zero PGN parse errors.
 The trainer now writes complete resumable checkpoints, best/periodic snapshots,
 atomic metrics, throughput/GPU-memory telemetry, quantization statistics, and a
 checksummed export manifest. The CUDA resume and exact C++ inference gates pass.
+Parallel teacher orchestration now partitions games and samples positions
+deterministically, resumes complete parts by manifest/checksum, and merges with
+global deduplication across both splits. A two-worker Stockfish 18 smoke produced
+190 training and 172 validation positions; a repeated command skipped both
+teacher workers and reproduced the merged dataset before CUDA/C++ training gates
+passed on it. Phase 3's pipeline exit condition is satisfied.
 
 Exit condition: a repeatable small training run produces a C++-validated network
 with documented data and metrics.
@@ -1097,8 +1108,6 @@ are not strength candidates.
 - The `v0.4.0` source baseline requires SFML 2.6.
 - Root multi-threading is experimental and unproven at equal time.
 - Classical evaluation is not comprehensively tuned.
-- NNUE teacher generation is still sequential within each generator process;
-  independent shards can be run in parallel manually.
 - There is no trained network bundled with the project.
 - The board/search core is header-heavy and tightly compiled.
 - Match profiles, external engines, artifacts, data, and networks are local and

@@ -185,6 +185,13 @@ class BinaryShardWriter:
         self._output.write(encode_record(board, score_cp, result, game_id, ply))
         self._count += 1
 
+    def write_record(self, record: ShardRecord) -> None:
+        self._output.write(SHARD_RECORD.pack(
+            record.board_bytes, record.score_cp, record.result,
+            1 if record.turn == chess.WHITE else 0, record.game_id, record.ply,
+        ))
+        self._count += 1
+
     def close(self) -> None:
         if self._output.closed:
             return

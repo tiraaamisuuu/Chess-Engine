@@ -49,6 +49,28 @@ separate when producing final networks. The generator assigns entire games to a
 split deterministically, deduplicates sampled positions, and writes a manifest
 containing source, teacher, option, checksum, seed, and distribution metadata.
 
+For a real multi-core run, use the resumable coordinator instead of launching
+workers by hand:
+
+```sh
+.venv/bin/python scripts/nnue/generate_shards.py \
+  --engine /path/to/stockfish \
+  --pgn /path/to/licensed-games-*.pgn \
+  --output-dir data/teacher-v1 \
+  --shards 8 --jobs 4 --threads 3 --hash 512 \
+  --source-name "My licensed game collection" \
+  --source-license "Licence or permission description" \
+  --nodes 20000 --sample-rate 0.25 --validation-fraction 0.1
+```
+
+Each worker receives a deterministic whole-game partition and stateless
+position sampling. Re-running the command validates the generator commit,
+teacher/data/configuration identity, manifests, and output checksums, then skips
+complete shards. The final merge deduplicates across workers and removes any
+position duplicated between training and validation. It retains every part and
+its manifest for auditability. `--jobs 0` derives a concurrency level from the
+CPU and per-teacher thread count; explicit jobs make resource use predictable.
+
 The default `.nnuebin` format is a versioned 42-byte record containing the packed
 board, teacher centipawns from the side-to-move viewpoint, game result, side to
 move, source-game id, and ply. JSONL remains available for inspection and small

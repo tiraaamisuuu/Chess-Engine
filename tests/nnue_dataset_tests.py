@@ -26,7 +26,13 @@ from nnue_dataset import (  # noqa: E402
     pack_board,
     read_shard_header,
 )
-from generate_dataset import game_is_validation, result_for_side_to_move  # noqa: E402
+from generate_dataset import (  # noqa: E402
+    game_is_validation,
+    game_shard,
+    position_is_sampled,
+    result_for_side_to_move,
+)
+from generate_shards import merge_shards, record_key  # noqa: E402
 
 
 class NnueDatasetTests(unittest.TestCase):
@@ -96,6 +102,62 @@ class NnueDatasetTests(unittest.TestCase):
         self.assertEqual(result_for_side_to_move("1-0", chess.WHITE), 1.0)
         self.assertEqual(result_for_side_to_move("1-0", chess.BLACK), -1.0)
         self.assertEqual(result_for_side_to_move("1/2-1/2", chess.BLACK), 0.0)
+
+    def test_sampling_and_game_shards_are_stateless(self) -> None:
+        checksum = "cd" * 32
+        selected = [position_is_sampled(checksum, 17, ply, 9, 0.25)
+                    for ply in range(1, 1001)]
+        self.assertEqual(
+            selected,
+            [position_is_sampled(checksum, 17, ply, 9, 0.25)
+             for ply in range(1, 1001)],
+        )
+        self.assertGreater(sum(selected), 200)
+        self.assertLess(sum(selected), 300)
+        assignments = [game_shard(checksum, game, 9, 4) for game in range(1, 1001)]
+        self.assertTrue(all(0 <= shard < 4 for shard in assignments))
+        for shard in range(4):
+            self.assertGreater(assignments.count(shard), 200)
+            self.assertLess(assignments.count(shard), 300)
+
+    def test_global_merge_deduplicates_parts_and_validation_leakage(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            start = chess.Board()
+            e4 = chess.Board()
+            e4.push_uci("e2e4")
+            d4 = chess.Board()
+            d4.push_uci("d2d4")
+            c4 = chess.Board()
+            c4.push_uci("c2c4")
+            first = root / "first.nnuebin"
+            second = root / "second.nnuebin"
+            validation = root / "validation-part.nnuebin"
+            with BinaryShardWriter(first) as writer:
+                writer.write(start, 12, 0.0, 1, 8)
+                writer.write(e4, 20, 0.0, 1, 9)
+            with BinaryShardWriter(second) as writer:
+                writer.write(start, 99, 0.0, 2, 8)
+                writer.write(d4, 30, 0.0, 2, 9)
+            with BinaryShardWriter(validation) as writer:
+                writer.write(e4, 25, 0.0, 3, 9)
+                writer.write(c4, 40, 0.0, 3, 9)
+
+            seen: set[int] = set()
+            training_stats = merge_shards(
+                [first, second], root / "train.nnuebin", seen,
+            )
+            validation_stats = merge_shards(
+                [validation], root / "validation.nnuebin", seen,
+            )
+            self.assertEqual(training_stats, {"read": 4, "written": 3, "duplicatesSkipped": 1})
+            self.assertEqual(validation_stats, {"read": 2, "written": 1, "duplicatesSkipped": 1})
+            self.assertEqual(len(seen), 4)
+            start_record = next(iter(iter_compact_records([first])))
+            self.assertNotEqual(
+                record_key(start_record.board_bytes, start_record.turn),
+                record_key(start_record.board_bytes, not start_record.turn),
+            )
 
 
 if __name__ == "__main__":

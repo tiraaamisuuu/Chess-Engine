@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
-import random
 import subprocess
 from typing import Protocol
 
@@ -51,6 +50,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-games", type=int, default=0, help="Zero means unlimited")
     parser.add_argument("--max-positions", type=int, default=0, help="Zero means unlimited")
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--shard-index", type=int, default=0,
+                        help="Zero-based deterministic game partition")
+    parser.add_argument("--shard-count", type=int, default=1,
+                        help="Number of deterministic game partitions")
     parser.add_argument("--deduplicate", action=argparse.BooleanOptionalAction, default=True)
     return parser.parse_args()
 
@@ -67,6 +70,21 @@ def game_is_validation(input_sha256: str, game_index: int, seed: int,
     material = f"{input_sha256}:{game_index}:{seed}".encode("ascii")
     value = int.from_bytes(hashlib.blake2b(material, digest_size=8).digest(), "little")
     return value / float(1 << 64) < validation_fraction
+
+
+def game_shard(input_sha256: str, game_index: int, seed: int, shard_count: int) -> int:
+    material = f"shard:{input_sha256}:{game_index}:{seed}".encode("ascii")
+    value = int.from_bytes(hashlib.blake2b(material, digest_size=8).digest(), "little")
+    return value % shard_count
+
+
+def position_is_sampled(input_sha256: str, game_index: int, ply: int,
+                        seed: int, sample_rate: float) -> bool:
+    if sample_rate >= 1.0:
+        return True
+    material = f"sample:{input_sha256}:{game_index}:{ply}:{seed}".encode("ascii")
+    value = int.from_bytes(hashlib.blake2b(material, digest_size=8).digest(), "little")
+    return value / float(1 << 64) < sample_rate
 
 
 def current_commit(root: Path) -> str | None:
@@ -169,6 +187,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("invalid ply range")
     if args.max_games < 0 or args.max_positions < 0:
         raise SystemExit("maximum counts cannot be negative")
+    if args.shard_count < 1 or not 0 <= args.shard_index < args.shard_count:
+        raise SystemExit("--shard-index must be in [0, --shard-count)")
     if not args.engine.is_file():
         raise SystemExit(f"teacher engine does not exist: {args.engine}")
     missing = [str(path) for path in args.pgn if not path.is_file()]
@@ -187,7 +207,6 @@ def main() -> int:
     root = Path(__file__).resolve().parents[2]
     started_at = datetime.now(timezone.utc)
     manifest_path = args.manifest or args.output.with_suffix(args.output.suffix + ".manifest.json")
-    random_generator = random.Random(args.seed)
 
     inputs: list[dict[str, object]] = []
     for path in args.pgn:
@@ -204,6 +223,8 @@ def main() -> int:
     stats: dict[str, object] = {
         "gamesRead": 0,
         "gamesWithErrors": 0,
+        "gamesAssigned": 0,
+        "gamesSkippedByShard": 0,
         "trainingGames": 0,
         "validationGames": 0,
         "positionsConsidered": 0,
@@ -253,6 +274,14 @@ def main() -> int:
                         if game.errors:
                             stats["gamesWithErrors"] = int(stats["gamesWithErrors"]) + 1
 
+                        if game_shard(input_sha256, local_game_index, args.seed,
+                                      args.shard_count) != args.shard_index:
+                            stats["gamesSkippedByShard"] = int(stats["gamesSkippedByShard"]) + 1
+                            if args.max_games and global_game_id >= args.max_games:
+                                stop = True
+                            continue
+                        stats["gamesAssigned"] = int(stats["gamesAssigned"]) + 1
+
                         validation_game = game_is_validation(
                             input_sha256, local_game_index, args.seed, args.validation_fraction,
                         )
@@ -272,7 +301,9 @@ def main() -> int:
                             if board.is_game_over(claim_draw=True):
                                 continue
                             stats["positionsConsidered"] = int(stats["positionsConsidered"]) + 1
-                            if random_generator.random() > args.sample_rate:
+                            if not position_is_sampled(
+                                input_sha256, local_game_index, ply, args.seed, args.sample_rate,
+                            ):
                                 continue
                             stats["positionsSampled"] = int(stats["positionsSampled"]) + 1
 
@@ -318,9 +349,10 @@ def main() -> int:
         engine.quit()
 
     outputs: list[dict[str, object]] = []
-    if int(stats["trainingPositions"]) == 0:
+    if args.shard_count == 1 and int(stats["trainingPositions"]) == 0:
         raise RuntimeError("generation produced an empty training split")
-    if args.validation_output and int(stats["validationPositions"]) == 0:
+    if (args.shard_count == 1 and args.validation_output and
+            int(stats["validationPositions"]) == 0):
         raise RuntimeError(
             "generation produced an empty validation split; increase the game count or change the seed"
         )
@@ -338,6 +370,7 @@ def main() -> int:
         })
 
     completed_at = datetime.now(timezone.utc)
+    generator_script = Path(__file__).resolve()
     manifest = {
         "schemaVersion": SCHEMA_VERSION,
         "datasetFormat": "HalfKP-v1",
@@ -346,7 +379,9 @@ def main() -> int:
         "durationSeconds": round((completed_at - started_at).total_seconds(), 3),
         "generator": {
             "commit": current_commit(root),
-            "script": str(Path(__file__).resolve()),
+            "script": str(generator_script),
+            "scriptSha256": sha256_file(generator_script),
+            "pythonChess": chess.__version__,
         },
         "provenance": {
             "name": args.source_name,
@@ -371,6 +406,8 @@ def main() -> int:
             "maxPositions": args.max_positions,
             "deduplicate": args.deduplicate,
             "validationFractionByGame": args.validation_fraction,
+            "shardIndex": args.shard_index,
+            "shardCount": args.shard_count,
         },
         "statistics": stats,
         "outputs": outputs,

@@ -422,6 +422,35 @@ def git_state(root: Path) -> dict[str, object]:
     }
 
 
+def find_dataset_manifest(dataset_path: Path, dataset_sha256: str) -> Path | None:
+    candidates = [
+        dataset_path.with_suffix(dataset_path.suffix + ".manifest.json"),
+        dataset_path.parent / "dataset.manifest.json",
+        *sorted(dataset_path.parent.glob("*.manifest.json")),
+    ]
+    checked: set[Path] = set()
+    for candidate in candidates:
+        resolved_candidate = candidate.resolve()
+        if resolved_candidate in checked or not candidate.is_file():
+            continue
+        checked.add(resolved_candidate)
+        try:
+            manifest = json.loads(candidate.read_text(encoding="utf-8"))
+            outputs = manifest.get("outputs", [])
+            if not isinstance(outputs, list):
+                continue
+            for output in outputs:
+                if not isinstance(output, dict):
+                    continue
+                output_path = Path(str(output.get("path", "")))
+                if (output_path.resolve() == dataset_path.resolve() and
+                        output.get("sha256") == dataset_sha256):
+                    return resolved_candidate
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            continue
+    return None
+
+
 def checkpoint_payload(model: HalfKpV1, optimizer: torch.optim.Optimizer,
                        scheduler: torch.optim.lr_scheduler.LRScheduler | None,
                        epoch: int, best_rmse: float, epochs_without_improvement: int,
@@ -674,17 +703,18 @@ def main() -> int:
     for split, paths in (("training", args.data), ("validation", args.validation_data or [])):
         for path in paths:
             resolved = path.resolve()
-            sibling_manifest = resolved.with_suffix(resolved.suffix + ".manifest.json")
+            dataset_sha256 = sha256_file(resolved)
+            dataset_manifest = find_dataset_manifest(resolved, dataset_sha256)
             data_inputs.append({
                 "split": split,
                 "path": str(resolved),
                 "positions": position_counts.get(resolved),
                 "sizeBytes": resolved.stat().st_size,
-                "sha256": sha256_file(resolved),
+                "sha256": dataset_sha256,
                 "manifest": ({
-                    "path": str(sibling_manifest),
-                    "sha256": sha256_file(sibling_manifest),
-                } if sibling_manifest.is_file() else None),
+                    "path": str(dataset_manifest),
+                    "sha256": sha256_file(dataset_manifest),
+                } if dataset_manifest else None),
             })
 
     device_manifest: dict[str, object] = {
