@@ -21,6 +21,11 @@ python -m venv .venv
 On Windows, use `.venv\Scripts\python.exe` and install the CUDA-enabled PyTorch
 wheel recommended for the installed NVIDIA driver.
 
+The Windows pipeline was verified on 2026-07-27 with Python 3.13,
+PyTorch `2.12.1+cu130`, CUDA runtime 13.0, and an RTX 3070. Use the current
+command from the official PyTorch selector rather than assuming that exact wheel
+will remain current.
+
 ## Generate labelled positions
 
 Use legally obtained PGNs and a strong Stockfish binary:
@@ -60,7 +65,35 @@ experiments. Mate values are bounded to keep targets finite.
 ```
 
 The exporter quantizes the PyTorch model directly into the format verified by
-the C++ test suite. It also writes a `.pt` checkpoint.
+the C++ test suite. It writes:
+
+- the deployable `.nnue` network and model-only `.pt` weights
+- last, best-validation, and periodic versioned training checkpoints
+- atomic JSON/CSV epoch metrics
+- a checksummed provenance manifest with CUDA, data, and quantization details
+
+Add `--cpp-tools build-pc/Release/chess-engine-tools.exe` to make exact
+Python-versus-C++ inference agreement a required export gate. To resume after an
+interruption, repeat the original training configuration and add:
+
+```sh
+--resume networks/engine-v1.checkpoint.pt
+```
+
+The checkpoint restores model, optimizer, scheduler, metrics, and Python,
+NumPy, PyTorch, and CUDA random-number states. Cosine-scheduler resumes require
+the original `--epochs` value so the learning-rate trajectory cannot silently
+change. `--early-stopping-patience`, `--scheduler`, `--minimum-learning-rate`,
+and `--verify-samples` provide the remaining training controls.
+
+For direct inspection of either evaluator:
+
+```sh
+build-pc/Release/chess-engine-tools --eval --fen "FEN"
+build-pc/Release/chess-engine-tools --eval --fen "FEN" --nnue networks/engine-v1.nnue
+```
+
+The benchmark accepts the same `--nnue` option.
 
 ## Use the network
 

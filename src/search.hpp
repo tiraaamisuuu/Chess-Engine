@@ -1162,7 +1162,9 @@ struct BenchmarkPosition {
     const char* fen;
 };
 
-inline int runSearchBenchmark(const Zobrist& zob, int depth, int perPositionTimeMs, int ttSizeMB = 256, int threads = 1){
+inline int runSearchBenchmark(const Zobrist& zob, int depth, int perPositionTimeMs,
+                              int ttSizeMB = 256, int threads = 1,
+                              const PositionEvaluator* evaluator = nullptr){
     const std::vector<BenchmarkPosition> positions = {
         {"Start", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"},
         {"Middlegame 1", "r2q1rk1/pp2bppp/2np1n2/2p1p1B1/2P1P3/2NP1N2/PP2QPPP/R4RK1 w - - 0 10"},
@@ -1175,6 +1177,7 @@ inline int runSearchBenchmark(const Zobrist& zob, int depth, int perPositionTime
     std::cout << "Benchmark: depth=" << depth
               << " timeLimit=" << perPositionTimeMs
               << "ms threads=" << threads
+              << " evaluator=" << (evaluator && evaluator->usingNnue() ? "nnue" : "classical")
               << " positions=" << positions.size() << "\n";
 
     for(const auto& p : positions){
@@ -1188,6 +1191,7 @@ inline int runSearchBenchmark(const Zobrist& zob, int depth, int perPositionTime
         SearchContext ctx;
         ctx.tt.resizeMB(static_cast<size_t>(ttSizeMB));
         ctx.gameHistory = {bd.hash};
+        ctx.evaluator = evaluator;
 
         const Move best = searchBestMove(bd, ctx, depth, perPositionTimeMs, perPositionTimeMs, threads);
         const double nps = (ctx.stats.timeMs > 0)

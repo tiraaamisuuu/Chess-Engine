@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import json
+import struct
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+import chess
+import numpy as np
+import torch
+
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts" / "nnue"))
+
+from nnue_dataset import BinaryShardWriter  # noqa: E402
+from train import (  # noqa: E402
+    FEATURE_COUNT,
+    FORMAT_VERSION,
+    MAGIC,
+    HalfKpV1,
+    PositionsDataset,
+    export_network,
+    quantize_network,
+    quantized_predict,
+    restore_rng_state,
+    truncating_division,
+    verify_quantization,
+)
+
+
+class NnueTrainingTests(unittest.TestCase):
+    def test_compact_and_jsonl_datasets_match(self) -> None:
+        board = chess.Board()
+        board.push_uci("e2e4")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            compact = root / "fixture.nnuebin"
+            jsonl = root / "fixture.jsonl"
+            with BinaryShardWriter(compact) as writer:
+                writer.write(board, 125, -1.0, game_id=7, ply=9)
+            jsonl.write_text(json.dumps({
+                "fen": board.fen(en_passant="fen"),
+                "score_cp": 125,
+                "result": -1.0,
+                "game_id": 7,
+                "ply": 9,
+            }) + "\n", encoding="utf-8")
+
+            with PositionsDataset([compact], result_weight=0.2) as compact_dataset:
+                compact_sample = compact_dataset[0]
+            with PositionsDataset([jsonl], result_weight=0.2) as jsonl_dataset:
+                jsonl_sample = jsonl_dataset[0]
+            self.assertEqual(compact_sample, jsonl_sample)
+
+    def test_quantized_prediction_tracks_float_model(self) -> None:
+        torch.manual_seed(17)
+        model = HalfKpV1(hidden=8)
+        board = chess.Board()
+        with tempfile.TemporaryDirectory() as directory:
+            compact = Path(directory) / "fixture.nnuebin"
+            with BinaryShardWriter(compact) as writer:
+                for game_id, move in enumerate(("e2e4", "d2d4", "g1f3"), start=1):
+                    position = board.copy()
+                    position.push_uci(move)
+                    writer.write(position, game_id * 10, 0.0, game_id, 1)
+            with PositionsDataset([compact], result_weight=0.0) as dataset:
+                report = verify_quantization(model, dataset, 3, 17, 127, 64)
+                self.assertEqual(report["samples"], 3)
+                self.assertLess(report["maxAbsErrorCp"], 1.0)
+
+                first, second, _target = dataset[0]
+                quantized = quantize_network(model, 127, 64)
+                prediction = quantized_predict(quantized, first, second)
+                self.assertIsInstance(prediction, int)
+
+    def test_export_header_and_size(self) -> None:
+        model = HalfKpV1(hidden=4)
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "fixture.nnue"
+            export_network(model, destination)
+            with destination.open("rb") as source:
+                magic, version, features, hidden, hidden_scale, output_scale, _bias = struct.unpack(
+                    "<8sIIIiii", source.read(struct.calcsize("<8sIIIiii")),
+                )
+            self.assertEqual(magic, MAGIC)
+            self.assertEqual(version, FORMAT_VERSION)
+            self.assertEqual(features, FEATURE_COUNT)
+            self.assertEqual(hidden, 4)
+            self.assertEqual(hidden_scale, 127)
+            self.assertEqual(output_scale, 64)
+            expected = struct.calcsize("<8sIIIiii") + 4 * 4 + FEATURE_COUNT * 4 * 2 + 8 * 2
+            self.assertEqual(destination.stat().st_size, expected)
+
+    def test_integer_division_matches_cpp_truncation(self) -> None:
+        self.assertEqual(truncating_division(7, 3), 2)
+        self.assertEqual(truncating_division(-7, 3), -2)
+
+    def test_rng_state_restores_all_cpu_generators(self) -> None:
+        import random
+
+        random.seed(31)
+        np.random.seed(31)
+        torch.manual_seed(31)
+        state = {
+            "python": random.getstate(),
+            "numpy": np.random.get_state(),
+            "torch": torch.get_rng_state(),
+            "cuda": None,
+        }
+        expected = (random.random(), float(np.random.random()), float(torch.rand(1).item()))
+        random.random()
+        np.random.random()
+        torch.rand(1)
+        restore_rng_state(state)
+        actual = (random.random(), float(np.random.random()), float(torch.rand(1).item()))
+        self.assertEqual(actual, expected)
+
+
+if __name__ == "__main__":
+    unittest.main()

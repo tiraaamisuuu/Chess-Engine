@@ -268,10 +268,15 @@ The repository contains:
 - quantized C++ inference
 - a deterministic loader/inference test fixture
 - a PGN-to-labelled-JSONL generator using a UCI teacher
+- versioned compact 42-byte shards with deterministic game-level splitting
+- source, teacher, option, data, and output provenance/checksum manifests
+- deterministic position deduplication
 - a PyTorch `EmbeddingBag` training implementation
-- validation loss reporting
+- game-disjoint validation with JSON/CSV metrics
 - direct quantized `.nnue` export
-- `.pt` checkpoint output
+- resumable optimizer/scheduler/RNG checkpoints and best-model selection
+- measured float-to-integer quantization error
+- an optional exact Python-to-C++ export gate
 - UCI and web profile loading
 
 There is no bundled trained network yet. Classical evaluation remains the
@@ -856,10 +861,9 @@ downloaded engines.
 - Generate multiple independent shards.
 - Keep a deterministic small fixture for CI.
 
-Current JSONL is readable and convenient but inefficient for tens of millions
-of positions. Before serious generation, design a compact indexed/binary shard
-format or another streaming representation that avoids repeated FEN parsing and
-large text overhead.
+JSONL remains available for inspection. Serious generation uses the versioned
+`.nnuebin` format: a 24-byte header followed by fixed 42-byte records with a
+packed board, teacher score, game result, side to move, game id, and ply.
 
 ### Teacher labelling
 
@@ -869,7 +873,11 @@ Current example:
 .\.venv-nnue\Scripts\python.exe scripts\nnue\generate_dataset.py `
   --engine C:\Path\To\stockfish.exe `
   --pgn D:\ChessData\games-1.pgn `
-  --output D:\ChessData\shard-1.jsonl `
+  --output D:\ChessData\shard-1.nnuebin `
+  --validation-output D:\ChessData\validation-1.nnuebin `
+  --validation-fraction 0.1 `
+  --source-name "Licensed game collection" `
+  --source-license "Licence or permission description" `
   --nodes 20000 `
   --threads 3 `
   --hash 512 `
@@ -895,7 +903,7 @@ Current example:
   --workers 4
 ```
 
-Improve the trainer before serious use with:
+The trainer now provides:
 
 - resumable optimizer/scheduler checkpoints, not only model weights
 - periodic checkpoints and best-validation checkpoint selection
@@ -906,6 +914,12 @@ Improve the trainer before serious use with:
 - checksum/provenance manifest beside every exported network
 - deterministic export verification against PyTorch outputs
 - explicit quantization-error measurement
+- exact optional verification through `chess-engine-tools --eval`
+
+The 2026-07-27 CUDA smoke restored epoch 2 from an epoch-1 checkpoint and
+produced a byte-identical network to the uninterrupted two-epoch run. A separate
+non-trivial export gate matched Python and C++ exactly on four reference FENs,
+including non-zero -3 cp and -12 cp evaluations.
 
 ### Engine-side NNUE performance work
 
@@ -1026,6 +1040,9 @@ deterministic whole-game train/validation assignment, position deduplication,
 and an atomic provenance manifest containing input, teacher, option, output,
 and checksum metadata. A Stockfish 18 smoke generated 321 training and 179
 validation positions from six local paired games with zero PGN parse errors.
+The trainer now writes complete resumable checkpoints, best/periodic snapshots,
+atomic metrics, throughput/GPU-memory telemetry, quantization statistics, and a
+checksummed export manifest. The CUDA resume and exact C++ inference gates pass.
 
 Exit condition: a repeatable small training run produces a C++-validated network
 with documented data and metrics.
@@ -1065,8 +1082,8 @@ cost, correctness, and provenance.
 - Root multi-threading is experimental and unproven at equal time.
 - Classical evaluation is not comprehensively tuned.
 - NNUE rebuilds accumulators at every evaluation.
-- NNUE datasets use verbose JSONL and sequential teacher generation.
-- NNUE checkpointing does not preserve optimizer/scheduler state.
+- NNUE teacher generation is still sequential within each generator process;
+  independent shards can be run in parallel manually.
 - There is no trained network bundled with the project.
 - The board/search core is header-heavy and tightly compiled.
 - Match profiles, external engines, artifacts, data, and networks are local and

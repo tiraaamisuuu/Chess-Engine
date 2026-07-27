@@ -200,7 +200,9 @@ setoption name Use NNUE value true
 ```
 
 Dataset generation, PyTorch training, export commands, hardware guidance, and
-release requirements are documented in [docs/NNUE.md](docs/NNUE.md). An NNUE
+release requirements are documented in [docs/NNUE.md](docs/NNUE.md). The
+pipeline now includes compact provenance-tracked shards, resumable CUDA
+training, metrics, quantization checks, and an exact C++ export gate. An NNUE
 network is not bundled yet.
 
 ## Repository layout

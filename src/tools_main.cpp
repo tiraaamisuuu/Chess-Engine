@@ -24,8 +24,9 @@ void printHelp(){
         << "  chess-engine-tools --divide DEPTH [--fen FEN]\n"
         << "  chess-engine-tools --perft-tests [--max-depth DEPTH]\n"
         << "  chess-engine-tools --fen-after \"UCI MOVES...\" [--fen FEN]\n"
+        << "  chess-engine-tools --eval [--fen FEN] [--nnue NETWORK]\n"
         << "  chess-engine-tools --bench [--bench-depth DEPTH] [--bench-time MS]\n"
-        << "                  [--bench-tt MB] [--threads N]\n";
+        << "                  [--bench-tt MB] [--threads N] [--nnue NETWORK]\n";
 }
 
 } // namespace
@@ -35,6 +36,7 @@ int main(int argc, char** argv){
     bool divide = false;
     bool perftTests = false;
     bool benchmark = false;
+    bool evaluate = false;
     int maxPerftDepth = 4;
     int benchmarkDepth = 8;
     int benchmarkTimeMs = 4000;
@@ -42,6 +44,7 @@ int main(int argc, char** argv){
     int threads = 1;
     std::string fen;
     std::string movesForFen;
+    std::string nnuePath;
 
     for(int index = 1; index < argc; index++){
         const std::string argument = argv[index];
@@ -69,6 +72,12 @@ int main(int argc, char** argv){
             movesForFen = value;
         } else if(argument == "--perft-tests"){
             perftTests = true;
+        } else if(argument == "--eval"){
+            evaluate = true;
+        } else if(argument == "--nnue"){
+            const char* value = valueFor("--nnue");
+            if(!value) return 1;
+            nnuePath = value;
         } else if(argument == "--max-depth"){
             const char* value = valueFor("--max-depth");
             if(!value || !parseInteger(value, maxPerftDepth) || maxPerftDepth < 1) return 1;
@@ -95,7 +104,34 @@ int main(int argc, char** argv){
 
     const Zobrist zobrist;
     if(perftTests) return runPerftSuite(zobrist, maxPerftDepth);
-    if(benchmark) return runSearchBenchmark(zobrist, benchmarkDepth, benchmarkTimeMs, benchmarkTTMB, threads);
+
+    PositionEvaluator evaluator;
+    if(!nnuePath.empty()){
+        std::string error;
+        if(!evaluator.loadNnue(nnuePath, &error)){
+            std::cerr << "Unable to load NNUE network: " << error << '\n';
+            return 1;
+        }
+        evaluator.setUseNnue(true);
+    }
+    if(benchmark){
+        return runSearchBenchmark(
+            zobrist, benchmarkDepth, benchmarkTimeMs, benchmarkTTMB, threads,
+            nnuePath.empty() ? nullptr : &evaluator);
+    }
+
+    if(evaluate){
+        Board board;
+        board.setZobrist(&zobrist);
+        board.reset();
+        if(!fen.empty() && !board.loadFEN(fen)){
+            std::cerr << "Invalid FEN\n";
+            return 1;
+        }
+        std::cout << "evaluation_cp=" << evaluator.evaluate(board)
+                  << " backend=" << (evaluator.usingNnue() ? "nnue" : "classical") << '\n';
+        return 0;
+    }
 
     if(!movesForFen.empty()){
         Board board;
