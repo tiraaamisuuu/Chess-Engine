@@ -282,9 +282,10 @@ The repository contains:
 There is no bundled trained network yet. Classical evaluation remains the
 default.
 
-The current C++ NNUE inference rebuilds both accumulators from the entire board
-at each evaluation. It is a correct reference path, not a production-speed
-incremental NNUE implementation.
+Search now uses a per-ply incremental accumulator stack. Ordinary moves apply
+piece-feature deltas; king moves rebuild only the affected perspective. The
+full-rebuild evaluator remains selectable in the benchmark as a correctness and
+performance reference.
 
 ## Important development commits
 
@@ -938,6 +939,15 @@ Before NNUE becomes the default:
 8. Run network-vs-network paired games with the exact same engine commit.
 9. Require an SPRT pass before enabling or shipping a default network.
 
+Items 1-6 are implemented as of 2026-07-27. The deterministic C++ gate compares
+incremental values against full rebuilds across random 160-ply legal playouts,
+complete unmake, castling, en passant, promotion, and king capture. It also
+requires fixed-depth incremental and rebuild searches to return the same move,
+score, and node tree. On the Ryzen 9 5900X with a 256-wide smoke network, three
+depth-7 rebuild runs had median 13,457 NPS; incremental runs had median 46,010
+NPS on the identical 8,788-node tree, a 3.42x increase. This is runtime evidence,
+not playing-strength evidence.
+
 ## Prioritized roadmap
 
 ### Phase 0 — Windows bring-up
@@ -1059,6 +1069,12 @@ with documented data and metrics.
 Exit condition: NNUE wins a properly powered match and has acceptable runtime
 cost, correctness, and provenance.
 
+Windows progress on 2026-07-27: incremental HalfKP accumulators, reference-mode
+benchmarking, randomized/special-move equivalence tests, and real UCI NNUE search
+are complete. The remaining work is data generation, useful candidate training,
+paired matches, and SPRT; the current smoke networks are pipeline artifacts and
+are not strength candidates.
+
 ### Phase 5 — v1 release
 
 - Resolve all release-blocking correctness issues.
@@ -1081,7 +1097,6 @@ cost, correctness, and provenance.
 - The `v0.4.0` source baseline requires SFML 2.6.
 - Root multi-threading is experimental and unproven at equal time.
 - Classical evaluation is not comprehensively tuned.
-- NNUE rebuilds accumulators at every evaluation.
 - NNUE teacher generation is still sequential within each generator process;
   independent shards can be run in parallel manually.
 - There is no trained network bundled with the project.

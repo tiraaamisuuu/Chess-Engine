@@ -21,6 +21,7 @@ struct SearchStats {
 };
 
 struct SearchContext {
+    static constexpr size_t NnueStackSize = 129;
     TranspositionTable tt;
     TranspositionTable* sharedTT=nullptr;
     SearchStats stats;
@@ -31,6 +32,8 @@ struct SearchContext {
     u32 timeCheckCounter=0;
     const std::atomic<bool>* abortFlag=nullptr;
     const PositionEvaluator* evaluator=nullptr;
+    bool incrementalNnue=true;
+    std::array<NnueAccumulator, NnueStackSize> nnueStack{};
 
     Move killer[128][2]{};
     Move countermove[2][64][64]{};
@@ -120,8 +123,37 @@ private:
     size_t generation;
 };
 
-inline int evaluatePosition(const Board& board, const SearchContext& context){
-    return context.evaluator ? context.evaluator->evaluate(board) : evaluateClassical(board);
+inline int evaluatePosition(const Board& board, const SearchContext& context, int ply){
+    if(!context.evaluator) return evaluateClassical(board);
+    if(!context.incrementalNnue) return context.evaluator->evaluate(board);
+    if(ply >= 0 && static_cast<size_t>(ply) < SearchContext::NnueStackSize){
+        return context.evaluator->evaluate(board, context.nnueStack[static_cast<size_t>(ply)]);
+    }
+    return context.evaluator->evaluate(board);
+}
+
+inline void refreshNnueRoot(const Board& board, SearchContext& context){
+    if(context.evaluator && context.incrementalNnue){
+        context.evaluator->refreshAccumulator(board, context.nnueStack[0]);
+    }
+}
+
+inline void advanceNnue(const Board& board, const Undo& undo,
+                        SearchContext& context, int parentPly){
+    if(!context.evaluator || !context.incrementalNnue || parentPly < 0) return;
+    const size_t parent = static_cast<size_t>(parentPly);
+    const size_t child = parent + 1;
+    if(child >= SearchContext::NnueStackSize) return;
+    context.evaluator->updateAccumulator(
+        board, undo, context.nnueStack[parent], context.nnueStack[child]);
+}
+
+inline void advanceNnueNull(SearchContext& context, int parentPly){
+    if(!context.evaluator || !context.incrementalNnue || parentPly < 0) return;
+    const size_t parent = static_cast<size_t>(parentPly);
+    const size_t child = parent + 1;
+    if(child >= SearchContext::NnueStackSize) return;
+    context.evaluator->copyAccumulator(context.nnueStack[parent], context.nnueStack[child]);
 }
 
 inline bool sameMove(const Move& a, const Move& b){
@@ -291,6 +323,7 @@ inline int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int pl
         for(const Move& m : evasions){
             Undo u{};
             if(!bd.makeMove(m, u)) continue;
+            advanceNnue(bd, u, ctx, ply);
             ctx.repetition.push_back(bd.hash);
             int score = -quiescence(bd, ctx, -beta, -alpha, ply + 1);
             ctx.repetition.pop_back();
@@ -305,7 +338,7 @@ inline int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int pl
 
     if(isThreefoldRepetition(bd, ctx)) return 0;
 
-    int stand = evaluatePosition(bd, ctx);
+    int stand = evaluatePosition(bd, ctx, ply);
     if(stand >= beta) return stand;
     if(stand > alpha) alpha = stand;
 
@@ -340,6 +373,7 @@ inline int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int pl
     for(const Move& m : moves){
         Undo u{};
         if(!bd.makeMove(m, u)) continue;
+        advanceNnue(bd, u, ctx, ply);
         ctx.repetition.push_back(bd.hash);
         int score = -quiescence(bd, ctx, -beta, -alpha, ply + 1);
         ctx.repetition.pop_back();
@@ -377,7 +411,7 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     bool inCheck = bd.inCheck(bd.stm);
     int staticEval = 0;
     if(!inCheck){
-        staticEval = evaluatePosition(bd, ctx);
+        staticEval = evaluatePosition(bd, ctx, ply);
         if(ply < 128) ctx.staticEvalByPly[ply] = staticEval;
     } else if(ply < 128){
         ctx.staticEvalByPly[ply] = -INF;
@@ -440,6 +474,7 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         nb.epSquare = -1;
         nb.stm = other(nb.stm);
         nb.recomputeHash();
+        advanceNnueNull(ctx, ply);
         ctx.repetition.push_back(nb.hash);
         int reduction = 2 + depth / 4;
         if(depth >= 7) reduction++;
@@ -513,6 +548,7 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
 
         Undo u{};
         if(!bd.makeMove(m,u)) continue;
+        advanceNnue(bd, u, ctx, ply);
 
         if(ply < 128) ctx.plyMove[ply] = m;
         ctx.repetition.push_back(bd.hash);
@@ -645,6 +681,7 @@ inline Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
     if(ctx.repetition.empty() || ctx.repetition.back() != bd.hash){
         ctx.repetition.push_back(bd.hash);
     }
+    refreshNnueRoot(bd, ctx);
 
     std::vector<Move> rootMoves;
     bd.genLegalMoves(rootMoves);
@@ -706,6 +743,7 @@ inline Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
                 if(timeUp(ctx)) break;
                 Undo u{};
                 if(!bd.makeMove(m,u)) continue;
+                advanceNnue(bd, u, ctx, 0);
 
                 ctx.repetition.push_back(bd.hash);
                 int score = 0;
@@ -848,6 +886,8 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
     for(int w = 0; w < workers; w++){
         workerCtx[size_t(w)].sharedTT = &ctx.tt;
         workerCtx[size_t(w)].evaluator = ctx.evaluator;
+        workerCtx[size_t(w)].incrementalNnue = ctx.incrementalNnue;
+        refreshNnueRoot(bd, workerCtx[size_t(w)]);
         std::memcpy(workerCtx[size_t(w)].killer, ctx.killer, sizeof(ctx.killer));
         std::memcpy(workerCtx[size_t(w)].countermove, ctx.countermove, sizeof(ctx.countermove));
         std::memcpy(workerCtx[size_t(w)].history, ctx.history, sizeof(ctx.history));
@@ -892,6 +932,7 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
             const Move move = rootMoves[index];
             Undo undo{};
             if(!child.makeMove(move, undo)) return;
+            advanceNnue(child, undo, local, 0);
 
             local.repetition = rootRepetition;
             local.repetition.push_back(child.hash);
@@ -1164,7 +1205,8 @@ struct BenchmarkPosition {
 
 inline int runSearchBenchmark(const Zobrist& zob, int depth, int perPositionTimeMs,
                               int ttSizeMB = 256, int threads = 1,
-                              const PositionEvaluator* evaluator = nullptr){
+                              const PositionEvaluator* evaluator = nullptr,
+                              bool incrementalNnue = true){
     const std::vector<BenchmarkPosition> positions = {
         {"Start", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"},
         {"Middlegame 1", "r2q1rk1/pp2bppp/2np1n2/2p1p1B1/2P1P3/2NP1N2/PP2QPPP/R4RK1 w - - 0 10"},
@@ -1178,6 +1220,8 @@ inline int runSearchBenchmark(const Zobrist& zob, int depth, int perPositionTime
               << " timeLimit=" << perPositionTimeMs
               << "ms threads=" << threads
               << " evaluator=" << (evaluator && evaluator->usingNnue() ? "nnue" : "classical")
+              << " nnueMode=" << (evaluator && evaluator->usingNnue()
+                    ? (incrementalNnue ? "incremental" : "rebuild") : "n/a")
               << " positions=" << positions.size() << "\n";
 
     for(const auto& p : positions){
@@ -1192,6 +1236,7 @@ inline int runSearchBenchmark(const Zobrist& zob, int depth, int perPositionTime
         ctx.tt.resizeMB(static_cast<size_t>(ttSizeMB));
         ctx.gameHistory = {bd.hash};
         ctx.evaluator = evaluator;
+        ctx.incrementalNnue = incrementalNnue;
 
         const Move best = searchBestMove(bd, ctx, depth, perPositionTimeMs, perPositionTimeMs, threads);
         const double nps = (ctx.stats.timeMs > 0)

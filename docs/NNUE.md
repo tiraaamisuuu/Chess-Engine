@@ -106,7 +106,10 @@ An NNUE candidate is releasable only after loader tests, classical-vs-NNUE
 paired opening matches, and an SPRT pass. Network files should be versioned by
 checksum and kept out of Git if they are too large for normal source history.
 
-The current C++ evaluator is a correct reference implementation that rebuilds
-accumulators from the position. A strength release should add accumulator updates
-to make/unmake before making NNUE the default; the on-disk feature layout will not
-need to change.
+The search keeps a per-ply accumulator stack, applies piece deltas after moves,
+and rebuilds only the moved king's perspective when its king square changes.
+The full-rebuild path remains available for correctness and performance
+comparisons through `--nnue-rebuild`. Random legal playout/unmake tests and
+explicit castling, en-passant, promotion, and king-capture fixtures require the
+incremental values and search tree to match the reference path exactly. The
+on-disk feature layout did not change.

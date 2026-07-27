@@ -26,7 +26,8 @@ void printHelp(){
         << "  chess-engine-tools --fen-after \"UCI MOVES...\" [--fen FEN]\n"
         << "  chess-engine-tools --eval [--fen FEN] [--nnue NETWORK]\n"
         << "  chess-engine-tools --bench [--bench-depth DEPTH] [--bench-time MS]\n"
-        << "                  [--bench-tt MB] [--threads N] [--nnue NETWORK]\n";
+        << "                  [--bench-tt MB] [--threads N] [--nnue NETWORK]\n"
+        << "                  [--nnue-rebuild]\n";
 }
 
 } // namespace
@@ -37,6 +38,7 @@ int main(int argc, char** argv){
     bool perftTests = false;
     bool benchmark = false;
     bool evaluate = false;
+    bool nnueRebuild = false;
     int maxPerftDepth = 4;
     int benchmarkDepth = 8;
     int benchmarkTimeMs = 4000;
@@ -78,6 +80,8 @@ int main(int argc, char** argv){
             const char* value = valueFor("--nnue");
             if(!value) return 1;
             nnuePath = value;
+        } else if(argument == "--nnue-rebuild"){
+            nnueRebuild = true;
         } else if(argument == "--max-depth"){
             const char* value = valueFor("--max-depth");
             if(!value || !parseInteger(value, maxPerftDepth) || maxPerftDepth < 1) return 1;
@@ -106,6 +110,10 @@ int main(int argc, char** argv){
     if(perftTests) return runPerftSuite(zobrist, maxPerftDepth);
 
     PositionEvaluator evaluator;
+    if(nnueRebuild && (!benchmark || nnuePath.empty())){
+        std::cerr << "--nnue-rebuild requires --bench and --nnue\n";
+        return 1;
+    }
     if(!nnuePath.empty()){
         std::string error;
         if(!evaluator.loadNnue(nnuePath, &error)){
@@ -117,7 +125,7 @@ int main(int argc, char** argv){
     if(benchmark){
         return runSearchBenchmark(
             zobrist, benchmarkDepth, benchmarkTimeMs, benchmarkTTMB, threads,
-            nnuePath.empty() ? nullptr : &evaluator);
+            nnuePath.empty() ? nullptr : &evaluator, !nnueRebuild);
     }
 
     if(evaluate){

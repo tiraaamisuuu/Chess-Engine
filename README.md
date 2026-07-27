@@ -190,8 +190,8 @@ setup, and NNUE-vs-NNUE examples.
 
 ## NNUE
 
-The engine contains a tested, versioned HalfKP-v1 loader and reference quantized
-inference backend. Classical evaluation stays active unless a network is loaded
+The engine contains a tested, versioned HalfKP-v1 loader and incremental
+quantized inference backend. Classical evaluation stays active unless a network is loaded
 and explicitly enabled:
 
 ```text

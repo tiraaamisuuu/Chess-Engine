@@ -107,4 +107,20 @@ smaller fraction of the available time.
 
 - Run a longer candidate-versus-baseline SPRT at a slower time control.
 - Train at least one HalfKP-v1 candidate and compare classical and NNUE builds.
-- Profile accumulator rebuilding before enabling NNUE by default.
+- Train a properly sized and labelled candidate before enabling NNUE by default.
+
+## Incremental NNUE throughput
+
+The Windows Ryzen 9 5900X pipeline trained and exported a 256-wide HalfKP smoke
+network, then searched four fixed positions to depth 7 with one thread and a
+64 MB transposition table. Full-rebuild and incremental inference returned the
+same moves, scores, and 8,788-node tree in every run.
+
+| NNUE mode | Run 1 | Run 2 | Run 3 | Median NPS |
+|---|---:|---:|---:|---:|
+| Full rebuild | 13,038 | 13,540 | 13,457 | 13,457 |
+| Incremental | 46,252 | 46,010 | 45,298 | 46,010 |
+
+Incremental inference was 3.42x faster at the median. The smoke network was
+trained on only 321 positions and is not a strength candidate; the measurement
+isolates accumulator cost rather than Elo.

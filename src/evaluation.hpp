@@ -402,6 +402,28 @@ public:
         return useNnue_ && nnue_.loaded() ? nnue_.evaluate(board) : evaluateClassical(board);
     }
 
+    int evaluate(const Board& board, const NnueAccumulator& accumulator) const {
+        return useNnue_ && nnue_.loaded()
+            ? nnue_.evaluate(board, accumulator)
+            : evaluateClassical(board);
+    }
+
+    void refreshAccumulator(const Board& board, NnueAccumulator& accumulator) const {
+        if(usingNnue()) nnue_.refresh(board, accumulator);
+        else accumulator.valid = false;
+    }
+
+    void updateAccumulator(const Board& board, const Undo& undo,
+                           const NnueAccumulator& parent, NnueAccumulator& child) const {
+        if(usingNnue()) nnue_.updateAfterMove(board, undo, parent, child);
+        else child.valid = false;
+    }
+
+    void copyAccumulator(const NnueAccumulator& source, NnueAccumulator& destination) const {
+        if(usingNnue()) nnue_.copyAccumulator(source, destination);
+        else destination.valid = false;
+    }
+
     bool loadNnue(const std::filesystem::path& path, std::string* error = nullptr){
         const bool loaded = nnue_.load(path, error);
         if(!loaded) useNnue_ = false;

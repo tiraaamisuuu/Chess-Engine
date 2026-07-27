@@ -2,6 +2,11 @@
 
 #include "board.hpp"
 
+struct NnueAccumulator {
+    std::array<std::vector<int32_t>, 2> values;
+    bool valid = false;
+};
+
 class NnueNetwork {
 public:
     static constexpr u32 FormatVersion = 1;
@@ -75,18 +80,19 @@ public:
 
     int evaluate(const Board& board) const {
         if(!loaded()) return 0;
-        const Color firstPerspective = board.stm;
-        const Color secondPerspective = other(board.stm);
-        const int firstKing = board.findKing(firstPerspective);
-        const int secondKing = board.findKing(secondPerspective);
-        if(firstKing < 0 || secondKing < 0) return 0;
+        thread_local NnueAccumulator accumulator;
+        refresh(board, accumulator);
+        if(!accumulator.valid) return 0;
+        return evaluate(board, accumulator);
+    }
 
-        thread_local std::vector<int32_t> firstAccumulator;
-        thread_local std::vector<int32_t> secondAccumulator;
-        firstAccumulator = hiddenBias_;
-        secondAccumulator = hiddenBias_;
-        addActiveFeatures(board, firstPerspective, firstAccumulator);
-        addActiveFeatures(board, secondPerspective, secondAccumulator);
+    int evaluate(const Board& board, const NnueAccumulator& accumulator) const {
+        if(!loaded() || !accumulator.valid) return evaluate(board);
+        const auto& firstAccumulator = accumulator.values[colorIndex(board.stm)];
+        const auto& secondAccumulator = accumulator.values[colorIndex(other(board.stm))];
+        if(firstAccumulator.size() != hiddenSize_ || secondAccumulator.size() != hiddenSize_){
+            return evaluate(board);
+        }
 
         int64_t output = outputBias_;
         for(size_t hidden = 0; hidden < hiddenSize_; hidden++){
@@ -97,6 +103,66 @@ public:
         }
         const int64_t divisor = static_cast<int64_t>(hiddenScale_) * outputScale_;
         return static_cast<int>(std::clamp<int64_t>(output / divisor, -32000, 32000));
+    }
+
+    void refresh(const Board& board, NnueAccumulator& accumulator) const {
+        if(!loaded() || board.findKing(Color::White) < 0 || board.findKing(Color::Black) < 0){
+            accumulator.valid = false;
+            return;
+        }
+        refreshPerspective(board, Color::White, accumulator.values[0]);
+        refreshPerspective(board, Color::Black, accumulator.values[1]);
+        accumulator.valid = true;
+    }
+
+    void updateAfterMove(const Board& board, const Undo& undo,
+                         const NnueAccumulator& parent, NnueAccumulator& child) const {
+        if(!loaded() || !parent.valid){
+            refresh(board, child);
+            return;
+        }
+        child.values = parent.values;
+        child.valid = true;
+
+        const Move& move = undo.m;
+        const Piece resultingPiece = board.b[move.to];
+        Piece movingPiece = resultingPiece;
+        if(move.promo != PieceType::None) movingPiece.t = PieceType::Pawn;
+        const bool kingMoved = movingPiece.t == PieceType::King;
+        const int captureSquare = move.isEnPassant
+            ? int(move.to) + (movingPiece.c == Color::White ? -8 : 8)
+            : int(move.to);
+
+        for(const Color perspective : {Color::White, Color::Black}){
+            auto& values = child.values[colorIndex(perspective)];
+            if(kingMoved && movingPiece.c == perspective){
+                refreshPerspective(board, perspective, values);
+                continue;
+            }
+
+            if(movingPiece.t != PieceType::King){
+                addFeature(board, perspective, move.from, movingPiece, -1, values);
+            }
+            if(!isNone(undo.captured) && undo.captured.t != PieceType::King){
+                addFeature(board, perspective, captureSquare, undo.captured, -1, values);
+            }
+            if(resultingPiece.t != PieceType::King){
+                addFeature(board, perspective, move.to, resultingPiece, 1, values);
+            }
+            if(move.isCastle){
+                const int rookFrom = move.to > move.from
+                    ? (movingPiece.c == Color::White ? 7 : 63)
+                    : (movingPiece.c == Color::White ? 0 : 56);
+                const int rookTo = move.to > move.from ? int(move.to) - 1 : int(move.to) + 1;
+                const Piece rook{PieceType::Rook, movingPiece.c};
+                addFeature(board, perspective, rookFrom, rook, -1, values);
+                addFeature(board, perspective, rookTo, rook, 1, values);
+            }
+        }
+    }
+
+    void copyAccumulator(const NnueAccumulator& source, NnueAccumulator& destination) const {
+        destination = source;
     }
 
 private:
@@ -140,17 +206,31 @@ private:
         return static_cast<size_t>(king * 640 + bucket * 64 + square);
     }
 
+    static size_t colorIndex(Color color){
+        return color == Color::White ? 0U : 1U;
+    }
+
+    void addFeature(const Board& board, Color perspective, int square, const Piece& piece,
+                    int sign, std::vector<int32_t>& accumulator) const {
+        const size_t offset = featureIndex(board, perspective, square, piece) * hiddenSize_;
+        for(size_t hidden = 0; hidden < hiddenSize_; hidden++){
+            accumulator[hidden] += sign * inputWeights_[offset + hidden];
+        }
+    }
+
+    void refreshPerspective(const Board& board, Color perspective,
+                            std::vector<int32_t>& accumulator) const {
+        accumulator = hiddenBias_;
+        addActiveFeatures(board, perspective, accumulator);
+    }
+
     void addActiveFeatures(const Board& board, Color perspective, std::vector<int32_t>& accumulator) const {
         for(int square = 0; square < 64; square++){
             const Piece piece = board.b[static_cast<size_t>(square)];
             if(isNone(piece) || piece.t == PieceType::King) continue;
             const int bucket = pieceBucket(piece.t);
             if(bucket < 0) continue;
-            const size_t feature = featureIndex(board, perspective, square, piece);
-            const size_t offset = feature * hiddenSize_;
-            for(size_t hidden = 0; hidden < hiddenSize_; hidden++){
-                accumulator[hidden] += inputWeights_[offset + hidden];
-            }
+            addFeature(board, perspective, square, piece, 1, accumulator);
         }
     }
 
