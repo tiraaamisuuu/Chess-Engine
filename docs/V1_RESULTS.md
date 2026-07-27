@@ -124,3 +124,23 @@ same moves, scores, and 8,788-node tree in every run.
 Incremental inference was 3.42x faster at the median. The smoke network was
 trained on only 321 positions and is not a strength candidate; the measurement
 isolates accumulator cost rather than Elo.
+
+## First NNUE training diagnostic
+
+Eight parallel Stockfish 18 shards labelled 864 locally generated match games
+at 5,000 nodes per position. Global merging retained 28,676 training and 3,746
+whole-game validation positions after within-shard and cross-shard duplicate
+removal.
+
+The original raw-centipawn trainer improved validation RMSE only from 583.24 to
+580.95 cp in 12 epochs, and the network lost all 40 paired games against the
+classical evaluator. Training in normalized units improved best validation RMSE
+to 536.73 cp; raising the integer hidden scale from 127 to 1024 reduced export
+RMSE from 8.30 to 1.14 cp. That scaled network still lost all 20 diagnostic
+games against classical.
+
+These decisive rejections are useful pipeline evidence, not failed release
+claims. HalfKP separates features by king square, so this small corpus of mostly
+castled engine-match positions does not cover the feature space or learn robust
+material values. A diverse corpus with millions of positions is required before
+another strength match is justified.

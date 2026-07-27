@@ -1086,6 +1086,18 @@ are complete. The remaining work is data generation, useful candidate training,
 paired matches, and SPRT; the current smoke networks are pipeline artifacts and
 are not strength candidates.
 
+A first 864-game local-corpus experiment produced 28,676 training and 3,746
+validation positions. It exposed an important trainer defect: optimizing raw
+centipawns made normal Adam steps effectively microscopic. The v2 trainer now
+normalizes targets (600 cp per model unit), records the scale in checkpoints,
+uses a 1024 integer hidden scale, and fails rather than clipping saturated
+weights. Validation RMSE improved from 580.95 cp with the old formulation to
+536.73 cp, while export error fell to 1.14 cp after scale tuning. However, the
+network still scored 0/20 against classical after the earlier raw-scale network
+scored 0/40. The local corpus is too small and king-position-biased for HalfKP;
+neither network is a candidate. The next data run should use a large, diverse,
+legally reusable corpus rather than more copies of the same local match games.
+
 ### Phase 5 — v1 release
 
 - Resolve all release-blocking correctness issues.

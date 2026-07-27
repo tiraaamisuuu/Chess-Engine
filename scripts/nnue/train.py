@@ -40,7 +40,7 @@ from nnue_dataset import (
 FEATURE_COUNT = 64 * 10 * 64
 FORMAT_VERSION = 1
 MAGIC = b"TNNUE1\0\0"
-CHECKPOINT_VERSION = 1
+CHECKPOINT_VERSION = 2
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,6 +59,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scheduler", choices=("cosine", "none"), default="cosine")
     parser.add_argument("--validation-fraction", type=float, default=0.02)
     parser.add_argument("--result-weight", type=float, default=0.15)
+    parser.add_argument("--target-scale", type=float, default=600.0,
+                        help="Centipawns per normalized model output unit")
+    parser.add_argument("--huber-beta-cp", type=float, default=100.0)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -67,7 +70,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-every", type=int, default=1)
     parser.add_argument("--early-stopping-patience", type=int, default=0)
     parser.add_argument("--verify-samples", type=int, default=256)
-    parser.add_argument("--hidden-scale", type=int, default=127)
+    parser.add_argument("--hidden-scale", type=int, default=1024)
     parser.add_argument("--output-scale", type=int, default=64)
     parser.add_argument("--metrics", type=Path, help="Defaults beside --output")
     parser.add_argument("--manifest", type=Path, help="Defaults beside --output")
@@ -245,18 +248,29 @@ class QuantizedNetwork:
     output_bias: int
 
 
-def quantize_network(model: HalfKpV1, hidden_scale: int = 127,
-                     output_scale: int = 64) -> QuantizedNetwork:
-    if hidden_scale <= 0 or output_scale <= 0:
+def quantize_network(model: HalfKpV1, hidden_scale: int = 1024,
+                     output_scale: int = 64, target_scale: float = 1.0) -> QuantizedNetwork:
+    if hidden_scale <= 0 or output_scale <= 0 or target_scale <= 0:
         raise ValueError("quantization scales must be positive")
     state = model.cpu().eval()
     input_weights = np.rint(state.feature_weights.weight.detach().numpy() * hidden_scale)
-    input_weights = np.clip(input_weights, -32768, 32767).astype("<i2")
+    if np.any(input_weights < -32768) or np.any(input_weights > 32767):
+        raise ValueError("input weights exceed int16 at the requested hidden scale")
+    input_weights = input_weights.astype("<i2")
     hidden_bias = np.rint(state.hidden_bias.detach().numpy() * hidden_scale)
-    hidden_bias = np.clip(hidden_bias, np.iinfo(np.int32).min, np.iinfo(np.int32).max).astype("<i4")
-    output_weights = np.rint(state.output.weight.detach().numpy().reshape(-1) * output_scale)
-    output_weights = np.clip(output_weights, -32768, 32767).astype("<i2")
-    output_bias = int(round(float(state.output.bias.detach()[0]) * hidden_scale * output_scale))
+    if (np.any(hidden_bias < np.iinfo(np.int32).min) or
+            np.any(hidden_bias > np.iinfo(np.int32).max)):
+        raise ValueError("hidden bias exceeds int32 at the requested hidden scale")
+    hidden_bias = hidden_bias.astype("<i4")
+    output_weights = np.rint(
+        state.output.weight.detach().numpy().reshape(-1) * target_scale * output_scale,
+    )
+    if np.any(output_weights < -32768) or np.any(output_weights > 32767):
+        raise ValueError("output weights exceed int16 at the requested output/target scale")
+    output_weights = output_weights.astype("<i2")
+    output_bias = int(round(
+        float(state.output.bias.detach()[0]) * target_scale * hidden_scale * output_scale,
+    ))
     if not np.iinfo(np.int32).min <= output_bias <= np.iinfo(np.int32).max:
         raise ValueError("quantized output bias exceeds the NNUE file format")
     return QuantizedNetwork(
@@ -264,10 +278,10 @@ def quantize_network(model: HalfKpV1, hidden_scale: int = 127,
     )
 
 
-def export_network(model: HalfKpV1, destination: Path, hidden_scale: int = 127,
-                   output_scale: int = 64) -> QuantizedNetwork:
+def export_network(model: HalfKpV1, destination: Path, hidden_scale: int = 1024,
+                   output_scale: int = 64, target_scale: float = 1.0) -> QuantizedNetwork:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    quantized = quantize_network(model, hidden_scale, output_scale)
+    quantized = quantize_network(model, hidden_scale, output_scale, target_scale)
     with destination.open("wb") as output:
         output.write(struct.pack(
             "<8sIIIiii", MAGIC, FORMAT_VERSION, FEATURE_COUNT, model.hidden,
@@ -307,11 +321,12 @@ def quantized_predict(quantized: QuantizedNetwork, first: list[int],
 
 
 def verify_quantization(model: HalfKpV1, dataset: Dataset, sample_count: int,
-                        seed: int, hidden_scale: int, output_scale: int) -> dict[str, float | int]:
+                        seed: int, hidden_scale: int, output_scale: int,
+                        target_scale: float = 1.0) -> dict[str, float | int]:
     if len(dataset) == 0 or sample_count <= 0:
         return {"samples": 0, "rmseCp": 0.0, "meanErrorCp": 0.0, "maxAbsErrorCp": 0.0}
     state = model.cpu().eval()
-    quantized = quantize_network(state, hidden_scale, output_scale)
+    quantized = quantize_network(state, hidden_scale, output_scale, target_scale)
     random_generator = random.Random(seed)
     indices = list(range(len(dataset)))
     random_generator.shuffle(indices)
@@ -322,7 +337,7 @@ def verify_quantization(model: HalfKpV1, dataset: Dataset, sample_count: int,
             first, second, target = dataset[index]
             del target
             batch = collate([(first, second, 0.0)])
-            prediction = float(state(*batch[:4]).item())
+            prediction = float(state(*batch[:4]).item()) * target_scale
             quantized_prediction = quantized_predict(quantized, first, second)
             errors.append(float(quantized_prediction) - prediction)
     return {
@@ -375,13 +390,14 @@ def verify_cpp_export(tools: Path, network: Path,
     }
 
 
-def evaluate(model: HalfKpV1, loader: DataLoader, device: torch.device) -> float:
+def evaluate(model: HalfKpV1, loader: DataLoader, device: torch.device,
+             target_scale: float) -> float:
     model.eval()
     total_squared_error = 0.0
     samples = 0
     with torch.no_grad():
         for first, first_offsets, second, second_offsets, target in batches(loader, device):
-            prediction = model(first, first_offsets, second, second_offsets)
+            prediction = model(first, first_offsets, second, second_offsets) * target_scale
             total_squared_error += torch.sum((prediction - target) ** 2).item()
             samples += target.numel()
     return math.sqrt(total_squared_error / max(1, samples))
@@ -479,6 +495,8 @@ def checkpoint_payload(model: HalfKpV1, optimizer: torch.optim.Optimizer,
             "batchSize": args.batch_size,
             "learningRate": args.learning_rate,
             "minimumLearningRate": args.minimum_learning_rate,
+            "targetScale": args.target_scale,
+            "huberBetaCp": args.huber_beta_cp,
         },
     }
 
@@ -503,9 +521,11 @@ def validate_resume_configuration(payload: dict[str, object], args: argparse.Nam
         "batchSize": args.batch_size,
         "learningRate": args.learning_rate,
         "minimumLearningRate": args.minimum_learning_rate,
+        "targetScale": args.target_scale,
+        "huberBetaCp": args.huber_beta_cp,
     }
     for key, requested in exact_settings.items():
-        if key in saved and saved[key] != requested:
+        if saved.get(key) != requested:
             raise SystemExit(
                 f"resume checkpoint {key}={saved[key]!r} does not match requested {requested!r}"
             )
@@ -522,6 +542,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("learning rates must be non-negative and the initial rate must be positive")
     if not 0.0 <= args.result_weight <= 1.0:
         raise SystemExit("--result-weight must be in [0, 1]")
+    if args.target_scale <= 0 or args.huber_beta_cp <= 0:
+        raise SystemExit("--target-scale and --huber-beta-cp must be positive")
     if args.validation_data is None and not args.allow_position_split:
         raise SystemExit("--validation-data is required unless --allow-position-split is explicit")
     if not args.validation_data and not 0.0 < args.validation_fraction < 1.0:
@@ -589,7 +611,7 @@ def main() -> int:
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=max(1, args.epochs), eta_min=args.minimum_learning_rate,
         )
-    loss_function = nn.SmoothL1Loss(beta=100.0)
+    loss_function = nn.SmoothL1Loss(beta=args.huber_beta_cp / args.target_scale)
 
     start_epoch = 1
     best_rmse = math.inf
@@ -626,7 +648,7 @@ def main() -> int:
         for first, first_offsets, second, second_offsets, target in batches(training_loader, device):
             optimizer.zero_grad(set_to_none=True)
             prediction = model(first, first_offsets, second, second_offsets)
-            loss = loss_function(prediction, target)
+            loss = loss_function(prediction, target / args.target_scale)
             loss.backward()
             optimizer.step()
             total_loss += loss.item() * target.numel()
@@ -634,12 +656,12 @@ def main() -> int:
         if device.type == "cuda":
             torch.cuda.synchronize(device)
         duration = time.perf_counter() - epoch_started
-        rmse = evaluate(model, validation_loader, device)
+        rmse = evaluate(model, validation_loader, device, args.target_scale)
         learning_rate = float(optimizer.param_groups[0]["lr"])
         peak_memory = int(torch.cuda.max_memory_allocated(device)) if device.type == "cuda" else 0
         metric: dict[str, float | int] = {
             "epoch": epoch,
-            "trainingLoss": round(total_loss / max(1, samples), 6),
+            "trainingLossNormalized": round(total_loss / max(1, samples), 6),
             "validationRmseCp": round(rmse, 6),
             "learningRate": learning_rate,
             "durationSeconds": round(duration, 6),
@@ -668,7 +690,7 @@ def main() -> int:
             atomic_torch_save(payload, periodic_directory / f"epoch-{epoch:04d}.pt")
         save_metrics(metrics, metrics_path)
         print(
-            f"epoch={epoch} train_loss={metric['trainingLoss']:.3f} "
+            f"epoch={epoch} train_loss_normalized={metric['trainingLossNormalized']:.4f} "
             f"validation_rmse_cp={rmse:.2f} positions_per_second={metric['positionsPerSecond']:.0f} "
             f"gpu_peak_mb={peak_memory / (1024 * 1024):.1f}",
             flush=True,
@@ -685,9 +707,11 @@ def main() -> int:
 
     quantization = verify_quantization(
         model, validation, args.verify_samples, args.seed,
-        args.hidden_scale, args.output_scale,
+        args.hidden_scale, args.output_scale, args.target_scale,
     )
-    quantized = export_network(model, args.output, args.hidden_scale, args.output_scale)
+    quantized = export_network(
+        model, args.output, args.hidden_scale, args.output_scale, args.target_scale,
+    )
     cpp_verification = (
         verify_cpp_export(args.cpp_tools, args.output, quantized) if args.cpp_tools else None
     )
@@ -754,6 +778,8 @@ def main() -> int:
             "minimumLearningRate": args.minimum_learning_rate,
             "scheduler": args.scheduler,
             "resultWeight": args.result_weight,
+            "targetScale": args.target_scale,
+            "huberBetaCp": args.huber_beta_cp,
             "seed": args.seed,
             "hiddenScale": args.hidden_scale,
             "outputScale": args.output_scale,

@@ -86,6 +86,13 @@ experiments. Mate values are bounded to keep targets finite.
   --hidden 256 --batch-size 2048 --epochs 8 --workers 4
 ```
 
+The model is optimized in normalized units (`--target-scale 600` means one
+model unit is 600 cp) and converted back to centipawns during validation and
+export. This avoids making an Adam step of `0.001` effectively microscopic on
+raw centipawn targets. The v2 checkpoint contract records this scale and the
+Huber beta. Integer export defaults to a 1024 hidden scale and rejects weight
+saturation instead of silently clipping it.
+
 The exporter quantizes the PyTorch model directly into the format verified by
 the C++ test suite. It writes:
 

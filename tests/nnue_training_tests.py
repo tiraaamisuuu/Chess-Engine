@@ -24,6 +24,8 @@ from train import (  # noqa: E402
     MAGIC,
     HalfKpV1,
     PositionsDataset,
+    active_features,
+    collate,
     export_network,
     find_dataset_manifest,
     quantize_network,
@@ -79,6 +81,26 @@ class NnueTrainingTests(unittest.TestCase):
                 prediction = quantized_predict(quantized, first, second)
                 self.assertIsInstance(prediction, int)
 
+    def test_scaled_model_exports_centipawn_outputs(self) -> None:
+        torch.manual_seed(29)
+        model = HalfKpV1(hidden=8)
+        board = chess.Board()
+        first = active_features(board, board.turn)
+        second = active_features(board, not board.turn)
+        quantized = quantize_network(model, 1024, 64, target_scale=600.0)
+        batch = collate([(first, second, 0.0)])
+        with torch.no_grad():
+            expected_cp = float(model(*batch[:4]).item()) * 600.0
+        actual_cp = quantized_predict(quantized, first, second)
+        self.assertLess(abs(actual_cp - expected_cp), 2.0)
+
+    def test_quantization_rejects_saturation(self) -> None:
+        model = HalfKpV1(hidden=2)
+        with torch.no_grad():
+            model.feature_weights.weight[0, 0] = 40.0
+        with self.assertRaisesRegex(ValueError, "input weights exceed int16"):
+            quantize_network(model, hidden_scale=1024, output_scale=64)
+
     def test_export_header_and_size(self) -> None:
         model = HalfKpV1(hidden=4)
         with tempfile.TemporaryDirectory() as directory:
@@ -92,7 +114,7 @@ class NnueTrainingTests(unittest.TestCase):
             self.assertEqual(version, FORMAT_VERSION)
             self.assertEqual(features, FEATURE_COUNT)
             self.assertEqual(hidden, 4)
-            self.assertEqual(hidden_scale, 127)
+            self.assertEqual(hidden_scale, 1024)
             self.assertEqual(output_scale, 64)
             expected = struct.calcsize("<8sIIIiii") + 4 * 4 + FEATURE_COUNT * 4 * 2 + 8 * 2
             self.assertEqual(destination.stat().st_size, expected)
