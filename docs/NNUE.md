@@ -29,24 +29,32 @@ Use legally obtained PGNs and a strong Stockfish binary:
 .venv/bin/python scripts/nnue/generate_dataset.py \
   --engine /path/to/stockfish \
   --pgn games-1.pgn \
-  --output data/shard-1.jsonl \
+  --output data/train-1.nnuebin \
+  --validation-output data/validation-1.nnuebin \
+  --validation-fraction 0.1 \
+  --source-name "My licensed game collection" \
+  --source-license "Licence or permission description" \
   --nodes 20000 --threads 3 --hash 512 --sample-rate 0.25
 ```
 
 Run multiple shards against different PGNs. Five to twenty million diverse,
 quiet and tactical positions is a sensible serious-training range; smaller
 datasets are useful for validating the pipeline. Keep train and validation games
-separate when producing final networks.
+separate when producing final networks. The generator assigns entire games to a
+split deterministically, deduplicates sampled positions, and writes a manifest
+containing source, teacher, option, checksum, seed, and distribution metadata.
 
-Each JSONL record stores FEN, teacher centipawns from the side-to-move viewpoint,
-and game result. Mate values are bounded to keep targets finite.
+The default `.nnuebin` format is a versioned 42-byte record containing the packed
+board, teacher centipawns from the side-to-move viewpoint, game result, side to
+move, source-game id, and ply. JSONL remains available for inspection and small
+experiments. Mate values are bounded to keep targets finite.
 
 ## Train and export
 
 ```sh
 .venv/bin/python scripts/nnue/train.py \
-  --data data/shard-*.jsonl \
-  --validation-data data/validation-*.jsonl \
+  --data data/train-*.nnuebin \
+  --validation-data data/validation-*.nnuebin \
   --output networks/engine-v1.nnue \
   --hidden 256 --batch-size 2048 --epochs 8 --workers 4
 ```

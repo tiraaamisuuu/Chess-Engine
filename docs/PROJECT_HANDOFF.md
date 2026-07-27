@@ -1019,6 +1019,14 @@ experimental setting and should receive a slower, longer SPRT.
 - Upgrade training checkpointing, metrics, and export validation.
 - Run pipeline smoke and small experiments on the RTX 3070.
 
+Windows progress on 2026-07-27: the isolated `.venv-nnue` environment uses
+PyTorch 2.12.1 with CUDA 13.0 and has executed a real tensor operation on the
+RTX 3070. Teacher generation now supports a versioned 42-byte compact shard,
+deterministic whole-game train/validation assignment, position deduplication,
+and an atomic provenance manifest containing input, teacher, option, output,
+and checksum metadata. A Stockfish 18 smoke generated 321 training and 179
+validation positions from six local paired games with zero PGN parse errors.
+
 Exit condition: a repeatable small training run produces a C++-validated network
 with documented data and metrics.
 
