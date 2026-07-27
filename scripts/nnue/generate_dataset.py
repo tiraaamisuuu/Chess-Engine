@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -85,6 +87,24 @@ def position_is_sampled(input_sha256: str, game_index: int, ply: int,
     material = f"sample:{input_sha256}:{game_index}:{ply}:{seed}".encode("ascii")
     value = int.from_bytes(hashlib.blake2b(material, digest_size=8).digest(), "little")
     return value / float(1 << 64) < sample_rate
+
+
+@contextmanager
+def open_pgn_text(path: Path):
+    if path.suffix.casefold() != ".zst":
+        with path.open("r", encoding="utf-8", errors="replace") as source:
+            yield source
+        return
+    try:
+        import zstandard
+    except ImportError as error:
+        raise RuntimeError(
+            "reading .zst PGNs requires the zstandard package from requirements.txt"
+        ) from error
+    with path.open("rb") as compressed:
+        with zstandard.ZstdDecompressor().stream_reader(compressed) as reader:
+            with io.TextIOWrapper(reader, encoding="utf-8", errors="replace") as source:
+                yield source
 
 
 def current_commit(root: Path) -> str | None:
@@ -263,7 +283,7 @@ def main() -> int:
             for input_index, pgn_path in enumerate(args.pgn):
                 input_sha256 = str(inputs[input_index]["sha256"])
                 local_game_index = 0
-                with pgn_path.open("r", encoding="utf-8", errors="replace") as source:
+                with open_pgn_text(pgn_path) as source:
                     while not stop:
                         game = chess.pgn.read_game(source)
                         if game is None:

@@ -70,6 +70,8 @@ complete shards. The final merge deduplicates across workers and removes any
 position duplicated between training and validation. It retains every part and
 its manifest for auditability. `--jobs 0` derives a concurrency level from the
 CPU and per-teacher thread count; explicit jobs make resource use predictable.
+PGN inputs may be plain text or `.pgn.zst`; compressed archives are streamed
+with `zstandard` and their compressed-file SHA-256 is recorded in provenance.
 
 The default `.nnuebin` format is a versioned 42-byte record containing the packed
 board, teacher centipawns from the side-to-move viewpoint, game result, side to

@@ -273,6 +273,7 @@ The repository contains:
 - deterministic position deduplication
 - deterministic multi-process teacher shards with checksum-validated resume
 - global shard merge/deduplication and train/validation leakage removal
+- streaming plain or Zstandard-compressed PGN input
 - a PyTorch `EmbeddingBag` training implementation
 - game-disjoint validation with JSON/CSV metrics
 - direct quantized `.nnue` export

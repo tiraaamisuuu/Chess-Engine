@@ -29,6 +29,7 @@ from nnue_dataset import (  # noqa: E402
 from generate_dataset import (  # noqa: E402
     game_is_validation,
     game_shard,
+    open_pgn_text,
     position_is_sampled,
     result_for_side_to_move,
 )
@@ -158,6 +159,20 @@ class NnueDatasetTests(unittest.TestCase):
                 record_key(start_record.board_bytes, start_record.turn),
                 record_key(start_record.board_bytes, not start_record.turn),
             )
+
+    def test_zstd_pgn_stream(self) -> None:
+        import zstandard
+
+        pgn = b"[Event \"fixture\"]\n[Result \"1-0\"]\n\n1. e4 e5 1-0\n\n"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "fixture.pgn.zst"
+            path.write_bytes(zstandard.ZstdCompressor().compress(pgn))
+            with open_pgn_text(path) as source:
+                game = chess.pgn.read_game(source)
+            self.assertIsNotNone(game)
+            assert game is not None
+            self.assertEqual(game.headers["Result"], "1-0")
+            self.assertEqual([move.uci() for move in game.mainline_moves()], ["e2e4", "e7e5"])
 
 
 if __name__ == "__main__":
