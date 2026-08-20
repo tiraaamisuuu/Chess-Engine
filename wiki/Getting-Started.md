@@ -133,4 +133,4 @@ location.
 - Generated builds, virtual environments, datasets, downloaded engines,
   networks and match artifacts are ignored by Git.
 
-For exact NNUE environment setup, continue to [NNUE Training](NNUE-Training).
+For exact NNUE environment setup, continue to [NNUE Training](NNUE-Training.md).

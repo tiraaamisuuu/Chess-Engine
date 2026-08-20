@@ -51,4 +51,4 @@ A lower validation loss or a faster evaluator is not sufficient by itself. A can
 3. meet the required evaluation-throughput budget; and
 4. beat the current default in a reproducible paired match with saved artifacts.
 
-The current small training model did not pass the playing-strength gate, so classical evaluation is intentionally still the default. See [NNUE Training](NNUE-Training) for the complete pipeline.
+The current small training model did not pass the playing-strength gate, so classical evaluation is intentionally still the default. See [NNUE Training](NNUE-Training.md) for the complete pipeline.

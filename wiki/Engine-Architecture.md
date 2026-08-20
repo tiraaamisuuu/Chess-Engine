@@ -93,7 +93,7 @@ search calls a common evaluation interface. In NNUE mode it maintains an
 accumulator stack aligned with search plies; the reference full-rebuild path is
 retained for correctness and performance comparison.
 
-See [Evaluation and NNUE](Evaluation-and-NNUE) for the feature and inference
+See [Evaluation and NNUE](Evaluation-and-NNUE.md) for the feature and inference
 details.
 
 ## Time management

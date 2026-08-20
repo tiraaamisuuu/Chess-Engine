@@ -107,7 +107,7 @@ during match testing.
 Six workers reach roughly 1.5×–1.7× single-thread benchmark throughput on the
 Ryzen 9 5900X, but paired matches have not established a strength gain. One
 thread therefore remains the supported default. See
-[Experiments and Roadmap](Experiments-and-Roadmap) for the measured history.
+[Experiments and Roadmap](Experiments-and-Roadmap.md) for the measured history.
 
 ## Stopping and reporting
 

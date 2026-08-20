@@ -11,21 +11,21 @@ properly powered match.
 
 ## Manual
 
-- [Getting Started](Getting-Started) — build, run the GUI, use UCI, and
+- [Getting Started](Getting-Started.md) — build, run the GUI, use UCI, and
   platform-specific setup
-- [Engine Architecture](Engine-Architecture) — board and move representation,
+- [Engine Architecture](Engine-Architecture.md) — board and move representation,
   make/unmake, hashing, TT, interfaces, and time management
-- [Search](Search) — PVS, quiescence, pruning, reductions, extensions, and
+- [Search](Search.md) — PVS, quiescence, pruning, reductions, extensions, and
   move ordering
-- [Evaluation and NNUE](Evaluation-and-NNUE) — classical terms, HalfKP,
+- [Evaluation and NNUE](Evaluation-and-NNUE.md) — classical terms, HalfKP,
   accumulators, quantized inference, and UCI selection
-- [NNUE Training](NNUE-Training) — datasets, Stockfish labels, CUDA training,
+- [NNUE Training](NNUE-Training.md) — datasets, Stockfish labels, CUDA training,
   diagnostics, distributed merging, and promotion
-- [Testing and Reproducibility](Testing-and-Reproducibility) — unit tests,
+- [Testing and Reproducibility](Testing-and-Reproducibility.md) — unit tests,
   perft, benchmarks, paired matches, Elo qualification, and SPRT
-- [Experiments and Roadmap](Experiments-and-Roadmap) — accepted/rejected
+- [Experiments and Roadmap](Experiments-and-Roadmap.md) — accepted/rejected
   work, current strongest configuration, and the staged improvement plan
-- [Development Workflow](Development-Workflow) — repository layout,
+- [Development Workflow](Development-Workflow.md) — repository layout,
   experiment discipline, release gates, and contribution workflow
 
 ## Current status
