@@ -391,16 +391,27 @@ def verify_cpp_export(tools: Path, network: Path,
 
 
 def evaluate(model: HalfKpV1, loader: DataLoader, device: torch.device,
-             target_scale: float) -> float:
+             target_scale: float) -> dict[str, float | int]:
     model.eval()
     total_squared_error = 0.0
+    total_absolute_error = 0.0
+    correct_signs = 0
     samples = 0
     with torch.no_grad():
         for first, first_offsets, second, second_offsets, target in batches(loader, device):
             prediction = model(first, first_offsets, second, second_offsets) * target_scale
-            total_squared_error += torch.sum((prediction - target) ** 2).item()
+            error = prediction - target
+            total_squared_error += torch.sum(error ** 2).item()
+            total_absolute_error += torch.sum(torch.abs(error)).item()
+            correct_signs += int(torch.sum((prediction >= 0) == (target >= 0)).item())
             samples += target.numel()
-    return math.sqrt(total_squared_error / max(1, samples))
+    denominator = max(1, samples)
+    return {
+        "samples": samples,
+        "rmseCp": math.sqrt(total_squared_error / denominator),
+        "maeCp": total_absolute_error / denominator,
+        "signAccuracy": correct_signs / denominator,
+    }
 
 
 def atomic_torch_save(value: object, destination: Path) -> None:
@@ -656,13 +667,16 @@ def main() -> int:
         if device.type == "cuda":
             torch.cuda.synchronize(device)
         duration = time.perf_counter() - epoch_started
-        rmse = evaluate(model, validation_loader, device, args.target_scale)
+        validation_metrics = evaluate(model, validation_loader, device, args.target_scale)
+        rmse = float(validation_metrics["rmseCp"])
         learning_rate = float(optimizer.param_groups[0]["lr"])
         peak_memory = int(torch.cuda.max_memory_allocated(device)) if device.type == "cuda" else 0
         metric: dict[str, float | int] = {
             "epoch": epoch,
             "trainingLossNormalized": round(total_loss / max(1, samples), 6),
             "validationRmseCp": round(rmse, 6),
+            "validationMaeCp": round(float(validation_metrics["maeCp"]), 6),
+            "validationSignAccuracy": round(float(validation_metrics["signAccuracy"]), 6),
             "learningRate": learning_rate,
             "durationSeconds": round(duration, 6),
             "positionsPerSecond": round(samples / max(duration, 1e-9), 3),
@@ -691,7 +705,10 @@ def main() -> int:
         save_metrics(metrics, metrics_path)
         print(
             f"epoch={epoch} train_loss_normalized={metric['trainingLossNormalized']:.4f} "
-            f"validation_rmse_cp={rmse:.2f} positions_per_second={metric['positionsPerSecond']:.0f} "
+            f"validation_rmse_cp={rmse:.2f} "
+            f"validation_mae_cp={metric['validationMaeCp']:.2f} "
+            f"validation_sign_accuracy={metric['validationSignAccuracy']:.3f} "
+            f"positions_per_second={metric['positionsPerSecond']:.0f} "
             f"gpu_peak_mb={peak_memory / (1024 * 1024):.1f}",
             flush=True,
         )
@@ -704,6 +721,8 @@ def main() -> int:
     if best_checkpoint_path.is_file():
         best_payload = torch.load(best_checkpoint_path, map_location=device, weights_only=False)
         model.load_state_dict(best_payload["model"])
+
+    best_validation_metrics = evaluate(model, validation_loader, device, args.target_scale)
 
     quantization = verify_quantization(
         model, validation, args.verify_samples, args.seed,
@@ -786,6 +805,7 @@ def main() -> int:
             "resumedFrom": str(args.resume.resolve()) if args.resume else None,
         },
         "bestValidationRmseCp": best_rmse,
+        "bestValidation": best_validation_metrics,
         "quantization": quantization,
         "cppVerification": cpp_verification,
         "outputs": {

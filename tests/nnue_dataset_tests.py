@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import random
 import sys
 import tempfile
@@ -27,13 +28,20 @@ from nnue_dataset import (  # noqa: E402
     read_shard_header,
 )
 from generate_dataset import (  # noqa: E402
+    TeacherComparison,
     game_is_validation,
     game_shard,
     open_pgn_text,
     position_is_sampled,
     result_for_side_to_move,
 )
-from generate_shards import merge_shards, record_key  # noqa: E402
+from dataset_diagnostics import analyze_records  # noqa: E402
+from generate_shards import (  # noqa: E402
+    aggregate_teacher_comparisons,
+    merge_shards,
+    positions_per_shard_for_target,
+    record_key,
+)
 
 
 class NnueDatasetTests(unittest.TestCase):
@@ -104,6 +112,39 @@ class NnueDatasetTests(unittest.TestCase):
         self.assertEqual(result_for_side_to_move("1-0", chess.BLACK), -1.0)
         self.assertEqual(result_for_side_to_move("1/2-1/2", chess.BLACK), 0.0)
 
+    def test_teacher_budget_comparison_metrics(self) -> None:
+        comparison = TeacherComparison()
+        comparison.add(100, 130)
+        comparison.add(-50, -90)
+        comparison.add(10, -20)
+        report = comparison.report(5_000, 20_000)
+        self.assertEqual(report["samples"], 3)
+        self.assertEqual(report["primaryNodes"], 5_000)
+        self.assertEqual(report["comparisonNodes"], 20_000)
+        self.assertAlmostEqual(report["maeCp"], 100 / 3)
+        self.assertAlmostEqual(report["signAgreement"], 2 / 3)
+
+    def test_teacher_comparisons_aggregate_across_workers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = []
+            for index, report in enumerate((
+                {"samples": 2, "primaryNodes": 5_000, "comparisonNodes": 20_000,
+                 "meanDifferenceCp": 10.0, "maeCp": 20.0, "rmseCp": 25.0,
+                 "maxAbsDifferenceCp": 30, "signAgreement": 0.5},
+                {"samples": 3, "primaryNodes": 5_000, "comparisonNodes": 20_000,
+                 "meanDifferenceCp": -5.0, "maeCp": 10.0, "rmseCp": 15.0,
+                 "maxAbsDifferenceCp": 40, "signAgreement": 1.0},
+            )):
+                path = Path(directory) / f"part-{index}.json"
+                path.write_text(json.dumps({"teacherComparison": report}), encoding="utf-8")
+                paths.append(path)
+            aggregate = aggregate_teacher_comparisons(paths)
+            assert aggregate is not None
+            self.assertEqual(aggregate["samples"], 5)
+            self.assertAlmostEqual(aggregate["maeCp"], 14.0)
+            self.assertEqual(aggregate["maxAbsDifferenceCp"], 40)
+            self.assertAlmostEqual(aggregate["signAgreement"], 0.8)
+
     def test_sampling_and_game_shards_are_stateless(self) -> None:
         checksum = "cd" * 32
         selected = [position_is_sampled(checksum, 17, ply, 9, 0.25)
@@ -159,6 +200,46 @@ class NnueDatasetTests(unittest.TestCase):
                 record_key(start_record.board_bytes, start_record.turn),
                 record_key(start_record.board_bytes, not start_record.turn),
             )
+
+    def test_target_position_planning_and_merge_cap(self) -> None:
+        self.assertEqual(
+            positions_per_shard_for_target(5_000_000, 8, 0.1, 1.10),
+            763_889,
+        )
+        self.assertEqual(positions_per_shard_for_target(0, 8, 0.1, 1.10), 0)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            part = root / "part.nnuebin"
+            boards = []
+            for move in ("e2e4", "d2d4", "c2c4"):
+                board = chess.Board()
+                board.push_uci(move)
+                boards.append(board)
+            with BinaryShardWriter(part) as writer:
+                for game_id, board in enumerate(boards, start=1):
+                    writer.write(board, game_id, 0.0, game_id, 1)
+
+            destination = root / "target.nnuebin"
+            stats = merge_shards([part], destination, set(), maximum_records=2)
+            self.assertEqual(stats, {"read": 2, "written": 2, "duplicatesSkipped": 0})
+            self.assertEqual(len(list(iter_compact_records([destination]))), 2)
+
+    def test_dataset_diagnostics_report_coverage_and_distributions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "diagnostics.nnuebin"
+            start = chess.Board()
+            endgame = chess.Board("8/8/8/8/8/4k3/4p3/4K3 w - - 0 1")
+            with BinaryShardWriter(path) as writer:
+                writer.write(start, 25, 0.0, 1, 8)
+                writer.write(endgame, -250, -1.0, 2, 60)
+
+            report = analyze_records([path])
+            self.assertEqual(report["positions"], 2)
+            self.assertGreater(report["featureCoverage"]["seen"], 0)
+            self.assertEqual(report["phaseCounts"], {"endgame": 1, "opening": 1})
+            self.assertEqual(report["teacherEvalMagnitudeCounts"], {"0-99": 1, "100-299": 1})
+            self.assertEqual(report["resultCounts"], {"draw": 1, "loss": 1})
 
     def test_zstd_pgn_stream(self) -> None:
         import zstandard

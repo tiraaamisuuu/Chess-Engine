@@ -11,6 +11,7 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import time
 from typing import Protocol
 
 import chess
@@ -44,6 +45,8 @@ def parse_args() -> argparse.Namespace:
                         help="Licence or permission basis for the source games")
     parser.add_argument("--source-url", default="", help="Optional source/provenance URL")
     parser.add_argument("--nodes", type=int, default=20_000, help="Teacher nodes per sampled position")
+    parser.add_argument("--comparison-nodes", type=int, default=0,
+                        help="Optional second teacher budget for same-position label diagnostics")
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--hash", type=int, default=512, dest="hash_mb")
     parser.add_argument("--sample-rate", type=float, default=0.25)
@@ -192,6 +195,39 @@ def make_writer(path: Path, requested_format: str) -> DatasetWriter:
     return CompactWriter(path) if selected == "compact" else JsonlWriter(path)
 
 
+class TeacherComparison:
+    def __init__(self) -> None:
+        self.samples = 0
+        self.signed_error = 0.0
+        self.absolute_error = 0.0
+        self.squared_error = 0.0
+        self.maximum_absolute_error = 0
+        self.sign_agreements = 0
+
+    def add(self, primary_cp: int, comparison_cp: int) -> None:
+        difference = comparison_cp - primary_cp
+        absolute = abs(difference)
+        self.samples += 1
+        self.signed_error += difference
+        self.absolute_error += absolute
+        self.squared_error += difference * difference
+        self.maximum_absolute_error = max(self.maximum_absolute_error, absolute)
+        self.sign_agreements += int((primary_cp >= 0) == (comparison_cp >= 0))
+
+    def report(self, primary_nodes: int, comparison_nodes: int) -> dict[str, float | int]:
+        denominator = max(1, self.samples)
+        return {
+            "samples": self.samples,
+            "primaryNodes": primary_nodes,
+            "comparisonNodes": comparison_nodes,
+            "meanDifferenceCp": self.signed_error / denominator,
+            "maeCp": self.absolute_error / denominator,
+            "rmseCp": (self.squared_error / denominator) ** 0.5,
+            "maxAbsDifferenceCp": self.maximum_absolute_error,
+            "signAgreement": self.sign_agreements / denominator,
+        }
+
+
 def validate_args(args: argparse.Namespace) -> None:
     if not 0.0 < args.sample_rate <= 1.0:
         raise SystemExit("--sample-rate must be in (0, 1]")
@@ -203,6 +239,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("--validation-fraction must be positive when --validation-output is used")
     if args.nodes < 1 or args.threads < 1 or args.hash_mb < 1:
         raise SystemExit("--nodes, --threads, and --hash must be positive")
+    if args.comparison_nodes < 0:
+        raise SystemExit("--comparison-nodes cannot be negative")
     if args.min_ply < 0 or args.max_ply < args.min_ply:
         raise SystemExit("invalid ply range")
     if args.max_games < 0 or args.max_positions < 0:
@@ -226,6 +264,7 @@ def main() -> int:
     validate_args(args)
     root = Path(__file__).resolve().parents[2]
     started_at = datetime.now(timezone.utc)
+    progress_started = time.monotonic()
     manifest_path = args.manifest or args.output.with_suffix(args.output.suffix + ".manifest.json")
 
     inputs: list[dict[str, object]] = []
@@ -257,6 +296,7 @@ def main() -> int:
         "resultCounts": {"win": 0, "draw": 0, "loss": 0},
     }
     seen_positions: set[int] = set()
+    teacher_comparison = TeacherComparison()
     stop = False
 
     engine = chess.engine.SimpleEngine.popen_uci(str(engine_path))
@@ -338,6 +378,17 @@ def main() -> int:
                             if score is None:
                                 continue
                             bounded_score = max(-32_000, min(32_000, int(score)))
+                            if args.comparison_nodes:
+                                comparison_analysis = engine.analyse(
+                                    board, chess.engine.Limit(nodes=args.comparison_nodes),
+                                )
+                                comparison_score = comparison_analysis["score"].pov(board.turn).score(
+                                    mate_score=32_000,
+                                )
+                                if comparison_score is not None:
+                                    teacher_comparison.add(bounded_score, max(
+                                        -32_000, min(32_000, int(comparison_score)),
+                                    ))
                             result_target = result_for_side_to_move(result, board.turn)
                             writer.write(board, bounded_score, result_target, global_game_id, ply, split)
                             position_key_name = "validationPositions" if validation_game else "trainingPositions"
@@ -353,8 +404,15 @@ def main() -> int:
 
                             total_positions = int(stats["trainingPositions"]) + int(stats["validationPositions"])
                             if total_positions % 1000 == 0:
-                                print(f"positions={total_positions} games={global_game_id} "
-                                      f"duplicates={stats['duplicatesSkipped']}", flush=True)
+                                elapsed = max(1e-9, time.monotonic() - progress_started)
+                                rate = total_positions / elapsed
+                                eta = ((args.max_positions - total_positions) / rate
+                                       if args.max_positions and rate > 0 else None)
+                                target = f"/{args.max_positions}" if args.max_positions else ""
+                                eta_text = f" eta_seconds={eta:.0f}" if eta is not None else ""
+                                print(f"positions={total_positions}{target} games={global_game_id} "
+                                      f"duplicates={stats['duplicatesSkipped']} rate={rate:.2f}/s "
+                                      f"elapsed_seconds={elapsed:.0f}{eta_text}", flush=True)
                             if args.max_positions and total_positions >= args.max_positions:
                                 stop = True
                                 break
@@ -416,6 +474,8 @@ def main() -> int:
             "configuredOptions": configured_options,
             "availableOptions": teacher_options,
             "limit": {"nodes": args.nodes},
+            "comparisonLimit": ({"nodes": args.comparison_nodes}
+                                if args.comparison_nodes else None),
         },
         "sampling": {
             "seed": args.seed,
@@ -430,11 +490,16 @@ def main() -> int:
             "shardCount": args.shard_count,
         },
         "statistics": stats,
+        "teacherComparison": teacher_comparison.report(
+            args.nodes, args.comparison_nodes,
+        ) if args.comparison_nodes else None,
         "outputs": outputs,
     }
     write_json_atomic(manifest_path, manifest)
     total = int(stats["trainingPositions"]) + int(stats["validationPositions"])
-    print(f"completed positions={total} games={stats['gamesRead']} manifest={manifest_path}")
+    elapsed = max(1e-9, time.monotonic() - progress_started)
+    print(f"completed positions={total} games={stats['gamesRead']} rate={total / elapsed:.2f}/s "
+          f"elapsed_seconds={elapsed:.1f} manifest={manifest_path}")
     return 0
 
 

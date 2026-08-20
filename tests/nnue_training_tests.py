@@ -26,6 +26,7 @@ from train import (  # noqa: E402
     PositionsDataset,
     active_features,
     collate,
+    evaluate,
     export_network,
     find_dataset_manifest,
     quantize_network,
@@ -93,6 +94,24 @@ class NnueTrainingTests(unittest.TestCase):
             expected_cp = float(model(*batch[:4]).item()) * 600.0
         actual_cp = quantized_predict(quantized, first, second)
         self.assertLess(abs(actual_cp - expected_cp), 2.0)
+
+    def test_validation_reports_rmse_mae_and_sign_accuracy(self) -> None:
+        model = HalfKpV1(hidden=4)
+        with torch.no_grad():
+            for parameter in model.parameters():
+                parameter.zero_()
+        board = chess.Board()
+        first = active_features(board, board.turn)
+        second = active_features(board, not board.turn)
+        loader = [collate([
+            (first, second, -100.0),
+            (first, second, 100.0),
+        ])]
+        report = evaluate(model, loader, torch.device("cpu"), target_scale=1.0)
+        self.assertEqual(report["samples"], 2)
+        self.assertAlmostEqual(report["rmseCp"], 100.0)
+        self.assertAlmostEqual(report["maeCp"], 100.0)
+        self.assertAlmostEqual(report["signAccuracy"], 0.5)
 
     def test_quantization_rejects_saturation(self) -> None:
         model = HalfKpV1(hidden=2)
