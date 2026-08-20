@@ -125,9 +125,11 @@ stability. Use a representative 100,000-position diagnostic first:
   --target-training-positions 100000 --target-oversample 1.15
 ```
 
-The same sampled boards receive both labels. The dataset manifest aggregates
-mean difference, MAE, RMSE, maximum absolute difference, and score-sign
-agreement. Use this evidence to decide whether 20k labels justify their cost.
+The same sampled boards receive both labels. Stockfish's hash is cleared before
+each budget so the 20k search cannot reuse work from the preceding 5k search.
+The dataset manifest aggregates mean difference, MAE, RMSE, maximum absolute
+difference, and score-sign agreement. Use this evidence to decide whether 20k
+labels justify their cost.
 
 ## Audit data coverage
 

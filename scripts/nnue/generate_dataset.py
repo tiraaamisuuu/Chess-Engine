@@ -228,6 +228,15 @@ class TeacherComparison:
         }
 
 
+def clear_teacher_hash(engine: chess.engine.SimpleEngine) -> None:
+    """Reset the UCI hash so comparison budgets start from equivalent state."""
+    if "Clear Hash" not in engine.options:
+        raise RuntimeError(
+            "teacher-budget comparison requires a UCI 'Clear Hash' option"
+        )
+    engine.configure({"Clear Hash": None})
+
+
 def validate_args(args: argparse.Namespace) -> None:
     if not 0.0 < args.sample_rate <= 1.0:
         raise SystemExit("--sample-rate must be in (0, 1]")
@@ -309,6 +318,10 @@ def main() -> int:
             configured_options["Hash"] = args.hash_mb
         if configured_options:
             engine.configure(configured_options)
+        if args.comparison_nodes and "Clear Hash" not in engine.options:
+            raise RuntimeError(
+                "--comparison-nodes requires a teacher with a UCI 'Clear Hash' option"
+            )
 
         writers: list[DatasetWriter] = []
         training_writer = make_writer(args.output, args.format)
@@ -373,12 +386,15 @@ def main() -> int:
                                 continue
                             seen_positions.add(position_key)
 
+                            if args.comparison_nodes:
+                                clear_teacher_hash(engine)
                             analysis = engine.analyse(board, chess.engine.Limit(nodes=args.nodes))
                             score = analysis["score"].pov(board.turn).score(mate_score=32_000)
                             if score is None:
                                 continue
                             bounded_score = max(-32_000, min(32_000, int(score)))
                             if args.comparison_nodes:
+                                clear_teacher_hash(engine)
                                 comparison_analysis = engine.analyse(
                                     board, chess.engine.Limit(nodes=args.comparison_nodes),
                                 )
@@ -476,6 +492,8 @@ def main() -> int:
             "limit": {"nodes": args.nodes},
             "comparisonLimit": ({"nodes": args.comparison_nodes}
                                 if args.comparison_nodes else None),
+            "comparisonHashIsolation": ("clear-before-each-budget"
+                                        if args.comparison_nodes else None),
         },
         "sampling": {
             "seed": args.seed,

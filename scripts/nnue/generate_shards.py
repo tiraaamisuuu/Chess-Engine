@@ -395,6 +395,8 @@ def main() -> int:
                       "scriptSha256": sha256_file(Path(__file__).resolve())},
         "teacher": {"path": str(engine), "sha256": engine_sha256, "nodes": args.nodes,
                     "comparisonNodes": args.comparison_nodes or None,
+                    "comparisonHashIsolation": ("clear-before-each-budget"
+                                                if args.comparison_nodes else None),
                     "threadsPerProcess": args.threads, "hashMiBPerProcess": args.hash_mb},
         "provenance": {"name": args.source_name, "license": args.source_license,
                        "url": args.source_url or None, "inputs": inputs},

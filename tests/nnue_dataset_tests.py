@@ -30,6 +30,7 @@ from nnue_dataset import (  # noqa: E402
 )
 from generate_dataset import (  # noqa: E402
     TeacherComparison,
+    clear_teacher_hash,
     game_is_validation,
     game_shard,
     open_pgn_text,
@@ -129,6 +130,31 @@ class NnueDatasetTests(unittest.TestCase):
         self.assertEqual(report["comparisonNodes"], 20_000)
         self.assertAlmostEqual(report["maeCp"], 100 / 3)
         self.assertAlmostEqual(report["signAgreement"], 2 / 3)
+
+    def test_teacher_comparison_clears_hash_between_budgets(self) -> None:
+        class FakeEngine:
+            options = {"Clear Hash": object()}
+
+            def __init__(self) -> None:
+                self.configurations = []
+
+            def configure(self, options) -> None:
+                self.configurations.append(options)
+
+        engine = FakeEngine()
+        clear_teacher_hash(engine)  # type: ignore[arg-type]
+        clear_teacher_hash(engine)  # type: ignore[arg-type]
+        self.assertEqual(
+            engine.configurations,
+            [{"Clear Hash": None}, {"Clear Hash": None}],
+        )
+
+    def test_teacher_comparison_rejects_engine_without_clear_hash(self) -> None:
+        class FakeEngine:
+            options = {}
+
+        with self.assertRaisesRegex(RuntimeError, "Clear Hash"):
+            clear_teacher_hash(FakeEngine())  # type: ignore[arg-type]
 
     def test_teacher_comparisons_aggregate_across_workers(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

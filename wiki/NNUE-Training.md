@@ -17,12 +17,15 @@ For a large run, first use the inspection and planning commands to estimate elig
 Stockfish is used as the teacher at a fixed node budget. Fixed nodes are preferred to fixed time because they are easier to reproduce across machines. The generator can label the same sampled position at two node budgets, for example 5,000 and 20,000 nodes, and report:
 
 - centipawn mean absolute error;
+- root-mean-square error;
 - sign disagreement;
-- best-move disagreement;
-- mate disagreement; and
+- maximum absolute difference; and
 - the additional labelling cost.
 
-That comparison is the evidence used to choose a production budget rather than assuming that a deeper label is automatically worth four times the work.
+Stockfish's hash is cleared before each budget so neither label can reuse the
+other search's work. That comparison is the evidence used to choose a
+production budget rather than assuming that a deeper label is automatically
+worth four times the work.
 
 ## Training
 
