@@ -360,6 +360,13 @@ inline int quiescence(Board& bd, SearchContext& ctx, int alpha, int beta, int pl
             if(stand + victim + deltaMargin < alpha){
                 continue;
             }
+
+            // Deeply losing exchanges rarely improve a quiet stand-pat score.
+            // Keep a small negative allowance for tactical uncertainty while
+            // removing obviously bad captures before ordering and recursion.
+            if(staticExchangeEvaluation(bd, m) < -80){
+                continue;
+            }
         }
         moves.push_back(m);
     }
