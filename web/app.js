@@ -512,7 +512,7 @@ function updateThinkingCountdown() {
   const remaining = Math.max(0, thinkingDeadline - performance.now());
   const progress = Math.max(0, Math.min(1, remaining / thinkingDurationMs));
   const display = formatCountdown(remaining);
-  elements.thinkingDial.style.setProperty("--thinking-angle", `${progress * 360}deg`);
+  elements.thinkingDial.style.setProperty("--thinking-progress", `${progress * 100}%`);
   elements.thinkingCountdown.value = display;
   elements.statusCountdownValue.value = `${display}s`;
   const turn = activeTurnElement();
@@ -538,7 +538,7 @@ function startThinkingCountdown(durationMs, status) {
   stopThinkingCountdown();
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
     elements.thinkingCountdown.value = "•••";
-    elements.thinkingDial.style.setProperty("--thinking-angle", "82deg");
+    elements.thinkingDial.style.setProperty("--thinking-progress", "23%");
     return;
   }
   thinkingDurationMs = durationMs;
