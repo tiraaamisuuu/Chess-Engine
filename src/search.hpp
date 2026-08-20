@@ -22,6 +22,7 @@ struct SearchStats {
 
 struct SearchContext {
     static constexpr size_t NnueStackSize = 129;
+    static constexpr size_t CorrectionHistorySize = 16384;
     TranspositionTable tt;
     TranspositionTable* sharedTT=nullptr;
     SearchStats stats;
@@ -40,6 +41,7 @@ struct SearchContext {
     Move plyMove[128]{};
     int history[2][64][64]{};
     int captureHistory[2][7][64]{};
+    std::array<std::array<int, CorrectionHistorySize>, 2> correctionHistory{};
     int staticEvalByPly[128]{};
     std::vector<u64> gameHistory; // position hashes from actual game (includes current root)
     std::vector<u64> repetition;
@@ -259,6 +261,27 @@ inline bool softTimeUp(const SearchContext& ctx){
 inline const int INF = 100000000;
 inline const int MATE = 1000000;
 
+inline size_t correctionHistoryIndex(u64 pawnHash){
+    return static_cast<size_t>((pawnHash ^ (pawnHash >> 32)) &
+                               (SearchContext::CorrectionHistorySize - 1));
+}
+
+inline int applyCorrectionHistory(const Board& board, const SearchContext& ctx,
+                                  int side, int staticEval){
+    const int correction = ctx.correctionHistory[side][correctionHistoryIndex(board.pawnHash)] / 256;
+    return std::clamp(staticEval + correction, -MATE + 10000, MATE - 10000);
+}
+
+inline void updateCorrectionHistory(const Board& board, SearchContext& ctx, int side,
+                                    int depth, int searchScore, int rawStaticEval){
+    constexpr int CorrectionLimit = 256 * 256;
+    int& entry = ctx.correctionHistory[side][correctionHistoryIndex(board.pawnHash)];
+    const int target = std::clamp(searchScore - rawStaticEval, -256, 256) * 256;
+    const int weight = std::min(64, depth * depth);
+    entry += ((target - entry) * weight) / 256;
+    entry = std::clamp(entry, -CorrectionLimit, CorrectionLimit);
+}
+
 inline int scoreToTT(int score, int ply){
     if(score >= MATE - 10000) return score + ply;
     if(score <= -MATE + 10000) return score - ply;
@@ -416,9 +439,12 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     if(bd.insufficientMaterial()) return 0;
 
     bool inCheck = bd.inCheck(bd.stm);
+    const int side = (bd.stm==Color::White)?0:1;
+    int rawStaticEval = 0;
     int staticEval = 0;
     if(!inCheck){
-        staticEval = evaluatePosition(bd, ctx, ply);
+        rawStaticEval = evaluatePosition(bd, ctx, ply);
+        staticEval = applyCorrectionHistory(bd, ctx, side, rawStaticEval);
         if(ply < 128) ctx.staticEvalByPly[ply] = staticEval;
     } else if(ply < 128){
         ctx.staticEvalByPly[ply] = -INF;
@@ -522,7 +548,6 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     Move bestM{};
 
     int originalAlpha = alpha;
-    const int side = (bd.stm==Color::White)?0:1;
     MoveList quietTried;
     MoveList tacticalTried;
     quietTried.reserve(moves.size());
@@ -645,6 +670,15 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     TTFlag flag = TTFlag::Exact;
     if(best <= originalAlpha) flag = TTFlag::Upper;
     else if(best >= beta) flag = TTFlag::Lower;
+    const bool quietBest = bestM.from < 64 && bestM.to < 64 &&
+                           !(bestM.isCapture || bestM.isEnPassant) &&
+                           bestM.promo == PieceType::None;
+    const bool informativeBound = flag == TTFlag::Exact ||
+                                  (flag == TTFlag::Lower && best > staticEval) ||
+                                  (flag == TTFlag::Upper && best < staticEval);
+    if(!inCheck && quietBest && informativeBound && std::abs(best) < MATE / 2){
+        updateCorrectionHistory(bd, ctx, side, depth, best, rawStaticEval);
+    }
     tt.store(bd.hash, depth, scoreToTT(best, ply), flag, bestM);
 
     return best;
@@ -676,6 +710,9 @@ inline Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
             for(int to=0; to<64; to++){
                 ctx.captureHistory[s][pt][to] = (ctx.captureHistory[s][pt][to] * 7) / 8;
             }
+        }
+        for(int& correction : ctx.correctionHistory[s]){
+            correction = (correction * 15) / 16;
         }
     }
     for(int ply = 0; ply < 128; ply++){
@@ -856,6 +893,9 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
                 ctx.captureHistory[s][pt][to] = (ctx.captureHistory[s][pt][to] * 7) / 8;
             }
         }
+        for(int& correction : ctx.correctionHistory[s]){
+            correction = (correction * 15) / 16;
+        }
     }
     for(int ply = 0; ply < 128; ply++){
         ctx.plyMove[ply] = noMove;
@@ -898,6 +938,7 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
         std::memcpy(workerCtx[size_t(w)].countermove, ctx.countermove, sizeof(ctx.countermove));
         std::memcpy(workerCtx[size_t(w)].history, ctx.history, sizeof(ctx.history));
         std::memcpy(workerCtx[size_t(w)].captureHistory, ctx.captureHistory, sizeof(ctx.captureHistory));
+        workerCtx[size_t(w)].correctionHistory = ctx.correctionHistory;
     }
 
     int bestWorker = 0;
@@ -1054,6 +1095,7 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
     std::memcpy(ctx.countermove, workerCtx[size_t(bestWorker)].countermove, sizeof(ctx.countermove));
     std::memcpy(ctx.history, workerCtx[size_t(bestWorker)].history, sizeof(ctx.history));
     std::memcpy(ctx.captureHistory, workerCtx[size_t(bestWorker)].captureHistory, sizeof(ctx.captureHistory));
+    ctx.correctionHistory = workerCtx[size_t(bestWorker)].correctionHistory;
 
     auto end = std::chrono::steady_clock::now();
     ctx.stats.timeMs = (int)std::chrono::duration_cast<std::chrono::milliseconds>(end - ctx.start).count();

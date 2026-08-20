@@ -160,6 +160,7 @@ struct Undo {
     int fullmoveNumber=1;
     std::array<int, 2> kingSquare{{-1, -1}};
     u64 hash=0;
+    u64 pawnHash=0;
 };
 
 struct NullUndo {

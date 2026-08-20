@@ -17,7 +17,7 @@ void expect(bool condition, const std::string& message){
 bool samePosition(const Board& lhs, const Board& rhs){
     if(lhs.stm != rhs.stm || lhs.epSquare != rhs.epSquare || lhs.castling != rhs.castling ||
        lhs.halfmoveClock != rhs.halfmoveClock || lhs.fullmoveNumber != rhs.fullmoveNumber ||
-       lhs.kingSquare != rhs.kingSquare || lhs.hash != rhs.hash){
+       lhs.kingSquare != rhs.kingSquare || lhs.hash != rhs.hash || lhs.pawnHash != rhs.pawnHash){
         return false;
     }
     for(size_t index = 0; index < lhs.b.size(); index++){
@@ -68,8 +68,11 @@ void testMakeUnmakeAndHash(const Zobrist& zobrist){
         Undo undo{};
         expect(board.makeMove(move, undo), "generated legal move should be makeable");
         const u64 incrementalHash = board.hash;
+        const u64 incrementalPawnHash = board.pawnHash;
         board.recomputeHash();
         expect(board.hash == incrementalHash, "incremental hash should match recomputed hash");
+        expect(board.pawnHash == incrementalPawnHash,
+               "incremental pawn hash should match recomputed pawn hash");
         board.undoMove(undo);
         expect(samePosition(board, initial), "make/unmake should restore the exact root position");
     }
@@ -84,8 +87,11 @@ void testMakeUnmakeAndHash(const Zobrist& zobrist){
         expect(board.makeMove(move, undo), "random legal move should be makeable");
         undoStack.push_back(undo);
         const u64 incrementalHash = board.hash;
+        const u64 incrementalPawnHash = board.pawnHash;
         board.recomputeHash();
         expect(board.hash == incrementalHash, "random playout hash should remain incremental");
+        expect(board.pawnHash == incrementalPawnHash,
+               "random playout pawn hash should remain incremental");
     }
     while(!undoStack.empty()){
         board.undoMove(undoStack.back());
@@ -117,11 +123,43 @@ void testNullMoveAndHash(const Zobrist& zobrist){
         expect(board.halfmoveClock == originalHalfmove && board.fullmoveNumber == originalFullmove,
                "search-only null move should preserve move counters");
         const u64 incrementalHash = board.hash;
+        const u64 incrementalPawnHash = board.pawnHash;
         board.recomputeHash();
         expect(board.hash == incrementalHash, "null-move incremental hash should match recomputation");
+        expect(board.pawnHash == incrementalPawnHash,
+               "null move should preserve the incremental pawn hash");
 
         board.undoNullMove(undo);
         expect(samePosition(board, original), "null move should restore the exact position");
+    }
+}
+
+void testPawnHashSpecialMoves(const Zobrist& zobrist){
+    const std::array<std::pair<const char*, const char*>, 3> cases{{
+        {"4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1", "e5d6"},
+        {"4k3/P7/8/8/8/8/8/4K3 w - - 0 1", "a7a8q"},
+        {"4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", "e4d5"}
+    }};
+
+    for(const auto& [fen, uci] : cases){
+        Board board;
+        board.setZobrist(&zobrist);
+        expect(board.loadFEN(fen), "special pawn-hash FEN should load");
+        const Board original = board;
+        const Move move = findMove(board, uci);
+        expect(move.from < 64, "special pawn-hash move should be legal");
+        Undo undo{};
+        if(move.from >= 64 || !board.makeMove(move, undo)) continue;
+
+        const u64 incrementalHash = board.hash;
+        const u64 incrementalPawnHash = board.pawnHash;
+        board.recomputeHash();
+        expect(board.hash == incrementalHash,
+               "special move incremental hash should match recomputation");
+        expect(board.pawnHash == incrementalPawnHash,
+               "special move incremental pawn hash should match recomputation");
+        board.undoMove(undo);
+        expect(samePosition(board, original), "special pawn move should unwind exactly");
     }
 }
 
@@ -571,6 +609,7 @@ int main(){
     testPerft(zobrist, quick);
     testMakeUnmakeAndHash(zobrist);
     testNullMoveAndHash(zobrist);
+    testPawnHashSpecialMoves(zobrist);
     testEvaluationOrientation(zobrist);
     testPseudoMobilityCounter(zobrist);
     testEnPassantHashing(zobrist);
