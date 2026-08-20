@@ -1,220 +1,152 @@
 # Chess Engine
 
-This is a C++17 chess engine with independent UCI and developer-tool targets, a
-local web interface, and the legacy SFML 2.6 desktop application. The v1 rework
-prioritizes rule correctness, reproducible strength testing, efficient classical
-search, and an optional NNUE evaluation path.
+A high-performance C++17 chess engine combining modern alpha-beta search with
+classical and custom trainable NNUE evaluation. The project includes a local
+chess interface, UCI support, CUDA/PyTorch training, Stockfish teacher
+labelling, incremental NNUE inference, and reproducible strength testing.
 
-## Current engine
+`C++` · `UCI` · `NNUE` · `CUDA / PyTorch` · `SFML`
 
-- Legal chess including castling, promotion, and en passant
-- Iterative-deepening alpha-beta/PVS search
-- Quiescence, transposition table, null-move pruning, LMR, aspiration windows,
-  killer/history/countermove ordering, and time management
-- UCI Hash, Threads, Move Overhead, Clear Hash, searchmoves, EvalFile, and Use
-  NNUE controls
-- Responsive local web GUI with PvP, PvC, CvC, engine profiles, and live analysis
-- SFML modes for local play, play against the engine, and engine self-play
-- Perft, fixed-position benchmarks, UCI smoke tests, paired opening matches,
-  and cross-platform headless CI
+<!-- HERO IMAGE
+Recommended: a clean screenshot of the web interface during an interesting
+middlegame, with the board, evaluation, PV and engine identity visible.
+Suggested size: 1600 × 900 (16:9), WebP or PNG.
+Save as: docs/assets/engine-room-hero.webp
+Enable with: ![Chess Engine interface](docs/assets/engine-room-hero.webp)
+-->
 
-The optional root-parallel search now uses persistent workers and a shared,
-concurrency-safe transposition table. Its principal-move and short-budget safety
-regressions are covered by tests. Four threads was level with one thread in a
-100-game fast match, but no multi-core setting has proved a strength gain yet,
-so `Threads=1` remains the default.
+## Highlights
 
-## Run the new web GUI
+- Iterative-deepening alpha-beta/PVS with transposition tables, quiescence,
+  null-move pruning, LMR, aspiration windows, SEE and history-based ordering
+- Correct legal move generation with castling, en passant, promotion,
+  repetition and rule-draw handling
+- Standalone UCI engine plus a responsive local web interface for PvP, PvC,
+  CvC, external engines, live analysis and game export
+- Optional versioned HalfKP NNUE with quantized C++ inference and incremental
+  per-ply accumulators
+- Resumable Stockfish labelling from streamed Lichess `.pgn.zst` archives and
+  CUDA training with exact Python/C++ export verification
+- Perft, deterministic core tests, CI, fixed-position benchmarks, paired
+  opening matches, Stockfish calibration and SPRT support
 
-The primary redesign is a sharp, responsive local web interface backed by the
-real UCI engine. It remains local to your machine; the chess engine is not sent
-to a remote website.
+<!-- ENGINE ARCHITECTURE VISUAL
+Recommended: restrained monochrome SVG showing UCI/web input → board state →
+iterative search → classical or NNUE evaluation → best move/PV, with TT and
+time management as supporting components.
+Suggested size: 1400 × 760 (approximately 16:9).
+Save as: docs/assets/engine-architecture.svg
+Enable with: ![Engine architecture](docs/assets/engine-architecture.svg)
+-->
 
-```sh
-scripts/run_web_gui.sh
-```
+## Performance
 
-On Windows PowerShell, run `scripts\run_web_gui.ps1` instead.
+All figures below are relative development measurements, not absolute Elo
+claims. Full hardware, commands, commits and uncertainty are preserved in
+[`docs/results/`](docs/results/).
 
-The launcher creates an isolated Python environment on first use, builds the
-headless engine when needed, starts the local bridge, and opens the interface.
-It supports click and true pointer-following drag movement, legal-move guidance,
-PvP/PvC/CvC, visible on-demand analysis and PV, move history, PGN/FEN/JSON game
-export, undo, board flipping, promotion, side choice, selectable engines/models,
-magnetic thinking-time presets with a 50 ms–10 second custom range, and
-desktop/mobile layouts. PGN exports can be pasted into or uploaded to common
-game-analysis tools.
-Timed engine moves add an animated radial countdown, a compact status
-countdown, and a live timer on the active engine strip.
+| Measurement | Result | Interpretation |
+|---|---:|---|
+| v1 vs `v0.4.0`, 100 paired fast games | `70–13–17` | 78.5% score; strong preliminary evidence, not release-grade Elo |
+| Depth-10 search work | 270,343 → 186,618 nodes | Qsearch SEE pruning plus continuation history; changed tree |
+| Incremental null move | 5,108 → 4,951 ms | 3.1% median reduction with identical tree |
+| Incremental NNUE accumulator | 13,457 → 46,010 median NPS | 3.42× over full accumulator rebuild on the same smoke network |
+| Six-thread root search | 1.51×–1.68× benchmark throughput | No proven playing-strength gain; one thread remains default |
 
-Game setup opens immediately when the interface loads so PvP, PvC, CvC, engine
-selection, side choice, orientation, and thinking time are visible before play.
-The setup panel automatically lists the current engine, revisions built by
-`scripts/compare_engines.py`, and any `.nnue` models placed under `networks/`.
-Role badges distinguish the newest development build, committed candidate,
-legacy baseline, and NNUE models at a glance.
+The retained qsearch SEE change scored `38–28–34` in its 100-game diagnostic.
+Continuation history scored `37–31–32` and remains provisional pending a
+slower, longer match. Pawn correction history and a selection-scan move picker
+were rejected after neutral or negative measurements.
 
-Use **Install Stockfish** directly in game setup to download the pinned official
-build for the current macOS, Windows, or Linux host. The service verifies the
-release SHA-256, extracts the expected executable and GPL files, completes a UCI
-handshake, and selects it without requiring a manual file import. The downloaded
-binary remains in the ignored `.tools/user-engines/` library rather than Git.
-
-Use **Other engine** in game setup, or **Engines** in the top bar, to import
-another UCI-compatible executable. The local service copies the selected file
-into its ignored `.tools/user-engines/` library, verifies the UCI handshake,
-records the name and author reported by the engine, and makes it available to
-PvC, CvC, and analysis. Imported engines persist between launches and can be
-removed from the same panel. Only import executables you trust: imported engines
-run locally with your user account's permissions.
-
-## Build the headless engine and tools
-
-No SFML installation is needed:
-
-```sh
-cmake -S . -B build -DCHESS_BUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-```
-
-Executables:
-
-- `build/chess-engine-uci` — tournament/analysis engine
-- `build/chess-engine-tools` — perft, divide, and benchmarks
-- `build/chess-core-tests` — deterministic core test suite
-
-For a non-portable build tuned for the current PC, Windows PowerShell users can
-enable AVX2 and interprocedural/link-time optimization with:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build_max_performance.ps1
-```
-
-The optimized engine is written to
-`build-pc-max\Release\chess-engine-uci.exe`. To exercise the best-tested
-experimental multi-core setting on the Ryzen 9 5900X:
-
-```powershell
-$env:ENGINE_BIN = "$PWD\build-pc-max\Release\chess-engine-uci.exe"
-powershell -ExecutionPolicy Bypass -File .\scripts\run_web_gui.ps1 --threads 4
-```
-
-This native binary targets the machine that built it. Keep portable release
-packages on the ordinary build path. Omit `--threads 4` to retain the
-strength-tested one-thread default.
-
-Example UCI session:
-
-```text
-./build/chess-engine-uci
-uci
-isready
-position startpos moves e2e4 e7e5 g1f3
-go movetime 1000
-quit
-```
-
-## Build the legacy SFML GUI
-
-The original native GUI remains available during the transition. It requires
-SFML 2.6.x; SFML 3 is not API-compatible with this project.
-
-```sh
-cmake -S . -B build-gui \
-  -DCHESS_BUILD_GUI=ON \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_PREFIX_PATH=/path/to/sfml-2.6.2
-cmake --build build-gui --parallel
-./build-gui/gui
-```
-
-Platform helpers are provided in `scripts/build_mac.sh`,
-`scripts/build_linux.sh`, and `scripts/build_windows.bat`. Set `SFML_PREFIX` on
-macOS or `SFML_DIR` on Windows when SFML is not in a standard CMake prefix.
-
-## Correctness and regression gates
-
-```sh
-scripts/run_quality_gate.sh
-```
-
-The gate runs:
-
-- Standard six-position perft regression through depth 4
-- Search benchmark telemetry
-- UCI lifecycle, option, and searchmoves checks
-
-The C++ test target additionally checks randomized make/unmake and incremental
-hash invariants, FEN round-tripping, SAN, repetition hashing, draw adjudication,
-transposition-table collisions, and the NNUE binary contract.
-
-## Strength testing
-
-The comparison tool builds two committed Git refs in isolation, downloads a
-verified balanced opening suite, and runs paired Cute Chess games. To build the
-pinned tournament runner on macOS/Linux:
-
-```sh
-scripts/install_cutechess.sh
-scripts/compare_engines.py --quick
-```
-
-On Windows PowerShell, first run `scripts\install_cutechess.ps1`, then invoke
-the comparison with `py -3 scripts\compare_engines.py --quick`.
-
-The runner can also use existing external UCI executables on either side,
-validate repeated per-engine UCI options against a live handshake, and write
-machine-readable manifests/results alongside every PGN and complete log.
-`scripts/calibrate_rating.py` builds on that runner to execute resumable
-multi-rung Stockfish limited-strength ladders and emit a qualified local-pool
-rating report.
-
-Compare the latest release with the v1 development line:
-
-```sh
-scripts/compare_engines.py \
-  --baseline v0.4.0 --candidate dev/v1 \
-  --games 400 --tc 10+0.1
-```
-
-Search and evaluation changes should not be accepted solely because they reach
-more nodes or look positionally sensible; they need paired match evidence. See
-[docs/BENCHMARKING.md](docs/BENCHMARKING.md) for SPRT, larger tests, Windows
-setup, and NNUE-vs-NNUE examples.
+<!-- PERFORMANCE VISUAL
+Recommended later, once another release-grade match exists: a simple line or
+step chart of measured candidate score across tagged engine revisions. Include
+sample size and uncertainty; do not mix NPS and Elo on one axis.
+Suggested size: 1400 × 800 (7:4).
+Save as: docs/assets/strength-development.svg
+Enable with: ![Measured engine development](docs/assets/strength-development.svg)
+-->
 
 ## NNUE
 
-The engine contains a tested, versioned HalfKP-v1 loader and incremental
-quantized inference backend. Classical evaluation stays active unless a network
-is loaded and explicitly enabled:
+The custom `HalfKP-v1` pipeline turns licensed game archives into deterministic,
+game-disjoint datasets, labels sampled positions with Stockfish, trains on
+CUDA, quantizes the network, and verifies exact C++ predictions before match
+testing. It supports target-sized generation, cross-machine shard merging,
+feature-coverage audits, teacher-budget comparisons and sliced validation
+errors.
 
-```text
-setoption name EvalFile value networks/engine-v1.nnue
-setoption name Use NNUE value true
+The largest experiment so far used only 158,699 training positions and covered
+71.8% of the HalfKP feature space. Its network lost decisively to the classical
+evaluator and was rejected. Classical evaluation therefore remains the default;
+the next controlled experiment scales the unchanged 256-wide model to five
+million diverse positions.
+
+<!-- NNUE PIPELINE VISUAL
+Recommended: horizontal SVG of Lichess/self-play → sampling → Stockfish teacher
+→ compact dataset → CUDA/PyTorch → quantization → C++ verification → paired
+match → promote/reject.
+Suggested size: 1800 × 700 (18:7).
+Save as: docs/assets/nnue-pipeline.svg
+Enable with: ![NNUE training and promotion pipeline](docs/assets/nnue-pipeline.svg)
+-->
+
+## Quick start
+
+Launch the local web interface:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_web_gui.ps1
 ```
 
-Dataset generation, PyTorch training, export commands, hardware guidance, and
-release requirements are documented in [docs/NNUE.md](docs/NNUE.md). The
-pipeline includes streamed `.pgn.zst` input, target-sized compact datasets,
-resumable parallel Stockfish labelling, global deduplication, game-disjoint
-validation, teacher-budget comparison, feature/distribution audits,
-cross-machine merging, resumable CUDA training, validation metrics and error
-slices, quantization checks, and an exact C++ export gate. An NNUE network is not
-bundled yet because the models trained so far have not beaten classical
-evaluation.
+On macOS/Linux, use `scripts/run_web_gui.sh`. The launcher creates its isolated
+Python environment, builds the headless engine when necessary, and opens the
+local interface.
 
-## Repository layout
+Build and test the headless engine directly:
 
-```text
-src/                  chess core, evaluation, search, UCI, GUI
-tests/                deterministic tests and opening positions
-scripts/              builds, quality gates, Elo matches
-scripts/nnue/         dataset generation and PyTorch training
-web/                   minimalist local web GUI and UCI bridge
-docs/                 baseline, roadmap, and NNUE specification
-assets/               GUI piece artwork
+```sh
+cmake -S . -B build -DCHESS_BUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-See [docs/BASELINE.md](docs/BASELINE.md) for the pre-v1 measurements and
-[docs/V1_ROADMAP.md](docs/V1_ROADMAP.md) for release criteria.
+The principal executables are `chess-engine-uci`, `chess-engine-tools`, and
+`chess-core-tests`.
+
+## Documentation
+
+- **[Technical Wiki](wiki/Home.md)** — architecture, search, evaluation, NNUE,
+  building, testing and development workflows
+- [NNUE training and promotion](docs/NNUE.md) — exact production commands
+- [Benchmarking and strength testing](docs/BENCHMARKING.md) — paired matches,
+  calibration and SPRT
+- [Development status](docs/DEVELOPMENT.md) — current configuration and release
+  gates
+- [Raw experimental results](docs/results/) — permanent reproducibility record
+
+The Wiki source is kept in this repository until GitHub Wiki is enabled, after
+which the same pages can be published to the repository's separate Wiki Git
+repository.
+
+## Roadmap
+
+**Current**
+
+- Validate 5k-vs-20k Stockfish teacher labels on identical diverse positions
+- Generate and audit a five-million-position, game-disjoint NNUE dataset
+- Train and test the unchanged 256-wide HalfKP baseline
+
+**Next**
+
+- Iterate data scale, sampling and NNUE architecture from measured errors
+- Add engine self-play and targeted rare-position data
+- Automate candidate-vs-champion promotion and rejection
+
+**Longer term**
+
+- Continue isolated search, parallelism and time-management experiments
+- Build a repeatable `generate → train → test → promote` improvement loop
+
+The project follows one rule throughout: **implement → test → measure → keep or
+reject → document**.

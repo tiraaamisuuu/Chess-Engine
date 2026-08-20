@@ -1,8 +1,8 @@
-# Project Status and Developer Handoff
+# Development Status
 
 This document records the current engineering state, reproducible development
-workflow, accepted/rejected experiments, and the highest-priority work needed
-to take the engine from the v1 development line to a release.
+workflow, accepted and rejected experiments, and the highest-priority work
+needed to take the v1 development line to a release.
 
 ## Repository state
 
@@ -15,7 +15,7 @@ to take the engine from the v1 development line to a release.
 - Do not merge `dev/v1` into `main` until the release gates below pass.
 
 Before changing the engine, fetch the remote, inspect the current branch and
-worktree, and read:
+worktree, and review:
 
 - `README.md`
 - `docs/V1_RESULTS.md`
