@@ -39,6 +39,7 @@ struct SearchContext {
     Move countermove[2][64][64]{};
     Move plyMove[128]{};
     int history[2][64][64]{};
+    int continuationHistory[2][64][64]{};
     int captureHistory[2][7][64]{};
     int staticEvalByPly[128]{};
     std::vector<u64> gameHistory; // position hashes from actual game (includes current root)
@@ -211,7 +212,18 @@ inline int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const M
         const Move& cm = ctx.countermove[side][prevMove.from][prevMove.to];
         if(sameMove(m, cm)) return 85000;
     }
-    return ctx.history[side][m.from][m.to];
+    int quietScore = ctx.history[side][m.from][m.to];
+    if(prevMove.to < 64){
+        quietScore += ctx.continuationHistory[side][prevMove.to][m.to];
+    }
+    return quietScore;
+}
+
+inline void updateHistoryValue(int& entry, int bonus){
+    constexpr int HistoryLimit = 90000;
+    bonus = std::clamp(bonus, -HistoryLimit, HistoryLimit);
+    entry += bonus - (entry * std::abs(bonus)) / HistoryLimit;
+    entry = std::clamp(entry, -HistoryLimit, HistoryLimit);
 }
 
 template<typename MoveContainer, typename Scorer>
@@ -615,10 +627,16 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
                     ctx.killer[ply][0] = m;
                 }
                 const int bonus = depth * depth * 16;
-                ctx.history[side][m.from][m.to] = std::min(90000, ctx.history[side][m.from][m.to] + bonus);
+                updateHistoryValue(ctx.history[side][m.from][m.to], bonus);
+                if(prevMove.to < 64){
+                    updateHistoryValue(ctx.continuationHistory[side][prevMove.to][m.to], bonus);
+                }
                 for(const Move& qm : quietTried){
                     if(sameMove(qm, m)) continue;
-                    ctx.history[side][qm.from][qm.to] = std::max(-90000, ctx.history[side][qm.from][qm.to] - (bonus / 2));
+                    updateHistoryValue(ctx.history[side][qm.from][qm.to], -(bonus / 2));
+                    if(prevMove.to < 64){
+                        updateHistoryValue(ctx.continuationHistory[side][prevMove.to][qm.to], -(bonus / 2));
+                    }
                 }
                 if(prevMove.from < 64 && prevMove.to < 64){
                     ctx.countermove[side][prevMove.from][prevMove.to] = m;
@@ -670,6 +688,8 @@ inline Move searchBestMoveSingle(Board& bd, SearchContext& ctx, int maxDepth, in
         for(int from=0; from<64; from++){
             for(int to=0; to<64; to++){
                 ctx.history[s][from][to] = (ctx.history[s][from][to] * 7) / 8;
+                ctx.continuationHistory[s][from][to] =
+                    (ctx.continuationHistory[s][from][to] * 7) / 8;
             }
         }
         for(int pt=0; pt<7; pt++){
@@ -849,6 +869,8 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
         for(int from=0; from<64; from++){
             for(int to=0; to<64; to++){
                 ctx.history[s][from][to] = (ctx.history[s][from][to] * 7) / 8;
+                ctx.continuationHistory[s][from][to] =
+                    (ctx.continuationHistory[s][from][to] * 7) / 8;
             }
         }
         for(int pt=0; pt<7; pt++){
@@ -897,6 +919,8 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
         std::memcpy(workerCtx[size_t(w)].killer, ctx.killer, sizeof(ctx.killer));
         std::memcpy(workerCtx[size_t(w)].countermove, ctx.countermove, sizeof(ctx.countermove));
         std::memcpy(workerCtx[size_t(w)].history, ctx.history, sizeof(ctx.history));
+        std::memcpy(workerCtx[size_t(w)].continuationHistory, ctx.continuationHistory,
+                    sizeof(ctx.continuationHistory));
         std::memcpy(workerCtx[size_t(w)].captureHistory, ctx.captureHistory, sizeof(ctx.captureHistory));
     }
 
@@ -1053,6 +1077,8 @@ inline Move searchBestMoveParallel(Board& bd, SearchContext& ctx, int maxDepth, 
     std::memcpy(ctx.killer, workerCtx[size_t(bestWorker)].killer, sizeof(ctx.killer));
     std::memcpy(ctx.countermove, workerCtx[size_t(bestWorker)].countermove, sizeof(ctx.countermove));
     std::memcpy(ctx.history, workerCtx[size_t(bestWorker)].history, sizeof(ctx.history));
+    std::memcpy(ctx.continuationHistory, workerCtx[size_t(bestWorker)].continuationHistory,
+                sizeof(ctx.continuationHistory));
     std::memcpy(ctx.captureHistory, workerCtx[size_t(bestWorker)].captureHistory, sizeof(ctx.captureHistory));
 
     auto end = std::chrono::steady_clock::now();

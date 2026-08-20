@@ -509,6 +509,23 @@ void testStaticExchange(const Zobrist& zobrist){
            "SEE should value an undefended queen capture");
 }
 
+void testContinuationHistoryOrdering(const Zobrist& zobrist){
+    Board board;
+    board.setZobrist(&zobrist);
+    board.reset();
+    SearchContext context;
+    const Move knightMove = findMove(board, "g1f3");
+    expect(knightMove.from < 64, "continuation-history quiet move should be legal");
+
+    Move previous = invalidMove();
+    previous.from = static_cast<u8>(sqToIndex(Square{4, 6}));
+    previous.to = static_cast<u8>(sqToIndex(Square{4, 4}));
+    const int side = 0;
+    context.continuationHistory[side][previous.to][knightMove.to] = 1234;
+    expect(scoreMove(board, context, knightMove, invalidMove(), 0, previous) == 1234,
+           "quiet ordering should include the previous-move continuation history");
+}
+
 void testClockTimeManagement(const Zobrist& zobrist){
     Board board;
     board.setZobrist(&zobrist);
@@ -582,6 +599,7 @@ int main(){
     testNnueFormat(zobrist);
     testIncrementalNnue(zobrist);
     testStaticExchange(zobrist);
+    testContinuationHistoryOrdering(zobrist);
     testClockTimeManagement(zobrist);
     testParallelSearchSafety(zobrist);
 
