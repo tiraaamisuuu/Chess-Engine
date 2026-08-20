@@ -202,7 +202,9 @@ $Network = "D:\ChessNetworks\halfkp-256-5m-sf18-20k.nnue"
 ```
 
 The trainer reports validation RMSE, MAE, score-sign accuracy, throughput, and
-GPU peak memory each epoch. It writes last/best/periodic v2 checkpoints, JSON
+GPU peak memory each epoch. The final manifest also slices bias, MAE, RMSE, and
+sign accuracy by side-to-move king square, phase, material imbalance, and
+teacher-evaluation magnitude. It writes last/best/periodic v2 checkpoints, JSON
 and CSV metrics, model weights, the deployable quantized network, and a
 checksummed training manifest. Export fails instead of clipping overflowing
 integer weights or accepting a Python/C++ prediction mismatch.

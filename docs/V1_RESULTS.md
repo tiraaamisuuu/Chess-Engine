@@ -198,8 +198,10 @@ Studio Release build. Full commands and caveats are recorded in
 The coordinator now supports exact target-sized training merges, per-worker
 headroom, progress/rate/ETA output, and optional same-position comparison at two
 teacher node budgets. Training metrics now include validation MAE and sign
-accuracy in addition to RMSE. A streaming audit reports HalfKP feature
-frequency/coverage and position distributions, while a portable merger combines
+accuracy in addition to RMSE, plus batched error slices by side-to-move king
+square, phase, material imbalance, and teacher-evaluation magnitude. A streaming
+audit reports HalfKP feature frequency/coverage and position distributions,
+while a portable merger combines
 checksummed Windows/Linux bundles under strict teacher and game-split contracts
 with global deduplication and train/validation leakage prevention.
 
@@ -210,6 +212,8 @@ agreement. Re-merging the two worker manifests reproduced the exact output
 checksums. The new audit also reproduced the earlier January 2013 corpus
 coverage exactly: 29,421/40,960 inputs (71.83%).
 
-No new production network was trained from this smoke data. The next strength
+The grouped-error path was exercised through a separate real train, quantize,
+export, and C++ verification smoke. No new production network was trained from
+this smoke data. The next strength
 experiment is the documented five-million-position, 20k-node, 256-wide
 baseline; classical evaluation remains the default.

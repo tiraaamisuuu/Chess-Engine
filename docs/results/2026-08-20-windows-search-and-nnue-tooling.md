@@ -104,7 +104,9 @@ same-position `--comparison-nodes` labels report teacher-budget MAE, RMSE,
 maximum difference, bias, and sign agreement.
 
 The trainer now records validation RMSE, MAE, and sign accuracy per epoch and
-for the best model. A streaming diagnostic reports feature frequency/coverage,
+for the best model, then computes batched bias/MAE/RMSE/sign-accuracy slices by
+side-to-move king square, phase, material imbalance, and teacher-evaluation
+magnitude. A streaming diagnostic reports feature frequency/coverage,
 king-square use, phase, material imbalance, label magnitude/sign, result, and
 ply distributions. A separate portable merger verifies copied output and
 manifest checksums, enforces compatible teacher/split contracts, permits
@@ -125,7 +127,9 @@ The full 158,699-position January 2013 training corpus was re-audited by the new
 streaming tool and exactly reproduced the previously reported 29,421/40,960
 HalfKP feature coverage (71.83%).
 
-Python syntax checks and all 13 dataset plus 9 training unit tests passed.
+Python syntax checks and all 13 dataset plus 10 training unit tests passed. A
+real 100-training/92-validation-position CPU smoke also completed training,
+quantization, export, grouped diagnostics, and exact C++ verification.
 
 ## Interpretation
 

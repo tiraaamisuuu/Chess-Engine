@@ -18,6 +18,8 @@ and measurable playing strength take priority over accumulating heuristics.
 - Resumable parallel Stockfish labelling from streamed `.pgn.zst` sources
 - Target-sized datasets, global deduplication, game-disjoint validation,
   cross-machine merging, coverage audits, and CUDA checkpoint/resume
+- Batched validation error slices by king square, phase, material imbalance,
+  and teacher-evaluation magnitude
 
 ## Current priority: large-data NNUE baseline
 
@@ -40,8 +42,6 @@ and measurable playing strength take priority over accumulating heuristics.
 
 ## After the five-million baseline
 
-- Add validation-error slices by king square, phase, material, and teacher
-  evaluation magnitude.
 - Scale to 20M positions if learning curves and coverage still improve.
 - Test wider layers, HalfKA-style features, alternate target/result blending,
   and self-play data one controlled variable at a time.

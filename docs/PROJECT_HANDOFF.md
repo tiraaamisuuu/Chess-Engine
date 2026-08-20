@@ -227,7 +227,8 @@ coverage; it is not evidence against NNUE.
 
 The production pipeline now supports target-sized generation, progress/rate/ETA,
 same-position teacher-budget comparison, streaming feature/distribution audits,
-validation RMSE/MAE/sign accuracy, and checksummed cross-machine merging.
+validation RMSE/MAE/sign accuracy with error slices by king square, phase,
+material, and teacher magnitude, and checksummed cross-machine merging.
 
 ## Prioritized roadmap
 
@@ -238,9 +239,10 @@ validation RMSE/MAE/sign accuracy, and checksummed cross-machine merging.
 3. Generate the five-million-position 20k-node dataset.
 4. Audit coverage and distributions; do not train if obvious holes remain.
 5. Train the fixed 256-wide baseline on CUDA with the C++ verification gate.
-6. Run a 400-game classical-vs-NNUE diagnostic.
-7. Promote only if competitive, then run a larger SPRT; otherwise diagnose
-   errors by king square/phase/material/evaluation magnitude and iterate.
+6. Inspect the validation error slices and run a 400-game classical-vs-NNUE
+   diagnostic.
+7. Promote only if competitive, then run a larger SPRT; otherwise use those
+   error slices to improve sampling/training and iterate.
 
 This is the single highest-value path because the engine implementation and
 training/export plumbing are already complete, while the existing network is
@@ -269,8 +271,6 @@ known to be data-starved.
 - Establish a tuned classical parameter baseline rather than hand-adjusting
   many correlated terms.
 - After the 5M network, try 20M positions before changing feature architecture.
-- Add validation error slices by king square, phase, material, and teacher
-  magnitude to guide sampling.
 - Then evaluate wider layers, HalfKA-style features, alternative target blends,
   and self-play data one controlled variable at a time.
 

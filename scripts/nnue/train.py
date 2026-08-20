@@ -31,10 +31,13 @@ from nnue_dataset import (
     active_features,
     active_features_from_packed,
     decode_record,
+    pack_board,
     read_shard_header,
     sha256_file,
+    unpack_piece_codes,
     write_json_atomic,
 )
+from dataset_diagnostics import labelled_bucket, position_distribution
 
 
 FEATURE_COUNT = 64 * 10 * 64
@@ -86,6 +89,16 @@ class DataSource:
     start: int
     count: int
     offsets: array | None = None
+
+
+@dataclass(frozen=True)
+class TrainingSample:
+    first: list[int]
+    second: list[int]
+    target: float
+    board_bytes: bytes
+    turn: chess.Color
+    teacher_score_cp: int
 
 
 class PositionsDataset(Dataset):
@@ -165,7 +178,7 @@ class PositionsDataset(Dataset):
             self._handles[source_index] = handle
         return handle
 
-    def __getitem__(self, index: int) -> tuple[list[int], list[int], float]:
+    def sample(self, index: int) -> TrainingSample:
         source_index, source, local_index = self._source_for(index)
         handle = self._handle(source_index, source)
         if source.format == "compact":
@@ -175,6 +188,8 @@ class PositionsDataset(Dataset):
             second = active_features_from_packed(record.board_bytes, not record.turn)
             score_cp = record.score_cp
             result = float(record.result)
+            board_bytes = record.board_bytes
+            turn = record.turn
         else:
             assert source.offsets is not None
             handle.seek(source.offsets[local_index])
@@ -184,11 +199,17 @@ class PositionsDataset(Dataset):
             second = active_features(board, not board.turn)
             score_cp = int(record_json["score_cp"])
             result = float(record_json.get("result", 0.0))
+            board_bytes = pack_board(board)
+            turn = board.turn
 
         score = max(-3000.0, min(3000.0, float(score_cp)))
         result_target = result * 1000.0
         target = score * (1.0 - self.result_weight) + result_target * self.result_weight
-        return first, second, target
+        return TrainingSample(first, second, target, board_bytes, turn, score_cp)
+
+    def __getitem__(self, index: int) -> tuple[list[int], list[int], float]:
+        sample = self.sample(index)
+        return sample.first, sample.second, sample.target
 
 
 def collate(samples: list[tuple[list[int], list[int], float]]) -> tuple[torch.Tensor, ...]:
@@ -411,6 +432,99 @@ def evaluate(model: HalfKpV1, loader: DataLoader, device: torch.device,
         "rmseCp": math.sqrt(total_squared_error / denominator),
         "maeCp": total_absolute_error / denominator,
         "signAccuracy": correct_signs / denominator,
+    }
+
+
+@dataclass
+class ErrorAccumulator:
+    samples: int = 0
+    signed_error: float = 0.0
+    absolute_error: float = 0.0
+    squared_error: float = 0.0
+    correct_signs: int = 0
+
+    def add(self, prediction: float, target: float) -> None:
+        error = prediction - target
+        self.samples += 1
+        self.signed_error += error
+        self.absolute_error += abs(error)
+        self.squared_error += error * error
+        self.correct_signs += int((prediction >= 0) == (target >= 0))
+
+    def report(self) -> dict[str, float | int]:
+        denominator = max(1, self.samples)
+        return {
+            "samples": self.samples,
+            "meanErrorCp": self.signed_error / denominator,
+            "maeCp": self.absolute_error / denominator,
+            "rmseCp": math.sqrt(self.squared_error / denominator),
+            "signAccuracy": self.correct_signs / denominator,
+        }
+
+
+def diagnostic_sample(dataset: Dataset, index: int) -> TrainingSample:
+    if isinstance(dataset, PositionsDataset):
+        return dataset.sample(index)
+    if isinstance(dataset, Subset):
+        return diagnostic_sample(dataset.dataset, int(dataset.indices[index]))
+    raise TypeError("validation diagnostics require PositionsDataset or Subset")
+
+
+def validation_error_diagnostics(model: HalfKpV1, dataset: Dataset,
+                                 device: torch.device, target_scale: float,
+                                 batch_size: int) -> dict[str, object]:
+    if batch_size < 1:
+        raise ValueError("diagnostic batch size must be positive")
+    overall = ErrorAccumulator()
+    groups: dict[str, dict[str, ErrorAccumulator]] = {
+        "sideToMoveKingSquare": {},
+        "phase": {},
+        "materialImbalance": {},
+        "teacherEvalMagnitude": {},
+    }
+
+    model.eval()
+    with torch.no_grad():
+        for start in range(0, len(dataset), batch_size):
+            samples = [diagnostic_sample(dataset, index)
+                       for index in range(start, min(len(dataset), start + batch_size))]
+            batch = collate([(sample.first, sample.second, sample.target) for sample in samples])
+            predictions = model(*[
+                value.to(device, non_blocking=True) for value in batch[:4]
+            ]) * target_scale
+            values = predictions.detach().cpu().tolist()
+            for sample, prediction in zip(samples, values):
+                target = sample.target
+                overall.add(prediction, target)
+                codes = unpack_piece_codes(sample.board_bytes)
+                king_code = chess.KING + (0 if sample.turn == chess.WHITE else 6)
+                king_square = chess.square_name(codes.index(king_code))
+                phase, material = position_distribution(sample.board_bytes)
+                magnitude = labelled_bucket(
+                    sample.teacher_score_cp,
+                    ((99, "0-99"), (299, "100-299"), (699, "300-699")),
+                    "700+",
+                )
+                for group_name, label in (
+                    ("sideToMoveKingSquare", king_square),
+                    ("phase", phase),
+                    ("materialImbalance", material),
+                    ("teacherEvalMagnitude", magnitude),
+                ):
+                    groups[group_name].setdefault(label, ErrorAccumulator()).add(
+                        prediction, target,
+                    )
+
+    return {
+        "target": "teacher-result blend configured for training",
+        "overall": overall.report(),
+        **{
+            group_name: {
+                label: accumulator.report()
+                for label, accumulator in sorted(accumulators.items())
+            }
+            for group_name, accumulators in groups.items()
+        },
     }
 
 
@@ -723,6 +837,9 @@ def main() -> int:
         model.load_state_dict(best_payload["model"])
 
     best_validation_metrics = evaluate(model, validation_loader, device, args.target_scale)
+    best_validation_slices = validation_error_diagnostics(
+        model, validation, device, args.target_scale, args.batch_size,
+    )
 
     quantization = verify_quantization(
         model, validation, args.verify_samples, args.seed,
@@ -806,6 +923,7 @@ def main() -> int:
         },
         "bestValidationRmseCp": best_rmse,
         "bestValidation": best_validation_metrics,
+        "bestValidationSlices": best_validation_slices,
         "quantization": quantization,
         "cppVerification": cpp_verification,
         "outputs": {

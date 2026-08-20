@@ -33,6 +33,7 @@ from train import (  # noqa: E402
     quantized_predict,
     restore_rng_state,
     truncating_division,
+    validation_error_diagnostics,
     verify_quantization,
 )
 
@@ -112,6 +113,30 @@ class NnueTrainingTests(unittest.TestCase):
         self.assertAlmostEqual(report["rmseCp"], 100.0)
         self.assertAlmostEqual(report["maeCp"], 100.0)
         self.assertAlmostEqual(report["signAccuracy"], 0.5)
+
+    def test_validation_error_slices_cover_position_groups(self) -> None:
+        model = HalfKpV1(hidden=4)
+        with torch.no_grad():
+            for parameter in model.parameters():
+                parameter.zero_()
+        with tempfile.TemporaryDirectory() as directory:
+            compact = Path(directory) / "validation.nnuebin"
+            with BinaryShardWriter(compact) as writer:
+                writer.write(chess.Board(), 50, 0.0, game_id=1, ply=8)
+                writer.write(
+                    chess.Board("8/8/8/8/8/4k3/4p3/4K3 w - - 0 1"),
+                    -250, -1.0, game_id=2, ply=60,
+                )
+            with PositionsDataset([compact], result_weight=0.0) as dataset:
+                report = validation_error_diagnostics(
+                    model, dataset, torch.device("cpu"), target_scale=1.0,
+                    batch_size=2,
+                )
+            self.assertEqual(report["overall"]["samples"], 2)
+            self.assertEqual(set(report["phase"]), {"endgame", "opening"})
+            self.assertEqual(set(report["teacherEvalMagnitude"]), {"0-99", "100-299"})
+            self.assertEqual(set(report["sideToMoveKingSquare"]), {"e1"})
+            self.assertAlmostEqual(report["overall"]["maeCp"], 150.0)
 
     def test_quantization_rejects_saturation(self) -> None:
         model = HalfKpV1(hidden=2)

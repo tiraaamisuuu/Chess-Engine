@@ -199,8 +199,8 @@ release requirements are documented in [docs/NNUE.md](docs/NNUE.md). The
 pipeline includes streamed `.pgn.zst` input, target-sized compact datasets,
 resumable parallel Stockfish labelling, global deduplication, game-disjoint
 validation, teacher-budget comparison, feature/distribution audits,
-cross-machine merging, resumable CUDA training, validation metrics,
-quantization checks, and an exact C++ export gate. An NNUE network is not
+cross-machine merging, resumable CUDA training, validation metrics and error
+slices, quantization checks, and an exact C++ export gate. An NNUE network is not
 bundled yet because the models trained so far have not beaten classical
 evaluation.
 
