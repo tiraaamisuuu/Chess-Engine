@@ -12,7 +12,6 @@ struct Board {
     int fullmoveNumber = 1;
     std::array<int, 2> kingSquare{{-1, -1}};
     u64 hash = 0;
-    u64 pawnHash = 0;
 
     const Zobrist* z = nullptr;
 
@@ -25,7 +24,6 @@ struct Board {
         fullmoveNumber = 1;
         kingSquare = {{-1, -1}};
         hash = 0;
-        pawnHash = 0;
     }
 
     void reset(){
@@ -183,22 +181,19 @@ struct Board {
     }
 
     void recomputeHash(){
-        if(!z){ hash=0; pawnHash=0; return; }
+        if(!z){ hash=0; return; }
         u64 h=0;
-        u64 ph=0;
         for(int i=0;i<64;i++){
             Piece p=b[i];
             if(isNone(p)) continue;
             int c = (p.c==Color::White)?0:1;
             int pt = (int)p.t;
             h ^= z->psq[c][pt][i];
-            if(p.t == PieceType::Pawn) ph ^= z->psq[c][pt][i];
         }
         if(stm==Color::Black) h ^= z->sideToMove;
         h ^= z->castling[castling & 0xF];
         h ^= z->epFile[enPassantHashFile()];
         hash = h;
-        pawnHash = ph;
     }
 
     std::string toFEN() const {
@@ -468,7 +463,6 @@ struct Board {
         u.fullmoveNumber = fullmoveNumber;
         u.kingSquare = kingSquare;
         u.hash = hash;
-        u.pawnHash = pawnHash;
         u.captured = Piece{};
 
         Piece moving = b[m.from];
@@ -493,9 +487,6 @@ struct Board {
             if(z && !isNone(u.captured)){
                 int cc = (u.captured.c==Color::White)?0:1;
                 hash ^= z->psq[cc][(int)u.captured.t][capSq];
-                if(u.captured.t == PieceType::Pawn){
-                    pawnHash ^= z->psq[cc][(int)u.captured.t][capSq];
-                }
             }
             b[capSq] = Piece{};
         } else if(m.isCapture){
@@ -503,18 +494,12 @@ struct Board {
             if(z && !isNone(u.captured)){
                 int cc = (u.captured.c==Color::White)?0:1;
                 hash ^= z->psq[cc][(int)u.captured.t][(int)m.to];
-                if(u.captured.t == PieceType::Pawn){
-                    pawnHash ^= z->psq[cc][(int)u.captured.t][(int)m.to];
-                }
             }
         }
 
         if(z){
             int mc = (moving.c==Color::White)?0:1;
             hash ^= z->psq[mc][(int)moving.t][(int)m.from];
-            if(moving.t == PieceType::Pawn){
-                pawnHash ^= z->psq[mc][(int)moving.t][(int)m.from];
-            }
         }
 
         b[m.to] = b[m.from];
@@ -526,9 +511,6 @@ struct Board {
         if(z){
             int mc = (moving.c==Color::White)?0:1;
             hash ^= z->psq[mc][(int)moving.t][(int)m.to];
-            if(moving.t == PieceType::Pawn){
-                pawnHash ^= z->psq[mc][(int)moving.t][(int)m.to];
-            }
         }
 
         if(m.promo != PieceType::None){
@@ -536,7 +518,6 @@ struct Board {
                 int mc = (moving.c==Color::White)?0:1;
                 hash ^= z->psq[mc][(int)PieceType::Pawn][(int)m.to];
                 hash ^= z->psq[mc][(int)m.promo][(int)m.to];
-                pawnHash ^= z->psq[mc][(int)PieceType::Pawn][(int)m.to];
             }
             b[m.to].t = m.promo;
         }
@@ -628,7 +609,6 @@ struct Board {
         fullmoveNumber = u.fullmoveNumber;
         kingSquare = u.kingSquare;
         hash = u.hash;
-        pawnHash = u.pawnHash;
 
         Piece moved = b[m.to];
 
