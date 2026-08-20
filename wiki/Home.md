@@ -33,8 +33,7 @@ properly powered match.
 - Development branch: `dev/v1`
 - Supported playing-strength default: one thread, classical evaluation
 - Current NNUE format: `HalfKP-v1`, 256 hidden units for the next baseline
-- Immediate experiment: compare Stockfish labels at 5k and 20k nodes on the
-  same diverse positions
+- Teacher budget: 20k nodes selected after 127,784 same-position comparisons
 - Next training scale: five million training positions plus game-disjoint
   validation
 

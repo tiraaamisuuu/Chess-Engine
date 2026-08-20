@@ -27,6 +27,11 @@ other search's work. That comparison is the evidence used to choose a
 production budget rather than assuming that a deeper label is automatically
 worth four times the work.
 
+The completed 2026-08-20 comparison used 127,784 identical boards. The 5k and
+20k scores had 366.40 cp MAE and 97.499% sign agreement. Because 3,196 labels
+changed which side was favoured and the projected 5M/20k run is about 21 hours
+on the measured host, 20k is selected for the first production-scale baseline.
+
 ## Training
 
 The PyTorch trainer supports CUDA, deterministic seeds, resumable checkpoints, and validation metrics split by useful position categories. Training targets combine the teacher score with the game outcome according to the recorded configuration.

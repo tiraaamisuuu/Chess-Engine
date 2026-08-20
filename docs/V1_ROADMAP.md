@@ -23,13 +23,15 @@ and measurable playing strength take priority over accumulating heuristics.
 
 ## Current priority: large-data NNUE baseline
 
-1. Compare 5k and 20k Stockfish labels on the same 100k representative boards.
-2. Generate and audit five million diverse 20k-node training positions.
-3. Train the unchanged 256-wide HalfKP architecture on CUDA.
-4. Require quantization checks and exact C++ agreement during export.
-5. Run a 400-game classical-vs-NNUE diagnostic, followed by SPRT only if the
+1. **Complete:** 127,784 same-position 5k-vs-20k comparisons selected 20k for
+   the first baseline (97.499% sign agreement; fourfold fixed-node cost).
+2. Obtain and checksum a modern Lichess standard-rated CC0 monthly archive.
+3. Generate and audit five million diverse 20k-node training positions.
+4. Train the unchanged 256-wide HalfKP architecture on CUDA.
+5. Require quantization checks and exact C++ agreement during export.
+6. Run a 400-game classical-vs-NNUE diagnostic, followed by SPRT only if the
    network is competitive.
-6. Promote the model only after statistically supported strength evidence.
+7. Promote the model only after statistically supported strength evidence.
 
 ## Search follow-up
 

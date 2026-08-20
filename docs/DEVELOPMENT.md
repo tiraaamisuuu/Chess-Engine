@@ -234,8 +234,9 @@ material, and teacher magnitude, and checksummed cross-machine merging.
 
 ### Priority 1: establish the large-data NNUE baseline
 
-1. Obtain and checksum a modern Lichess CC0 standard archive.
-2. Run the 100k 5k-vs-20k teacher comparison.
+1. **Complete:** the 127,784-position 5k-vs-20k comparison selected 20k for
+   the first 5M baseline (97.499% score-sign agreement).
+2. Obtain and checksum a modern Lichess CC0 standard archive.
 3. Generate the five-million-position 20k-node dataset.
 4. Audit coverage and distributions; do not train if obvious holes remain.
 5. Train the fixed 256-wide baseline on CUDA with the C++ verification gate.

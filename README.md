@@ -133,7 +133,7 @@ repository.
 
 **Current**
 
-- Validate 5k-vs-20k Stockfish teacher labels on identical diverse positions
+- Acquire and checksum a modern Lichess CC0 monthly archive
 - Generate and audit a five-million-position, game-disjoint NNUE dataset
 - Train and test the unchanged 256-wide HalfKP baseline
 

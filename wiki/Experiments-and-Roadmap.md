@@ -27,11 +27,16 @@ These figures are not mixed into one synthetic score. Node reductions, throughpu
 
 The immediate work is data quality for the 256-unit HalfKP NNUE:
 
-1. compare Stockfish teacher labels at approximately 5,000 and 20,000 nodes on the same sampled positions;
-2. choose the lowest budget that preserves adequate label quality;
-3. generate and validate a multi-million-position dataset from a modern source archive;
-4. train, quantize, and verify a production-scale candidate; and
-5. run paired promotion matches against classical evaluation.
+1. obtain and checksum a modern Lichess standard-rated CC0 monthly archive;
+2. generate and validate five million 20k-node training positions plus a
+   game-disjoint validation split;
+3. train, quantize, and verify the unchanged 256-wide HalfKP candidate; and
+4. run paired promotion matches against classical evaluation.
+
+The teacher budget is now resolved: 127,784 same-position 5k-vs-20k searches
+had 97.499% score-sign agreement, leaving 3,196 disagreements. The project
+selected 20k for the first 5M baseline despite its fourfold node cost because
+the measured host projects to about 21 hours and the changed signs are material.
 
 ## Longer-term phases
 

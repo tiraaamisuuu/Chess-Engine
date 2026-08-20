@@ -131,6 +131,15 @@ The dataset manifest aggregates mean difference, MAE, RMSE, maximum absolute
 difference, and score-sign agreement. Use this evidence to decide whether 20k
 labels justify their cost.
 
+The completed 2026-08-20 diagnostic compared 127,784 identical positions.
+The 20k labels differed by 366.40 cp MAE and 3,260.28 cp RMSE, with 97.499%
+score-sign agreement (3,196 disagreements). The deeper budget is selected for
+the first 5M baseline: its fourfold node cost projects to about 21 hours on the
+measured eight-worker Ryzen 9 5900X host, while the sign changes are too common
+to treat the 5k labels as equivalent. See
+`docs/results/2026-08-20-stockfish-teacher-budget.md` for provenance, caveats,
+checksums, and the exact command.
+
 ## Audit data coverage
 
 Run the streaming audit before training:

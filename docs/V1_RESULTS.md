@@ -217,3 +217,22 @@ export, and C++ verification smoke. No new production network was trained from
 this smoke data. The next strength
 experiment is the documented five-million-position, 20k-node, 256-wide
 baseline; classical evaluation remains the default.
+
+## Stockfish teacher-budget decision — 2026-08-20
+
+Eight hash-isolated Stockfish 18 workers compared 5,000 and 20,000 nodes on
+127,784 identical positions sampled deterministically from the January 2013
+Lichess standard-rated CC0 archive. The run retained exactly 100,000 training
+and 12,572 game-disjoint validation records.
+
+The deeper labels differed by 366.40 cp MAE and 3,260.28 cp RMSE, with a
+maximum 32,540 cp difference. Score signs agreed on 97.499% of positions;
+3,196 positions (2.501%) changed which side was favoured. The result was
+consistent across all eight shards. At four times the fixed-node work, a 5M
+20k run projects to about 21 hours on the measured Ryzen 9 5900X configuration.
+
+The project therefore selects 20k labels for the first 5M, 256-wide HalfKP
+baseline. Production generation has not started because a modern monthly
+archive is not present locally. Full provenance, command, per-shard ranges,
+caveats, and output hashes are in
+`docs/results/2026-08-20-stockfish-teacher-budget.md`.
