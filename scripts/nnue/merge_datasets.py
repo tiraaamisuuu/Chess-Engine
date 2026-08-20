@@ -73,8 +73,12 @@ def teacher_contract(manifest: dict[str, object]) -> dict[str, object]:
                         else teacher.get("comparisonNodes"))
     identity = teacher.get("id") if isinstance(teacher.get("id"), dict) else None
     identities = teacher.get("identities")
-    if identity is None and isinstance(identities, list) and len(identities) == 1:
-        identity = identities[0] if isinstance(identities[0], dict) else None
+    if identity is not None:
+        normalized_identities = [identity]
+    elif isinstance(identities, list):
+        normalized_identities = [value for value in identities if isinstance(value, dict)]
+    else:
+        normalized_identities = []
     binary_checksums = teacher.get("binarySha256")
     binary_sha = teacher.get("sha256")
     if isinstance(binary_checksums, list):
@@ -86,7 +90,7 @@ def teacher_contract(manifest: dict[str, object]) -> dict[str, object]:
     return {
         "nodes": nodes,
         "comparisonNodes": comparison_nodes or None,
-        "identity": identity,
+        "identities": normalized_identities,
         "binarySha256": normalized_checksums,
     }
 
@@ -141,8 +145,11 @@ def validate_contracts(bundles: list[dict[str, object]]) -> dict[str, object]:
             raise ValueError("teacher node budgets differ across manifests")
         if teacher["comparisonNodes"] != first_teacher["comparisonNodes"]:
             raise ValueError("teacher comparison budgets differ across manifests")
-        if (teacher["identity"] is not None and first_teacher["identity"] is not None and
-                teacher["identity"] != first_teacher["identity"]):
+        teacher_identities = {json.dumps(value, sort_keys=True)
+                              for value in teacher["identities"]}
+        first_identities = {json.dumps(value, sort_keys=True)
+                            for value in first_teacher["identities"]}
+        if teacher_identities and first_identities and teacher_identities != first_identities:
             raise ValueError("teacher UCI identities differ across manifests")
         if split != first_split:
             raise ValueError("game split seed/fraction differ across manifests")
@@ -150,8 +157,8 @@ def validate_contracts(bundles: list[dict[str, object]]) -> dict[str, object]:
         "nodes": first_teacher["nodes"],
         "comparisonNodes": first_teacher["comparisonNodes"],
         "identities": [json.loads(value) for value in sorted(
-            {json.dumps(bundle["teacher"]["identity"], sort_keys=True)
-             for bundle in bundles if bundle["teacher"]["identity"] is not None},
+            {json.dumps(identity, sort_keys=True) for bundle in bundles
+             for identity in bundle["teacher"]["identities"]},
         )],
         "binarySha256": sorted(
             {checksum for bundle in bundles for checksum in bundle["teacher"]["binarySha256"]},
