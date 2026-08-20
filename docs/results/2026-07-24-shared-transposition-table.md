@@ -2,7 +2,7 @@
 
 Date: 2026-07-24
 
-Branch: `codex/v1-engine-rework`
+Branch: `dev/v1` (renamed after this measurement)
 
 Candidate revision: `8811c0e`
 
@@ -90,4 +90,3 @@ Four threads is the best tested multi-core setting at this fast control.
 None of these samples proves a gain over one thread, so one thread remains the
 default. Four threads is appropriate for continued experimental analysis and a
 longer, slower SPRT.
-

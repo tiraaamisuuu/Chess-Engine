@@ -2,7 +2,7 @@
 
 Date: 2026-07-24
 
-Branch: `codex/v1-engine-rework`
+Branch: `dev/v1` (renamed after this measurement)
 
 Candidate revision: `4504065`
 

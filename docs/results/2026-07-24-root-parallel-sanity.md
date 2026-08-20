@@ -2,7 +2,7 @@
 
 Date: 2026-07-24
 
-Branch: `codex/v1-engine-rework`
+Branch: `dev/v1` (renamed after this measurement)
 
 Runner revision: `38859132d491871f6fa7f5a7f6e4996f936e65c7`
 

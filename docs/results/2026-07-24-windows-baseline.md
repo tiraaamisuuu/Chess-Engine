@@ -1,7 +1,7 @@
 # Windows PC Baseline — 2026-07-24
 
 This is the first native Windows baseline for commit `2752f20184` on
-`codex/v1-engine-rework`. Results are local development telemetry, not an
+the v1 development line, now named `dev/v1`. Results are local development telemetry, not an
 absolute engine rating.
 
 ## Host and toolchain
@@ -18,7 +18,7 @@ absolute engine rating.
 - Python 3.14.0
 - VS Code 1.130.0
 
-The plain Codex process supplied duplicate `Path` and `PATH` environment keys.
+The initial host process supplied duplicate `Path` and `PATH` environment keys.
 MSBuild's .NET process launcher rejects that environment before invoking
 `cl.exe`. The verification build therefore initialized the Visual Studio x64
 environment and used its bundled Ninja generator. A normalized child
@@ -78,9 +78,9 @@ verified, extracted, UCI-handshaken, and registered as
 `external-stockfish-18`. The persistent engine library reports it as available
 with the `STOCKFISH · OFFICIAL` badge.
 
-Visible browser interaction could not be automated from this Codex session
-because the desktop browser-control runtime was denied access to its installed
-path. UI-only manual items therefore remain unclaimed in this baseline.
+Visible browser interaction was not completed during this baseline run because
+the desktop automation runtime could not access its installed path. UI-only
+items therefore remained unclaimed in this historical measurement.
 
 The pinned Cute Chess 1.5.1 Windows package installed and verified. The
 prescribed four-game workflow check compared `4f1bdc8` with `2752f20` at

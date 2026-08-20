@@ -24,12 +24,12 @@ The comparison command automatically downloads and verifies the CC0
 `UHO_4060_v4` opening suite from the official Stockfish books repository. The
 bundled 24-position suite is used only by `--quick` installation checks.
 
-## Compare the latest release with the rework
+## Compare the latest release with the v1 development line
 
 ```sh
 scripts/compare_engines.py \
   --baseline v0.4.0 \
-  --candidate codex/v1-engine-rework \
+  --candidate dev/v1 \
   --games 400 \
   --tc 10+0.1 \
   --threads 1 \
@@ -178,7 +178,7 @@ For a candidate expected to be at least five Elo stronger:
 ```sh
 scripts/compare_engines.py \
   --baseline v0.4.0 \
-  --candidate codex/v1-engine-rework \
+  --candidate dev/v1 \
   --games 10000 \
   --tc 10+0.1 \
   --sprt --elo0 0 --elo1 5
@@ -196,8 +196,8 @@ isolate the effect of two networks, use the same engine ref on both sides:
 
 ```sh
 scripts/compare_engines.py \
-  --baseline codex/v1-engine-rework \
-  --candidate codex/v1-engine-rework \
+  --baseline dev/v1 \
+  --candidate dev/v1 \
   --baseline-eval-file networks/network-a.nnue \
   --candidate-eval-file networks/network-b.nnue \
   --games 1000 --tc 10+0.1

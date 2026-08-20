@@ -1,8 +1,8 @@
 # v1 Development Results
 
-Measurements below are development telemetry from the same Apple Silicon host
-and may vary with background load. Match results are relative estimates between
-the named revisions, not absolute ratings.
+Measurements below are development telemetry from the named Apple Silicon or
+Windows host and may vary with toolchain and background load. Match results are
+relative estimates between the named revisions, not absolute ratings.
 
 ## Correctness and build
 
@@ -170,3 +170,46 @@ The training split covered 29,421 of 40,960 HalfKP inputs (71.8%). Of the full
 feature set, 11,539 inputs were unseen and 25,954 occurred at most 100 times.
 This is direct coverage evidence for scaling to millions of positions rather
 than tuning more epochs on this model.
+
+## Windows search pass — 2026-08-20
+
+The Windows Ryzen 9 5900X search pass tested each material search change in
+isolation. Incremental null moves preserved the 270,343-node depth-10 tree and
+reduced median runtime from 5,108 to 4,951 ms (3.1%). Qsearch SEE pruning then
+reduced the tree to 244,274 nodes and scored `38-28-34` over 100 paired fast
+games (55.0%, approximately +34.9 ±55.9 Elo, LOS 89.1%), so it was retained.
+
+Pawn correction history slowed the benchmark and scored exactly `34-34-32`
+over 100 games; it was reverted. A selection-scan replacement for full sorting
+was about 17.5% slower and was discarded before commit.
+
+Compact continuation history reduced the depth-10 tree further to 186,618
+nodes. Its 100-game diagnostic scored `37-31-32` (53.0%, approximately
++20.9 ±56.6 Elo, LOS 76.7%). It remains enabled provisionally, with a slower
+and longer paired test still required.
+
+Three current depth-10 runs returned the identical 186,618-node tree in 3,976,
+3,898, and 3,915 ms. The median was 3,915 ms (47,667 NPS) under the Visual
+Studio Release build. Full commands and caveats are recorded in
+`docs/results/2026-08-20-windows-search-and-nnue-tooling.md`.
+
+## Scalable NNUE data tooling — 2026-08-20
+
+The coordinator now supports exact target-sized training merges, per-worker
+headroom, progress/rate/ETA output, and optional same-position comparison at two
+teacher node budgets. Training metrics now include validation MAE and sign
+accuracy in addition to RMSE. A streaming audit reports HalfKP feature
+frequency/coverage and position distributions, while a portable merger combines
+checksummed Windows/Linux bundles under strict teacher and game-split contracts
+with global deduplication and train/validation leakage prevention.
+
+A two-worker Stockfish 18 smoke retained exactly 100 requested training and 92
+validation positions. Across 224 pre-merge labels, the 50-vs-100-node teacher
+comparison measured 22.75 cp MAE, 42.17 cp RMSE, and 96.88% score-sign
+agreement. Re-merging the two worker manifests reproduced the exact output
+checksums. The new audit also reproduced the earlier January 2013 corpus
+coverage exactly: 29,421/40,960 inputs (71.83%).
+
+No new production network was trained from this smoke data. The next strength
+experiment is the documented five-million-position, 20k-node, 256-wide
+baseline; classical evaluation remains the default.

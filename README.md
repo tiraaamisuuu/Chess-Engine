@@ -170,11 +170,11 @@ machine-readable manifests/results alongside every PGN and complete log.
 multi-rung Stockfish limited-strength ladders and emit a qualified local-pool
 rating report.
 
-Compare the latest release with the rework:
+Compare the latest release with the v1 development line:
 
 ```sh
 scripts/compare_engines.py \
-  --baseline v0.4.0 --candidate codex/v1-engine-rework \
+  --baseline v0.4.0 --candidate dev/v1 \
   --games 400 --tc 10+0.1
 ```
 
@@ -186,8 +186,8 @@ setup, and NNUE-vs-NNUE examples.
 ## NNUE
 
 The engine contains a tested, versioned HalfKP-v1 loader and incremental
-quantized inference backend. Classical evaluation stays active unless a network is loaded
-and explicitly enabled:
+quantized inference backend. Classical evaluation stays active unless a network
+is loaded and explicitly enabled:
 
 ```text
 setoption name EvalFile value networks/engine-v1.nnue
@@ -196,10 +196,13 @@ setoption name Use NNUE value true
 
 Dataset generation, PyTorch training, export commands, hardware guidance, and
 release requirements are documented in [docs/NNUE.md](docs/NNUE.md). The
-pipeline now includes compact provenance-tracked shards, resumable parallel
-teacher generation, resumable CUDA training, metrics, quantization checks, and
-an exact C++ export gate. An NNUE
-network is not bundled yet.
+pipeline includes streamed `.pgn.zst` input, target-sized compact datasets,
+resumable parallel Stockfish labelling, global deduplication, game-disjoint
+validation, teacher-budget comparison, feature/distribution audits,
+cross-machine merging, resumable CUDA training, validation metrics,
+quantization checks, and an exact C++ export gate. An NNUE network is not
+bundled yet because the models trained so far have not beaten classical
+evaluation.
 
 ## Repository layout
 

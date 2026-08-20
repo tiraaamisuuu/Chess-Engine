@@ -1,1268 +1,310 @@
-# Project Handoff: Windows PC, Strength Testing, and the v1 Roadmap
+# Project Status and Developer Handoff
 
-This document is the durable handoff for continuing the Chess Engine project in
-a new Codex chat or on a different computer. It records the repository state,
-the user's decisions, what is already implemented, how to reproduce the current
-results, the known limitations, and the recommended order of future work.
+This document records the current engineering state, reproducible development
+workflow, accepted/rejected experiments, and the highest-priority work needed
+to take the engine from the v1 development line to a release.
 
-The intended destination machine is:
+## Repository state
 
-- Windows 11
-- AMD Ryzen 9 5900X
-- NVIDIA RTX 3070 with 8 GB VRAM
-- 32 GB DDR4-3200
-- approximately 150–175 GB available if Linux is added later
+- Active development branch: `dev/v1`
+- Release branch: `main`
+- Classical evaluation remains the default.
+- NNUE is optional and fully wired, but no network has earned promotion.
+- Generated builds, datasets, downloaded engines, networks, match logs, and
+  environments are intentionally ignored by Git.
+- Do not merge `dev/v1` into `main` until the release gates below pass.
 
-The user is staying on native Windows for development, testing, Elo estimation,
-and NNUE training for now. CachyOS remains an optional future desktop project;
-it is not a prerequisite for this engine.
+Before changing the engine, fetch the remote, inspect the current branch and
+worktree, and read:
 
-## Copy this into the first message of the new Codex chat
+- `README.md`
+- `docs/V1_RESULTS.md`
+- `docs/V1_ROADMAP.md`
+- `docs/NNUE.md`
+- `docs/BENCHMARKING.md`
 
-```text
-Open this repository and read docs/PROJECT_HANDOFF.md completely before making
-changes. Treat it as the project handoff and follow its "New Codex chat startup
-checklist" in order.
+Preserve unrelated local changes. Keep search experiments in coherent commits,
+benchmark them, and use paired matches before treating a changed search tree as
+a strength improvement.
 
-The active development line is codex/v1-engine-rework, not main. First inspect
-git status, fetch the remote, confirm the branch is current, build the headless
-engine, run the available Windows tests, launch the local web GUI, and report
-exactly what passed or failed. Preserve existing work and do not reset or
-rewrite history.
+## Project goals and non-negotiable defaults
 
-After the PC environment is verified, continue the roadmap in the handoff. The
-first product task should be the Windows-native testing and calibrated engine
-rating workflow. Do not begin serious NNUE training until the benchmark
-baseline, data provenance, dataset format, validation split, and incremental
-NNUE evaluation plan are sound.
+The objective is a correct, materially stronger modern C++ engine with a
+repeatable improvement loop for classical search and NNUE. Work should improve
+measured strength, efficiency, correctness, training quality, reproducibility,
+or project usability.
 
-Commit coherent changes to the codex/v1-engine-rework branch with descriptive
-messages and push them. Never claim an absolute Elo from a single game-analysis
-website score or from a small match.
-```
+The following defaults are deliberate:
 
-## Authoritative repository state
+- C++17 remains the engine language. It provides predictable data layout,
+  mature optimizing compilers, direct SIMD/thread control, and an established
+  chess-engine ecosystem. A Rust rewrite would consume substantial effort
+  without inherently producing more Elo or NPS.
+- One search thread remains the default. Root parallelism is safe and improves
+  aggregate throughput on this host, but has not yet demonstrated an equal-time
+  Elo gain.
+- Classical evaluation remains the default until NNUE beats it in a properly
+  powered paired test.
+- The HalfKP hidden width remains 256 for the next large-data experiment, so
+  the effect of data scale is measured independently from architecture changes.
+- Failed experiments remain documented; rejected code should be reverted or
+  cleanly disabled.
 
-- GitHub repository:
-  `https://github.com/tiraaamisuuu/Chess-Engine.git`
-- Development branch: `codex/v1-engine-rework`
-- Stable/default branch: `main`
-- Current public legacy release/tag: `v0.4.0`
-- The v1 branch started from `main` commit `518a3c1`.
-- At the time this handoff was written, the code tip immediately before the
-  handoff commit was `9214b17`.
-- The development branch was 21 code commits ahead of `main` and zero behind
-  after fetching all remotes and tags.
-- The worktree was clean and matched `origin/codex/v1-engine-rework`.
+## Current architecture
 
-Always verify rather than assuming those facts remain current:
+### Build targets
 
-```powershell
-git fetch --all --prune --tags
-git status --short --branch
-git branch -vv
-git rev-list --left-right --count origin/main...origin/codex/v1-engine-rework
-git log --oneline --decorate -15
-```
-
-Do not develop from `main` by accident. Do not reset the development branch to
-`main`; `main` intentionally does not contain the v1 work yet.
-
-## What the user wants
-
-The user's long-term objective is not merely a playable school-project engine.
-They want to turn the existing repository into a clean, measurable, extensible
-engine project and push it as far as the available hardware and time allow.
-
-The agreed direction is:
-
-1. Keep the existing repository and history.
-2. Build v1 as a clean release on a development branch rather than throwing the
-   entire engine away.
-3. Make correctness and repeatable testing non-negotiable.
-4. Measure every search/evaluation improvement with controlled paired games.
-5. Use the web GUI as the primary interface.
-6. Retain the SFML application only as a legacy fallback during the transition.
-7. Support current, legacy, external UCI, Stockfish, and future NNUE profiles.
-8. Train an NNUE later on the Ryzen 9/RTX 3070 PC.
-9. Do not use the old account/repository handle as the engine's product name.
-   The product is currently simply **Chess Engine** and deliberately has no
-   invented brand name.
-10. Commit and push coherent progress frequently.
-
-The GitHub owner name remains present in the repository URL because it is the
-account name. It must not be reintroduced into UI copy, engine branding, game
-metadata defaults, or documentation as a product name.
-
-## Terminology
-
-- **Engine**: the C++ executable that accepts positions, searches them, and
-  chooses moves.
-- **Revision/build**: a compiled version of the engine from a Git commit or tag.
-- **Classical evaluation**: the hand-written material, piece-square, pawn,
-  mobility, rook-file, passed-pawn, and king-safety scoring.
-- **NNUE network/model**: a trained weight file loaded by the engine to replace
-  classical evaluation. The model is not the whole engine.
-- **Stockfish**: an external UCI engine used as an opponent, teacher, and rough
-  calibration reference.
-- **Relative Elo**: the estimated strength difference between two engines in a
-  controlled match.
-- **Absolute/anchored rating**: an approximate rating inferred by playing a
-  calibrated pool. It is environment- and pool-dependent and should never be
-  presented as universal human Elo.
-- **Game performance rating**: a website's estimate for one played game. This
-  is not an engine Elo rating.
-
-## What is already implemented
+- `chess-engine-uci`: standalone UCI engine for GUIs and tournament runners
+- `chess-engine-tools`: perft, FEN/evaluation inspection, and fixed-position
+  benchmarking
+- `chess-core-tests`: deterministic core/search/NNUE tests
+- `gui`: legacy SFML 2.6 desktop interface when `CHESS_BUILD_GUI=ON`
+- `web/server.py`: local web interface and UCI bridge
 
 ### Chess core and correctness
 
-- Full legal move generation, including castling, en passant, and promotion.
-- Make/unmake with deterministic state restoration.
-- FEN loading, validation, and round-tripping.
-- UCI and SAN move notation.
-- Zobrist hashing with repetition-correct en-passant treatment.
-- Threefold repetition, fifty-move, insufficient-material, stalemate, and
-  checkmate adjudication.
-- Transposition-table collision handling.
-- Fixed-capacity move lists in recursive search/perft paths.
-- Standard six-position perft suite through depth 4.
-- Randomized make/unmake and incremental-hash tests.
+The board uses incremental make/unmake state, Zobrist hashing, cached king
+squares, bounded stack move lists, legal filtering, and explicit state for
+castling, en passant, repetition, halfmove/fullmove counters, and promotion.
+Dedicated incremental null moves update only the relevant state and hash.
 
-### Search
+Tests cover standard six-position perft, randomized make/unmake and hash
+invariants, null moves, FEN round trips, SAN, repetition/draw rules, castling,
+en passant, promotions, mate-score normalization, transposition-table
+collisions, incremental NNUE accumulators, and UCI lifecycle/options.
 
-- Iterative deepening.
-- Alpha-beta/negamax with principal-variation search.
-- Quiescence search.
-- Transposition table.
-- Aspiration windows.
-- Null-move pruning with verification behavior.
-- Late-move reductions.
-- Razoring and shallow futility pruning.
-- Mate-distance pruning.
-- Killer, history, capture-history, and countermove ordering.
-- Static exchange evaluation for captures.
-- Soft and hard time limits.
-- Configurable UCI move overhead.
-- Experimental root-parallel search.
+### Search techniques currently implemented
 
-One thread remains the default. Multi-thread search no longer has the original
-catastrophic scaling behavior, but it has not yet proved a positive equal-time
-Elo gain and must not be made the default without match evidence.
+The engine is well beyond basic minimax and alpha-beta. Its current search
+includes:
 
-### Classical evaluation
+- iterative deepening with principal-variation search
+- aspiration windows around the previous iteration
+- quiescence search with delta and SEE-based losing-capture pruning
+- transposition table with bound-aware probing and mate-score normalization
+- null-move pruning with verification safeguards
+- internal iterative deepening/reduction support
+- reverse futility pruning, razoring, ordinary futility pruning, and late-move
+  pruning
+- late-move reductions adjusted by search context
+- static exchange evaluation for captures
+- MVV/LVA-style capture ordering plus capture history
+- killer moves, butterfly history, continuation history, and countermoves
+- check/search extensions and draw/mate-distance handling
+- time management with configurable move overhead and safe stop checks
+- optional persistent root-parallel workers and a shared concurrent TT
 
-The current evaluator includes:
+Move ordering still uses a full sort. A lazy selection experiment was slower on
+this engine and was rejected; a future staged picker should avoid rescanning
+and be benchmarked against the present implementation.
 
-- material
-- tapered piece-square terms
-- bishop pair
-- pawn structure
-- passed pawns
-- rook-file terms
-- allocation-free pseudo-mobility
-- king centralization, shelter, and castling-related terms
+### Evaluation
 
-The terms are still primarily hand-authored. They have not undergone a complete
-Texel/SPSA-style automated tuning campaign.
+Classical evaluation contains material, piece-square, mobility, pawn-structure,
+king-safety, bishop-pair, rook-file, and tapered phase terms. Mobility counting
+is allocation-free.
 
-### UCI executable
+The optional `HalfKP-v1` NNUE backend has a versioned loader, quantized integer
+inference, UCI `EvalFile`/`Use NNUE` controls, and a per-ply incremental
+accumulator stack. King moves rebuild only the affected perspective. Incremental
+and full-rebuild paths are required to produce identical values and search
+trees.
 
-The independent `chess-engine-uci` target supports:
+### Interfaces and test infrastructure
 
-- `uci`, `isready`, `ucinewgame`, `position`, `go`, `stop`, and `quit`
-- FEN and start-position setup
-- `go depth`, `movetime`, clocks/increments, `movestogo`, `infinite`, and
-  `searchmoves`
-- `Hash`
-- `Threads`
-- `Move Overhead`
-- `Clear Hash`
-- `EvalFile`
-- `Use NNUE`
+The local web GUI supports PvP, PvC, CvC, independent engine profiles, external
+UCI engines, live analysis/PV, PGN/FEN/JSON export, board flipping, undo,
+promotion, and visible radial/status countdowns while an engine is thinking.
 
-Current UCI identity:
+Strength tooling builds committed refs in isolation, uses paired reversed-color
+openings through Cute Chess, records binary/opening/configuration checksums, and
+emits machine-readable manifests/results. A Stockfish limited-strength ladder
+and fixed-position thread-scaling benchmark are also available.
 
-```text
-id name Chess Engine v1.0-dev
-id author Alfie Corthine
-```
+## Development environment verification
 
-### Web GUI
+The current Windows host is a Ryzen 9 5900X, RTX 3070 8 GB, and 32 GB RAM with
+Visual Studio/MSVC, CMake, Git, and Python installed. A fresh development
+session should run the following checklist before feature work.
 
-The web UI is the primary interface. It is a local Python HTTP service using
-`python-chess`, a vanilla HTML/CSS/JavaScript frontend, and real UCI engine
-processes. It binds to `127.0.0.1` by default.
-
-Implemented behavior includes:
-
-- the New Game setup dialog opens on first load
-- PvP, PvC, and CvC
-- human side selection
-- independent white and black engines in CvC
-- board flipping
-- click-to-move
-- pointer-following drag-and-drop without leaving a duplicate source piece
-- legal-move indicators
-- promotion selection
-- undo
-- move list
-- game state and termination display
-- evaluation bar
-- on-demand analysis, depth, score, nodes, NPS, time, and PV
-- autoplay/pause for CvC
-- responsive desktop/mobile layout
-- sharp minimalist visual design
-- engine-role badges for development, candidate, baseline/legacy, external,
-  Stockfish, and NNUE profiles
-- magnetic thinking-time slider from 50 ms to 10 seconds
-- presets at 250 ms, 650 ms, 1.5 seconds, 5 seconds, and 10 seconds
-- PGN, FEN, and JSON export
-- editable PGN Event/White/Black metadata
-- copy and file-download export actions
-- persistent external UCI engine library
-- verified one-click official Stockfish 18 installation for supported platforms
-- importing and removing other trusted UCI executables
-
-The built-in Stockfish installer downloads a pinned platform archive, verifies
-its SHA-256, extracts the expected executable and GPL files, performs a UCI
-handshake, and stores it under the ignored `.tools/user-engines/` directory.
-External engines run with the user's local account permissions and must be
-treated as trusted executables.
-
-### Engine comparison workflow
-
-`scripts/compare_engines.py`:
-
-- accepts two committed Git refs
-- accepts existing external UCI executables on either side
-- discovers UCI identity, supported options, and option bounds at runtime
-- validates repeated arbitrary UCI options per engine
-- archives and builds each ref in isolated ignored directories
-- installs/discovers Cute Chess
-- downloads and verifies the Stockfish UHO 4060 opening suite
-- plays paired openings with reversed colours
-- applies equal thread/hash/time settings
-- supports ordinary fixed-game matches and SPRT
-- writes complete logs and PGNs under `artifacts/elo/`
-- writes checksummed machine-readable match manifests and result summaries
-- registers the resulting local binaries as web GUI engine profiles
-- can compare two NNUE files with the same engine revision
-
-Git-based selections must resolve to committed refs because the builder
-intentionally uses `git archive`; external selections use an existing
-checksummed executable.
-
-`scripts/calibrate_rating.py` runs a deterministic multi-rung Stockfish
-limited-strength ladder on top of the same paired runner. It validates
-`UCI_Elo` rungs against the live engine bounds, pins Git candidates to an exact
-commit, skips completed rungs when resumed, preserves incomplete attempts, and
-writes aggregate JSON plus a deliberately qualified local-pool report.
-
-### NNUE foundation
-
-The repository contains:
-
-- a versioned `HalfKP-v1` feature contract
-- a binary loader with magic/version/shape validation
-- quantized C++ inference
-- a deterministic loader/inference test fixture
-- a PGN-to-labelled-JSONL generator using a UCI teacher
-- versioned compact 42-byte shards with deterministic game-level splitting
-- source, teacher, option, data, and output provenance/checksum manifests
-- deterministic position deduplication
-- deterministic multi-process teacher shards with checksum-validated resume
-- global shard merge/deduplication and train/validation leakage removal
-- streaming plain or Zstandard-compressed PGN input
-- a PyTorch `EmbeddingBag` training implementation
-- game-disjoint validation with JSON/CSV metrics
-- direct quantized `.nnue` export
-- resumable optimizer/scheduler/RNG checkpoints and best-model selection
-- measured float-to-integer quantization error
-- an optional exact Python-to-C++ export gate
-- UCI and web profile loading
-
-There is no bundled trained network yet. Classical evaluation remains the
-default.
-
-Search now uses a per-ply incremental accumulator stack. Ordinary moves apply
-piece-feature deltas; king moves rebuild only the affected perspective. The
-full-rebuild evaluator remains selectable in the benchmark as a correctness and
-performance reference.
-
-## Important development commits
-
-These commits explain how the present branch evolved:
-
-- `d42322a` — v1 headless core and correctness baseline
-- `f7c2d31` — NNUE pipeline and stronger search infrastructure
-- `1c197e1` — runner-portable CI gates
-- `9de940e` — paired engine testing and minimalist web GUI
-- `3e01127` — configurable matches and true pointer drag behavior
-- `1bd6c7e` — clear engine generations and recorded match results
-- `4f1bdc8` — game export and repaired web analysis
-- `f88a255` — magnetic engine-time controls
-- `40026f2` — persistent external UCI engine library
-- `814f95f` — allocation-free classical mobility
-- `6d22b62` — fixed recursive move lists
-- `dea7450` — reduced search timing overhead
-- `3ab4451`, `dcdaaa0`, `2d5c805` — low-clock safety and UCI move overhead
-- `48f6352` — low-clock tournament verification
-- `e177ae6` — deterministic low-budget testing
-- `018b547` — setup-first onboarding and Stockfish import
-- `89119ae` — verified one-click Stockfish installer
-- `9214b17` — preserve the actively selected setup opponent
-
-Use `git show <commit>` when a future change regresses one of these behaviors.
-
-## Repository structure
-
-```text
-.github/workflows/
-  ci.yml                  Linux/macOS/Windows headless CI, sanitizers, web smoke
-  release.yml             tag-triggered cross-platform ZIP release workflow
-
-assets/
-  pieces/                 SVG pieces used by the web GUI
-  pieces_png/             PNG pieces used by the SFML GUI
-
-docs/
-  BASELINE.md             pre-v1 correctness and performance baseline
-  BENCHMARKING.md         paired games, SPRT, and network comparisons
-  NNUE.md                 current training/export contract
-  PROJECT_HANDOFF.md      this handoff and full continuation plan
-  V1_RESULTS.md           measured development results
-  V1_ROADMAP.md           short release-level roadmap
-
-scripts/
-  compare_engines.py      committed-ref paired match builder/runner
-  install_cutechess.*     pinned Cute Chess installers
-  run_web_gui.*           build/venv/server launchers
-  run_quality_gate.sh     regression plus UCI smoke on POSIX
-  run_regression.sh       perft plus fixed-position benchmark
-  run_uci_smoke.sh        UCI lifecycle/options/searchmoves checks
-  run_sanitizers.sh       ASan/UBSan gate
-  nnue/
-    generate_dataset.py   PGN sampling and Stockfish teacher labelling
-    generate_shards.py    resumable multi-process teacher orchestration
-    train.py              PyTorch training and quantized export
-    requirements.txt      NNUE Python dependencies
-
-src/
-  chess_types.hpp         pieces, moves, fixed lists, hashes, TT
-  board.hpp               board state, rules, move generation, FEN, SAN
-  game_status.hpp         terminal state and draw adjudication
-  evaluation.hpp          classical evaluation and evaluator selection
-  nnue.hpp                HalfKP-v1 loader and quantized inference
-  see.hpp                 static exchange evaluation
-  search.hpp              search, perft, and benchmark implementation
-  time_management.hpp     GUI and UCI time allocation
-  uci.cpp/.hpp            standalone UCI protocol service
-  uci_main.cpp            UCI executable entry point
-  tools_main.cpp          perft/divide/benchmark executable
-  main.cpp, ui.cpp/.hpp   legacy SFML application
-
-tests/
-  core_tests.cpp          deterministic C++ correctness tests
-  openings.epd            small quick-check paired opening suite
-  web_api_smoke.py        real-engine HTTP/API smoke test
-
-web/
-  server.py               local HTTP/UCI bridge and engine library
-  index.html              application structure and dialogs
-  styles.css              visual system and responsive layout
-  app.js                  board interaction and API client
-```
-
-The chess core is currently header-heavy. This makes small experiments easy but
-increases compile coupling and is not the ideal final module boundary.
-
-## What has been measured
-
-### Correctness
-
-- Headless and GUI configurations have built successfully on the original
-  Apple Silicon development host.
-- C++ core and UCI CTest targets passed.
-- Six-position perft passed through depth 4.
-- The web API smoke test passed against a real UCI engine.
-- NNUE Python files passed syntax compilation.
-- CI was configured for Linux, macOS, Windows, sanitizers, and the real-engine
-  web smoke test.
-
-Always check the live GitHub CI state again before release.
-
-### Throughput
-
-On the Apple M3 development host:
-
-- replacing full pseudo-move-vector generation in the mobility evaluator with
-  an allocation-free counter improved the identical depth-12 search tree by
-  approximately 11.8%
-- fixed-capacity recursive move lists improved an identical depth-11 tree by a
-  further median 11.5%
-- reduced clock sampling and faster material checks improved the same tree by a
-  further median 4.4%
-
-NPS improvements are useful telemetry, not direct Elo proof.
-
-### Relative matches
-
-Preliminary candidate versus `v0.4.0`, 100 paired games, UHO openings,
-`2+0.02`, one thread, 256 MB hash:
-
-| Candidate wins | Legacy wins | Draws | Score | Relative Elo |
-|---:|---:|---:|---:|---:|
-| 70 | 13 | 17 | 78.5% | +225.0 ± 73.7 |
-
-Optimized search revision versus its pre-optimization revision, 100 paired games
-under the same fast conditions:
-
-| Optimized wins | Earlier wins | Draws | Score | Relative Elo |
-|---:|---:|---:|---:|---:|
-| 48 | 25 | 27 | 61.5% | +81.4 ± 59.8 |
-
-These samples are promising but too small and too fast for a release-grade Elo
-claim.
-
-### Interpreting the Chessigma screenshots
-
-The user observed approximately:
-
-- 1500 versus 1350 game-performance scores when the engines had a short budget
-- 2250 versus 1850 when the engines had roughly 10 seconds per move
-- a previous game-performance score near 2500 when the old engine had around
-  five seconds per move against a human
-
-These results correctly demonstrate that additional search time can materially
-improve move quality and expose differences between revisions. They do not
-establish an absolute engine rating. Game length, position type, opponent
-errors, opening familiarity, and the analysis site's estimator all affect a
-single-game result.
-
-## What the user must do on the Windows PC
-
-### 1. Install the base tools
-
-Use Windows 11, VS Code, and the native MSVC toolchain. WSL and Ubuntu are not
-required.
-
-In PowerShell:
+### 1. Synchronize and inspect
 
 ```powershell
-winget install -e --id Microsoft.VisualStudioCode
-winget install -e --id Git.Git
-winget install -e --id Kitware.CMake
-winget install -e --id Ninja-build.Ninja
-winget install -e --id Python.Python.3.12
-winget install -e --id Microsoft.PowerShell
+git fetch --all --prune
+git switch dev/v1
+git pull --ff-only
+git status --short --branch
+git log -5 --oneline --decorate
 ```
 
-Install **Visual Studio Build Tools 2026** and select:
+Do not discard a dirty worktree. Identify and preserve pre-existing changes.
 
-- Desktop development with C++
-- current MSVC x64/x86 build tools
-- Windows 11 SDK
-- C++ CMake tools for Windows
-
-Recommended VS Code extensions:
-
-- C/C++ Extension Pack by Microsoft
-- Python by Microsoft
-
-Install a current NVIDIA driver and confirm:
+### 2. Verify tools
 
 ```powershell
+cmake --version
+git --version
+python --version
 nvidia-smi
 ```
 
-Do not install an arbitrary full CUDA Toolkit yet. Select the CUDA-enabled
-PyTorch build compatible with the installed driver when the NNUE environment is
-created.
+The verified Windows compiler is MSVC 19.50 with Windows SDK 10.0.26100. A
+standalone Ninja installation is not required; the Visual Studio generator is
+supported.
 
-Optional visual customization can use GlazeWM/Zebar later. Do not introduce it
-while diagnosing the initial build.
-
-### 2. Clone the correct branch
-
-Suggested layout:
-
-```text
-D:\Dev\Chess-Engine
-D:\ChessData
-D:\EngineMatches
-D:\NNUE
-```
-
-Clone:
-
-```powershell
-New-Item -ItemType Directory -Force D:\Dev
-Set-Location D:\Dev
-git clone --branch codex/v1-engine-rework `
-  https://github.com/tiraaamisuuu/Chess-Engine.git
-Set-Location D:\Dev\Chess-Engine
-git status --short --branch
-git log -1 --oneline --decorate
-code .
-```
-
-If the repository is already cloned:
-
-```powershell
-Set-Location D:\Dev\Chess-Engine
-git status --short --branch
-git fetch --all --prune --tags
-git switch codex/v1-engine-rework
-git pull --ff-only
-```
-
-Do not run `git reset --hard` to make an existing checkout match the remote.
-Inspect and preserve unexpected local files or changes.
-
-### 3. Give the new Codex chat the repository
-
-Create/open the `D:\Dev\Chess-Engine` project in Codex, paste the prompt from
-the top of this document, and allow the new chat to run the startup checklist.
-
-The new chat should do the technical verification. The user should not be
-expected to diagnose compiler, CMake, Python, UCI, or test failures manually.
-
-## New Codex chat startup checklist
-
-The new Codex agent should complete these steps before feature development.
-
-### A. Inspect before modifying
-
-```powershell
-git status --short --branch
-git remote -v
-git fetch --all --prune --tags
-git branch -vv
-git log --oneline --decorate -15
-```
-
-Read completely:
-
-- `docs/PROJECT_HANDOFF.md`
-- `README.md`
-- `docs/V1_RESULTS.md`
-- `docs/BENCHMARKING.md`
-- `docs/NNUE.md`
-- `.github/workflows/ci.yml`
-
-Check for unexpected user changes and preserve them.
-
-### B. Build the current headless engine
-
-This path does not require SFML:
+### 3. Configure, build, and test
 
 ```powershell
 cmake -S . -B build-pc -DCHESS_BUILD_GUI=OFF -DBUILD_TESTING=ON
 cmake --build build-pc --config Release --parallel
 ctest --test-dir build-pc -C Release --output-on-failure
-```
-
-Expected Windows executables:
-
-```text
-build-pc\Release\chess-engine-uci.exe
-build-pc\Release\chess-engine-tools.exe
-build-pc\Release\chess-core-tests.exe
-```
-
-Run direct sanity checks:
-
-```powershell
-.\build-pc\Release\chess-core-tests.exe
 .\build-pc\Release\chess-engine-tools.exe --perft-tests --max-depth 4
-.\build-pc\Release\chess-engine-tools.exe --bench --bench-depth 8 `
-  --bench-time 4000 --bench-tt 256 --threads 1
 ```
 
-Record the PC compiler, CPU, executable commit, benchmark output, and test
-results in a new dated document under `docs/results/` or another deliberate
-tracked location. Do not commit generated binaries or raw large artifacts.
+Executable naming can vary slightly by generator. `ctest -N -C Release` and the
+contents of `build-pc\Release` show the authoritative targets.
 
-### C. Validate the web interface
-
-Launch:
+### 4. Record a fixed-position baseline
 
 ```powershell
-.\scripts\run_web_gui.ps1
+.\build-pc\Release\chess-engine-tools.exe `
+  --bench --bench-depth 8 --bench-tt 256 --threads 1
 ```
 
-The script creates `.venv-web`, installs `web/requirements.txt`, builds the
-headless engine if needed, starts the local service, and opens the browser.
+Record the commit, compiler, exact command, nodes, time, and NPS under
+`docs/results/`. Fixed depth is useful for performance changes intended to keep
+the tree identical; node count alone is not playing-strength evidence.
 
-Manually verify:
-
-1. New Game appears immediately.
-2. PvP starts and permits both sides.
-3. PvC exposes side, engine, orientation, and time controls.
-4. CvC exposes separate white and black engine choices.
-5. Dragging makes the selected piece follow the pointer without duplicating it.
-6. Flip works.
-7. Presets move the slider and custom values snap gently near presets.
-8. Analysis returns score/depth/PV after a position exists.
-9. PGN, FEN, and JSON export can be copied and downloaded.
-10. PGN imports successfully into Chessigma or another PGN parser.
-11. Install Stockfish downloads and selects the verified official engine.
-12. Stockfish appears clearly labelled in the engine library and selectors.
-
-Run the automated web smoke test against the built engine:
+### 5. Verify the web path
 
 ```powershell
-py -3 tests\web_api_smoke.py `
+powershell -ExecutionPolicy Bypass -File .\scripts\run_web_gui.ps1
+```
+
+The launcher builds when necessary, creates `.venv-web`, starts the local UCI
+bridge, and opens the browser. For noninteractive API verification:
+
+```powershell
+.\.venv-web\Scripts\python.exe tests\web_api_smoke.py `
   --engine .\build-pc\Release\chess-engine-uci.exe
 ```
 
-### D. Install and verify Cute Chess
+### 6. Verify NNUE tooling when it is in scope
 
 ```powershell
-.\scripts\install_cutechess.ps1
+Get-ChildItem scripts\nnue\*.py | ForEach-Object {
+  .\.venv-nnue\Scripts\python.exe -m py_compile $_.FullName
+}
+.\.venv-nnue\Scripts\python.exe tests\nnue_dataset_tests.py
+.\.venv-nnue\Scripts\python.exe tests\nnue_training_tests.py
 ```
 
-The default `--quick` comparison uses `v0.4.0` as the baseline, and `v0.4.0`
-still requires SFML 2.6 to compile. For a first headless workflow check, compare
-against the first v1 commit instead:
-
-```powershell
-py -3 scripts\compare_engines.py `
-  --baseline 4f1bdc8 `
-  --candidate HEAD `
-  --quick
-```
-
-Four quick games only verify builds, UCI communication, openings, and the
-tournament runner. They say nothing meaningful about strength. Revision
-`4f1bdc8` is used for this smoke test because it is a headless v1 revision with
-the current executable names; the earliest v1 headless commits used obsolete
-target filenames that the comparison discoverer intentionally ignores.
-
-### E. Report before continuing
-
-The new chat should report:
-
-- active branch and commit
-- tool versions
-- build result
-- core/perft/CTest result
-- web smoke result
-- manual GUI findings
-- Cute Chess quick-check result
-- any Windows-only issues
-- exact files changed, if fixes were necessary
-
-Only then should it start the next roadmap phase.
-
-## Legacy `v0.4.0` comparison warning
-
-Current v1 builds without SFML. The `v0.4.0` source does not: its UCI protocol
-lives inside the SFML `gui.exe`.
-
-To build `v0.4.0` through `compare_engines.py` on Windows:
-
-1. Install SFML 2.6.x, not SFML 3.
-2. Ensure the SFML package matches the MSVC architecture/toolchain.
-3. Pass its prefix to the comparison script:
-
-```powershell
-py -3 scripts\compare_engines.py `
-  --baseline v0.4.0 `
-  --candidate HEAD `
-  --games 100 `
-  --tc 10+0.1 `
-  --threads 1 `
-  --hash 256 `
-  --concurrency 4 `
-  --sfml-prefix C:\Libraries\SFML-2.6.2
-```
-
-The preferred future fix is to make the benchmark tooling accept an existing
-legacy UCI binary as a baseline or provide a reproducible verified legacy
-package. Do not force all modern development to depend on SFML merely to retain
-one historical opponent.
-
-## Benchmarking rules
-
-These rules must be followed for strength claims:
-
-1. Compare committed revisions.
-2. Use a balanced opening suite.
-3. Play each opening with reversed colours.
-4. Give both engines identical clocks, increments, threads, hash, and tablebase
-   access.
-5. Record engine commit hashes and network checksums.
-6. Keep the PC on AC power and disable sleep for long runs.
-7. Close games, browsers, launchers, indexing, and other heavy workloads.
-8. Keep CPU power mode, cooling, and concurrency stable between tests.
-9. Do not combine Mac and PC games in the same statistical result.
-10. Treat crashes and time forfeits as bugs, not merely match noise.
-11. Preserve PGN and complete logs until the result is reviewed.
-12. Report confidence/error intervals, not only the point estimate.
-13. Do not promote a patch because it searches more nodes or looks clever.
-14. Reject or retest changes with inconclusive evidence.
-
-Suggested PC progression:
-
-### Installation check
-
-```powershell
-py -3 scripts\compare_engines.py `
-  --baseline 4f1bdc8 --candidate HEAD --quick
-```
-
-### Initial legacy sanity match
-
-After solving the SFML baseline dependency:
-
-```powershell
-py -3 scripts\compare_engines.py `
-  --baseline v0.4.0 `
-  --candidate HEAD `
-  --games 100 `
-  --tc 10+0.1 `
-  --threads 1 `
-  --hash 256 `
-  --concurrency 4 `
-  --sfml-prefix C:\Libraries\SFML-2.6.2
-```
-
-### Better preliminary estimate
-
-```powershell
-py -3 scripts\compare_engines.py `
-  --baseline v0.4.0 `
-  --candidate HEAD `
-  --games 400 `
-  --tc 10+0.1 `
-  --threads 1 `
-  --hash 256 `
-  --concurrency 6 `
-  --sfml-prefix C:\Libraries\SFML-2.6.2
-```
-
-The Ryzen 9 5900X has enough cores for approximately 4–6 one-thread concurrent
-games, but the new chat should measure throughput, temperature, and time-loss
-behavior rather than blindly maximizing concurrency.
-
-### Release-grade search change
-
-For a candidate expected to gain at least five Elo:
-
-```powershell
-py -3 scripts\compare_engines.py `
-  --baseline <known-good-commit> `
-  --candidate <candidate-commit> `
-  --games 10000 `
-  --tc 10+0.1 `
-  --threads 1 `
-  --hash 256 `
-  --concurrency 6 `
-  --sprt --elo0 0 --elo1 5
-```
-
-SPRT may stop before the maximum game count.
-
-## Absolute Elo estimation plan
-
-The repository now measures relative Elo between Git revisions or external
-executables and can run a resumable limited-strength Stockfish ladder. It does
-not yet have the larger, slower, multi-time-control game sample needed for a
-defensible anchored rating. Producing that evidence remains the first major PC
-product task.
-
-### Required implementation
-
-Extend the match tooling, preferably without duplicating the paired-game logic,
-to support:
-
-- external UCI executable paths as either side
-- arbitrary repeated UCI options per engine
-- engine names and version metadata
-- Stockfish `UCI_LimitStrength`/`UCI_Elo` when exposed
-- runtime discovery of supported option bounds instead of hard-coded assumptions
-- multiple opponents/rating rungs
-- resuming interrupted matches
-- a machine-readable result summary
-- PGN and complete logs per rung
-- a final report with score, relative Elo, uncertainty, crashes, and time losses
-- optional round-robin output suitable for Ordo/BayesElo-style analysis
-
-### Calibration procedure
-
-1. Pin one Stockfish binary by version and SHA-256.
-2. Query its UCI options and discover the supported limited-strength range.
-3. Pick several rungs around the engine's apparent strength.
-4. Use the same balanced openings and reversed colours at every rung.
-5. Use the same time control and hardware allocation at every rung.
-6. Run enough games to identify where the engine scores near 50%.
-7. Fit/report the rating estimate with a wide honest interval.
-8. Repeat at a second time control to show how sensitive the estimate is.
-9. Label the result as a rating in this specific test pool, not universal Elo.
-10. Cross-check against at least one independently implemented UCI engine if a
-    stronger public claim is desired.
-
-Stockfish's `Skill Level` is useful for gameplay but is not itself a standardized
-Elo scale. Prefer its explicit limited-strength controls when available and
-still treat them as calibration anchors rather than ground truth.
-
-Do not automate games against public chess accounts as an Elo shortcut. Use
-local UCI matches and respect platform rules.
-
-## NNUE plan
-
-The hardware is sufficient for a sensible 256-wide HalfKP network. The RTX 3070
-can train the network; the Ryzen 9 is useful for teacher labelling. Teacher
-generation is likely to dominate wall-clock time.
-
-### Do not start with a giant training run
-
-Use staged gates:
-
-1. **Pipeline smoke**: a few thousand positions, one epoch, prove CUDA,
-   checkpointing, export, C++ load, and inference agreement.
-2. **Small experiment**: hundreds of thousands of positions, test loss design,
-   validation isolation, throughput, and engine integration.
-3. **Medium candidate**: one to five million positions, tune training and run
-   classical-vs-NNUE matches.
-4. **Serious candidate**: five to twenty million diverse positions only after
-   the earlier experiments justify the compute and storage.
-
-### Environment
-
-Create an isolated environment:
-
-```powershell
-py -3.12 -m venv .venv-nnue
-.\.venv-nnue\Scripts\python.exe -m pip install --upgrade pip
-```
-
-Install the CUDA-enabled PyTorch command selected from the official PyTorch
-installer for the installed NVIDIA driver, then:
-
-```powershell
-.\.venv-nnue\Scripts\python.exe -m pip install `
-  -r scripts\nnue\requirements.txt
-.\.venv-nnue\Scripts\python.exe -c `
-  "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
-```
-
-Do not commit `.venv-nnue`, datasets, checkpoints, generated networks, or
-downloaded engines.
-
-### Dataset requirements
-
-- Only use legally obtained PGNs/positions with recorded provenance and licence.
-- Split train and validation by whole games, not random positions from the same
-  games.
-- Deduplicate positions or at minimum measure duplicates.
-- Retain tactical positions, quiet positions, endgames, imbalances, and diverse
-  king locations.
-- Avoid flooding the dataset with near-identical opening positions.
-- Store teacher version, teacher options, nodes/depth, generator commit, seed,
-  input checksum, and generation date.
-- Generate multiple independent shards.
-- Keep a deterministic small fixture for CI.
-
-JSONL remains available for inspection. Serious generation uses the versioned
-`.nnuebin` format: a 24-byte header followed by fixed 42-byte records with a
-packed board, teacher score, game result, side to move, game id, and ply.
-
-### Teacher labelling
-
-Current example:
-
-```powershell
-.\.venv-nnue\Scripts\python.exe scripts\nnue\generate_dataset.py `
-  --engine C:\Path\To\stockfish.exe `
-  --pgn D:\ChessData\games-1.pgn `
-  --output D:\ChessData\shard-1.nnuebin `
-  --validation-output D:\ChessData\validation-1.nnuebin `
-  --validation-fraction 0.1 `
-  --source-name "Licensed game collection" `
-  --source-license "Licence or permission description" `
-  --nodes 20000 `
-  --threads 3 `
-  --hash 512 `
-  --sample-rate 0.25
-```
-
-Use `scripts/nnue/generate_shards.py` to run independent deterministic game
-partitions rather than allocating all CPU threads to one Stockfish process. It
-resumes complete checksum-validated shards and globally deduplicates the final
-train/validation merge. Benchmark positions/hour on the 5900X before choosing
-nodes, threads, process count, and hash per process.
-
-### Training and export
-
-Current example:
-
-```powershell
-.\.venv-nnue\Scripts\python.exe scripts\nnue\train.py `
-  --data D:\ChessData\shard-*.jsonl `
-  --validation-data D:\ChessData\validation-*.jsonl `
-  --output D:\NNUE\engine-v1.nnue `
-  --hidden 256 `
-  --batch-size 2048 `
-  --epochs 8 `
-  --workers 4
-```
-
-The trainer now provides:
-
-- resumable optimizer/scheduler checkpoints, not only model weights
-- periodic checkpoints and best-validation checkpoint selection
-- CSV/JSON metrics
-- training throughput and GPU-memory reporting
-- configurable loss mixture and learning-rate schedule
-- early stopping
-- checksum/provenance manifest beside every exported network
-- deterministic export verification against PyTorch outputs
-- explicit quantization-error measurement
-- exact optional verification through `chess-engine-tools --eval`
-
-The 2026-07-27 CUDA smoke restored epoch 2 from an epoch-1 checkpoint and
-produced a byte-identical network to the uninterrupted two-epoch run. A separate
-non-trivial export gate matched Python and C++ exactly on four reference FENs,
-including non-zero -3 cp and -12 cp evaluations.
-
-### Engine-side NNUE performance work
-
-Before NNUE becomes the default:
-
-1. Add accumulators to board/search state.
-2. Incrementally update piece add/remove/move features in make/unmake.
-3. Rebuild the relevant perspective when its king moves.
-4. Test accumulator output against a full rebuild after random legal playouts
-   and complete unmake.
-5. Preserve the on-disk HalfKP-v1 feature contract unless evidence requires a
-   versioned replacement.
-6. Benchmark nodes/second with classical, full-rebuild NNUE, and incremental
-   NNUE.
-7. Run classical-vs-NNUE paired games.
-8. Run network-vs-network paired games with the exact same engine commit.
-9. Require an SPRT pass before enabling or shipping a default network.
-
-Items 1-6 are implemented as of 2026-07-27. The deterministic C++ gate compares
-incremental values against full rebuilds across random 160-ply legal playouts,
-complete unmake, castling, en passant, promotion, and king capture. It also
-requires fixed-depth incremental and rebuild searches to return the same move,
-score, and node tree. On the Ryzen 9 5900X with a 256-wide smoke network, three
-depth-7 rebuild runs had median 13,457 NPS; incremental runs had median 46,010
-NPS on the identical 8,788-node tree, a 3.42x increase. This is runtime evidence,
-not playing-strength evidence.
+See `docs/NNUE.md` for the full five-million-position generation, diagnostics,
+cross-machine merge, CUDA training, export, and promotion commands.
+
+## Current measured evidence
+
+Detailed results and caveats live in `docs/V1_RESULTS.md`. The most recent
+Windows search work established:
+
+- Incremental null move preserved fixed-depth moves, scores, and nodes while
+  reducing median depth-10 time by about 3.1%.
+- Qsearch SEE pruning reduced the depth-10 tree from 270,343 to 244,274 nodes
+  and scored 55% over 100 paired fast games (`38-28-34`, approximately +35 Elo
+  with wide uncertainty). It was retained.
+- Pawn correction history slowed the benchmark and scored exactly 50% over 100
+  games (`34-34-32`). It was reverted.
+- Continuation history reduced the same depth-10 tree to 186,618 nodes and
+  scored 53% over 100 games (`37-31-32`, approximately +21 Elo with wide
+  uncertainty). It is retained provisionally pending a longer test.
+- A selection-scan replacement for full sorting was roughly 17.5% slower and
+  was rejected before commit.
+
+The first diverse NNUE corpus contained only 158,699 training positions and
+covered 29,421/40,960 HalfKP inputs (71.8%). Its network lost decisively to
+classical evaluation and was rejected. This diagnoses insufficient data and
+coverage; it is not evidence against NNUE.
+
+The production pipeline now supports target-sized generation, progress/rate/ETA,
+same-position teacher-budget comparison, streaming feature/distribution audits,
+validation RMSE/MAE/sign accuracy, and checksummed cross-machine merging.
 
 ## Prioritized roadmap
 
-### Phase 0 — Windows bring-up
+### Priority 1: establish the large-data NNUE baseline
 
-- Complete the new-chat startup checklist.
-- Fix any native Windows build/test issues.
-- Add a Windows-native UCI/quality gate instead of depending on Bash.
-- Ensure CTest runs equivalent UCI checks on Windows.
-- Record a reproducible PC baseline document.
-- Verify the web GUI and Stockfish installer end to end.
+1. Obtain and checksum a modern Lichess CC0 standard archive.
+2. Run the 100k 5k-vs-20k teacher comparison.
+3. Generate the five-million-position 20k-node dataset.
+4. Audit coverage and distributions; do not train if obvious holes remain.
+5. Train the fixed 256-wide baseline on CUDA with the C++ verification gate.
+6. Run a 400-game classical-vs-NNUE diagnostic.
+7. Promote only if competitive, then run a larger SPRT; otherwise diagnose
+   errors by king square/phase/material/evaluation magnitude and iterate.
 
-Exit condition: a fresh Windows clone builds, tests, launches, and runs a quick
-paired match with documented commands.
+This is the single highest-value path because the engine implementation and
+training/export plumbing are already complete, while the existing network is
+known to be data-starved.
 
-### Phase 1 — Rating and tournament infrastructure
+### Priority 2: validate retained search gains
 
-- Remove the SFML bottleneck for historical baseline comparisons.
-- Extend the runner to accept external binaries and arbitrary UCI options.
-- Implement the calibrated Stockfish ladder.
-- Add resumable match manifests and machine-readable summaries.
-- Record crashes, illegal moves, disconnects, and time forfeits explicitly.
-- Add result parsing and confidence reporting.
-- Keep a small smoke suite and a separate serious UHO suite.
-- Establish current-vs-`v0.4.0` results on the Ryzen PC at useful time controls.
+- Run a slower, longer paired test of continuation history plus qsearch SEE
+  pruning against the pre-change baseline.
+- Tune continuation/history bonuses only with evidence.
+- Profile the current move sorter before attempting a true staged move picker.
+- Explore stronger SEE-based capture/history pruning and LMR/history-based
+  pruning one change at a time.
+- Consider ProbCut and singular extensions only after TT/search invariants have
+  dedicated tests; both can create subtle tactical regressions.
 
-Windows progress on 2026-07-24: external executables, live UCI option discovery
-and bounds validation, deterministic seeds, checksummed manifests, strict JSON
-results, explicit failure categories, and a rung-resumable Stockfish ladder are
-implemented and smoke-tested. Remaining work includes partial-match game-level
-resume, optional round-robin/Ordo output, the historical binary/SFML solution,
-and properly powered ladder/baseline evidence.
+### Priority 3: parallel search
 
-Exit condition: reproducible relative results plus an honestly qualified rough
-rating estimate against a pinned local pool.
+- Profile root-worker TT contention and duplicated work.
+- Compare 1/2/4/6 threads at equal wall time and equal per-engine resources.
+- Require a paired-match strength gain before changing the default from one.
+- A deeper shared-tree design is higher risk than current NNUE data work.
 
-### Phase 2 — Classical engine engineering
+### Priority 4: evaluation and future NNUE work
 
-- Profile the Ryzen release build before changing algorithms.
-- Add benchmark result comparison tooling rather than eyeballing logs.
-- Deepen correctness coverage where practical, including more perft depths in
-  offline/nightly jobs.
-- Add evaluation tracing by term for diagnosis and tuning.
-- Create a parameterized evaluator suitable for Texel/SPSA-style tuning.
-- Improve pawn evaluation and consider a pawn hash only if profiling supports it.
-- Review endgame scaling, king safety, passed-pawn races, and drawish positions.
-- Test singular extensions, probcut, internal iterative reduction, improved
-  pruning, and move ordering one measured patch at a time.
-- Revisit root parallelism only with equal-time scaling and Elo data.
-- Consider board representation/bitboards only behind perft and match gates;
-  do not rewrite everything for fashion.
+- Establish a tuned classical parameter baseline rather than hand-adjusting
+  many correlated terms.
+- After the 5M network, try 20M positions before changing feature architecture.
+- Add validation error slices by king square, phase, material, and teacher
+  magnitude to guide sampling.
+- Then evaluate wider layers, HalfKA-style features, alternative target blends,
+  and self-play data one controlled variable at a time.
 
-Every accepted search/evaluation patch needs:
+## Release gates
 
-1. correctness tests
-2. benchmark telemetry
-3. committed candidate
-4. paired match against the previous known-good commit
-5. documentation of the result
+The v1 branch is ready for a pull request only when:
 
-Windows progress on 2026-07-24: an opt-in native AVX2 plus IPO/LTO build is
-available through `scripts/build_max_performance.ps1`, and
-`scripts/benchmark_threads.py` records checksummed repeatable thread-scaling
-reports. On the Ryzen 9 5900X, a short diagnostic peaked at six threads with
-1.677x the one-thread node rate; twelve threads regressed to 1.565x. This is
-profiling evidence, not Elo evidence. A following 100-game equal-time self-match
-at `2+0.02` found the six-thread root split lost every game to one thread, with
-no crashes or illegal moves. Revision `4504065` fixed tied root-bound selection
-and falls back to one worker when thread startup cannot fit the hard time
-budget. A clean 100-game rematch then scored 45.5% at six threads
-(-31.4 ±55.4 Elo) with no time forfeits or process failures. The catastrophic
-regression is fixed, but one thread remains the default because useful
-multi-thread strength scaling is still unproven. Revision `0f06dd7` then reused
-one worker team across iterative-deepening depths. An interleaved A/B benchmark
-measured 9.4% higher six-thread NPS and half a ply more median mean depth; a
-100-game six-thread A/B match against `95eb16b` was neutral at
--6.9 ±58.2 Elo with no failures. A direct current six-thread-versus-one-thread
-100-game match remained negative at -59.6 ±61.0 Elo. Multi-threading is now
-stable but not strength-positive. Revision `8811c0e` added a packed atomic
-transposition table shared by all root workers. Six-thread median NPS reached
-1.507x one-thread NPS, and a six-thread patch-isolation match scored
-+27.9 ±59.2 Elo against the isolated-table revision. Direct matches against one
-thread scored -6.9 ±56.6 at two threads, 0.0 ±58.2 at four, and -24.4 ±58.7 at
-six. Keep one thread as the default; four threads is the best current
-experimental setting and should receive a slower, longer SPRT.
+- clean Release builds and all C++/Python/web quality gates pass;
+- no known chess-rule, make/unmake, hash, TT, NNUE, or UCI regression remains;
+- a slower, adequately sized paired test establishes strength over the release
+  baseline;
+- any default NNUE has separately beaten the classical champion;
+- documentation contains reproducible commands and honestly qualified results;
+- the worktree is clean and the remote `dev/v1` branch contains every intended
+  commit.
 
-### Phase 3 — NNUE data and training foundation
+## Git and experiment discipline
 
-- Add dataset manifests, licensing/provenance, and checksums.
-- Add game-level train/validation splitting.
-- Add deduplication and distribution reports.
-- Replace serious-scale JSONL with a compact efficient shard format.
-- Add parallel/resumable teacher generation.
-- Upgrade training checkpointing, metrics, and export validation.
-- Run pipeline smoke and small experiments on the RTX 3070.
+Keep logical milestones in separate descriptive commits and push them. Never
+rewrite published history merely to hide an unsuccessful experiment. A clean
+revert plus a result entry is useful engineering evidence. Avoid committing
+generated datasets, networks, external executables, virtual environments,
+build directories, PGNs, or match artifacts.
 
-Windows progress on 2026-07-27: the isolated `.venv-nnue` environment uses
-PyTorch 2.12.1 with CUDA 13.0 and has executed a real tensor operation on the
-RTX 3070. Teacher generation now supports a versioned 42-byte compact shard,
-deterministic whole-game train/validation assignment, position deduplication,
-and an atomic provenance manifest containing input, teacher, option, output,
-and checksum metadata. A Stockfish 18 smoke generated 321 training and 179
-validation positions from six local paired games with zero PGN parse errors.
-The trainer now writes complete resumable checkpoints, best/periodic snapshots,
-atomic metrics, throughput/GPU-memory telemetry, quantization statistics, and a
-checksummed export manifest. The CUDA resume and exact C++ inference gates pass.
-Parallel teacher orchestration now partitions games and samples positions
-deterministically, resumes complete parts by manifest/checksum, and merges with
-global deduplication across both splits. A two-worker Stockfish 18 smoke produced
-190 training and 172 validation positions; a repeated command skipped both
-teacher workers and reproduced the merged dataset before CUDA/C++ training gates
-passed on it. Phase 3's pipeline exit condition is satisfied.
-
-Exit condition: a repeatable small training run produces a C++-validated network
-with documented data and metrics.
-
-### Phase 4 — Incremental NNUE and strength testing
-
-- Implement tested incremental accumulators.
-- Measure inference/search throughput.
-- Train medium and serious candidates.
-- Compare NNUE against classical with paired openings.
-- Compare network iterations using the same executable.
-- Tune the feature set or architecture only from evidence.
-
-Exit condition: NNUE wins a properly powered match and has acceptable runtime
-cost, correctness, and provenance.
-
-Windows progress on 2026-07-27: incremental HalfKP accumulators, reference-mode
-benchmarking, randomized/special-move equivalence tests, and real UCI NNUE search
-are complete. The remaining work is data generation, useful candidate training,
-paired matches, and SPRT; the current smoke networks are pipeline artifacts and
-are not strength candidates.
-
-A first 864-game local-corpus experiment produced 28,676 training and 3,746
-validation positions. It exposed an important trainer defect: optimizing raw
-centipawns made normal Adam steps effectively microscopic. The v2 trainer now
-normalizes targets (600 cp per model unit), records the scale in checkpoints,
-uses a 1024 integer hidden scale, and fails rather than clipping saturated
-weights. Validation RMSE improved from 580.95 cp with the old formulation to
-536.73 cp, while export error fell to 1.14 cp after scale tuning. However, the
-network still scored 0/20 against classical after the earlier raw-scale network
-scored 0/40. The local corpus is too small and king-position-biased for HalfKP;
-neither network is a candidate. The next data run should use a large, diverse,
-legally reusable corpus rather than more copies of the same local match games.
-
-The next experiment streamed the checksum-verified January 2013 Lichess
-standard archive (CC0). Fifty thousand games produced 158,699 training and
-17,543 validation positions at 5,000 Stockfish 18 nodes per label in 718.6
-seconds. The 256-wide model early-stopped after epoch 15 with best validation
-RMSE 454.31 cp and 1.68 cp quantization RMSE. Its material probes were much more
-sensible, but a 40-game `2+0.02` paired test against classical scored 2 wins,
-37 losses, and 1 draw (6.25%, roughly -470 Elo for this small low-draw sample),
-with one NNUE time forfeit and no crashes or illegal moves. Keep it rejected.
-The evidence says the next pure HalfKP attempt needs millions of diverse
-positions; do not spend time tuning a 176k-position network into the release.
-An input-coverage audit found only 29,421 of 40,960 HalfKP features present
-(71.8%); 11,539 were unseen and 25,954 appeared at most 100 times. This directly
-explains the remaining sparse-material and unusual-king failures.
-
-### Phase 5 — v1 release
-
-- Resolve all release-blocking correctness issues.
-- Pass Linux/macOS/Windows CI and sanitizers.
-- Pass web smoke and Windows-native UCI tests.
-- Complete a slower, larger baseline match or SPRT.
-- Decide whether the first v1 release remains classical or includes a proven
-  network.
-- Update README, roadmap, results, changelog/release notes, and screenshots.
-- Merge the development branch to `main` through a reviewed pull request.
-- Tag `v1.0.0` only after the merge and gates.
-- Let `.github/workflows/release.yml` build/test/package the tag and create the
-  GitHub release.
-- Verify every produced ZIP on its target platform.
-
-## Known limitations and technical debt
-
-- No defensible absolute Elo estimate exists yet.
-- Current match samples are too small/fast for precise release claims.
-- The `v0.4.0` source baseline requires SFML 2.6.
-- Root multi-threading is experimental and unproven at equal time.
-- Classical evaluation is not comprehensively tuned.
-- There is no trained network bundled with the project.
-- The board/search core is header-heavy and tightly compiled.
-- Match profiles, external engines, artifacts, data, and networks are local and
-  ignored by Git; a fresh clone will not contain them.
-- Web state is in-memory; restarting the server does not resume an unfinished
-  game.
-- External engine import intentionally executes local binaries and therefore
-  requires trust.
-- The release packages are primarily the headless engine plus web interface;
-  the SFML GUI is legacy and should not drive v1 architecture.
-- A few hundred games cannot resolve small Elo changes.
-
-## Git and collaboration rules
-
-- Work on `codex/v1-engine-rework` until the v1 pull request is ready.
-- Start every session with `git status`.
-- Preserve unrelated user changes.
-- Use `git pull --ff-only`; do not silently create merge commits from routine
-  pulls.
-- Make small coherent commits with verification noted in the commit message or
-  accompanying results document.
-- Push after meaningful tested milestones.
-- Do not commit generated directories:
+For strength changes, a normal cycle is:
 
 ```text
-build*/
-.tools/
-.venv*/
-artifacts/
-data/
-networks/
-*.pgn
-*.log
-*.pt
-*.nnue
+implement -> correctness tests -> fixed-depth benchmark
+-> short paired diagnostic -> retain/revert -> longer confirmation if retained
 ```
 
-- If a network must be released, attach it as a versioned release asset with a
-  checksum/provenance manifest rather than casually adding a large binary to
-  normal Git history.
-- Do not rewrite published branch history unless the user explicitly requests it.
-- Do not merge to `main`, tag, or publish a release merely because a build passes.
-  Strength and release evidence are separate gates.
+For NNUE, use:
 
-## Useful commands
-
-### Start the Windows web GUI
-
-```powershell
-.\scripts\run_web_gui.ps1
+```text
+generate -> audit -> train -> quantize -> exact C++ check
+-> classical/champion match -> promote/reject -> preserve manifest and result
 ```
-
-### Headless Windows build
-
-```powershell
-cmake -S . -B build-pc -DCHESS_BUILD_GUI=OFF -DBUILD_TESTING=ON
-cmake --build build-pc --config Release --parallel
-ctest --test-dir build-pc -C Release --output-on-failure
-```
-
-### Current macOS/Linux headless build
-
-```sh
-cmake -S . -B build -DCHESS_BUILD_GUI=OFF \
-  -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-```
-
-### Perft
-
-```powershell
-.\build-pc\Release\chess-engine-tools.exe --perft 5
-.\build-pc\Release\chess-engine-tools.exe --divide 4
-.\build-pc\Release\chess-engine-tools.exe --perft-tests --max-depth 4
-```
-
-### Search benchmark
-
-```powershell
-.\build-pc\Release\chess-engine-tools.exe --bench `
-  --bench-depth 64 --bench-time 1000 --bench-tt 256 --threads 1
-```
-
-### Raw UCI check
-
-```powershell
-@"
-uci
-isready
-position startpos moves e2e4 e7e5 g1f3
-go movetime 1000
-quit
-"@ | .\build-pc\Release\chess-engine-uci.exe --uci
-```
-
-### Build comparison profiles without playing
-
-```powershell
-py -3 scripts\compare_engines.py `
-  --baseline 4f1bdc8 --candidate HEAD --build-only
-```
-
-After that, launch the web GUI and select the generated candidate/baseline
-profiles in PvC or CvC.
-
-## Definition of success for the next session
-
-The first Windows session is successful when:
-
-- the correct branch is cloned and current
-- MSVC builds the current engine in Release mode
-- CTest/core/perft pass
-- the web API smoke test passes
-- the GUI opens with setup first
-- PvP, PvC, CvC, drag, flip, analysis, export, and time controls work
-- verified Stockfish installs and appears as a labelled opponent
-- Cute Chess installs
-- a four-game headless workflow check completes
-- results and any Windows issues are recorded
-- any necessary fixes are committed and pushed
-
-The next feature milestone is successful when the PC can run resumable,
-controlled matches against Git revisions and a pinned external-engine ladder,
-producing PGN, logs, relative Elo, uncertainty, and an honestly qualified rough
-rating estimate.
-
-That benchmark foundation comes before serious NNUE training. Once it is sound,
-the RTX 3070/5900X system is capable of taking the project through dataset
-generation, training, quantized export, incremental inference, and controlled
-classical-versus-NNUE testing.

@@ -2,7 +2,7 @@
 
 Date: 2026-07-24
 
-Branch: `codex/v1-engine-rework`
+Branch: `dev/v1` (renamed after this measurement)
 
 Host: Ryzen 9 5900X, Windows 11, MSVC 19.50
 

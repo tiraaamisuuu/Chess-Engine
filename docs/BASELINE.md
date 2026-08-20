@@ -1,6 +1,7 @@
 # v1 Rework Baseline
 
-The `codex/v1-engine-rework` branch started from commit `518a3c1` on 2026-07-22.
+The v1 development line, now named `dev/v1`, started from commit `518a3c1` on
+2026-07-22.
 These measurements are a reproducible reference, not a claimed playing-strength
 rating.
 
