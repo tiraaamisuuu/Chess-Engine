@@ -26,6 +26,7 @@ from nnue_dataset import (  # noqa: E402
     iter_compact_records,
     pack_board,
     read_shard_header,
+    sha256_file,
 )
 from generate_dataset import (  # noqa: E402
     TeacherComparison,
@@ -41,6 +42,11 @@ from generate_shards import (  # noqa: E402
     merge_shards,
     positions_per_shard_for_target,
     record_key,
+)
+from merge_datasets import (  # noqa: E402
+    load_bundle,
+    portable_name,
+    validate_contracts,
 )
 
 
@@ -240,6 +246,51 @@ class NnueDatasetTests(unittest.TestCase):
             self.assertEqual(report["phaseCounts"], {"endgame": 1, "opening": 1})
             self.assertEqual(report["teacherEvalMagnitudeCounts"], {"0-99": 1, "100-299": 1})
             self.assertEqual(report["resultCounts"], {"draw": 1, "loss": 1})
+
+    def test_portable_dataset_bundle_and_multimachine_contract(self) -> None:
+        self.assertEqual(portable_name(r"D:\\data\\train.nnuebin"), "train.nnuebin")
+        self.assertEqual(portable_name("/data/train.nnuebin"), "train.nnuebin")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundles = []
+            for index, binary_sha in enumerate(("windows", "linux")):
+                bundle_dir = root / str(index)
+                bundle_dir.mkdir()
+                training = bundle_dir / "train.nnuebin"
+                validation = bundle_dir / "validation.nnuebin"
+                with BinaryShardWriter(training) as writer:
+                    writer.write(chess.Board(), index, 0.0, index + 1, 8)
+                board = chess.Board()
+                board.push_uci("e2e4")
+                with BinaryShardWriter(validation) as writer:
+                    writer.write(board, index, 0.0, index + 1, 9)
+                manifest = {
+                    "schemaVersion": 1,
+                    "datasetFormat": "HalfKP-v1-sharded",
+                    "teacher": {"nodes": 20_000, "comparisonNodes": None,
+                                "sha256": binary_sha},
+                    "sampling": {"seed": 7, "validationFractionByGame": 0.1},
+                    "provenance": {"name": f"source-{index}"},
+                    "outputs": [
+                        {"split": "training", "path": r"D:\\copied\\train.nnuebin",
+                         "sha256": sha256_file(training)},
+                        {"split": "validation", "path": r"D:\\copied\\validation.nnuebin",
+                         "sha256": sha256_file(validation)},
+                    ],
+                }
+                path = bundle_dir / "dataset.manifest.json"
+                path.write_text(json.dumps(manifest), encoding="utf-8")
+                bundles.append(load_bundle(path))
+
+            contract = validate_contracts(bundles)
+            self.assertEqual(contract["nodes"], 20_000)
+            self.assertEqual(contract["binarySha256"], ["linux", "windows"])
+
+            bundles[1]["splitContract"] = {
+                "seed": 8, "validationFractionByGame": 0.1,
+            }
+            with self.assertRaisesRegex(ValueError, "split seed"):
+                validate_contracts(bundles)
 
     def test_zstd_pgn_stream(self) -> None:
         import zstandard
