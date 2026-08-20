@@ -470,19 +470,18 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     // Null-move pruning: aggressive cut when position is quiet enough and side has material.
     if(allowNullMove && !pvNode && depth >= 3 && !inCheck &&
        hasNonPawnMaterial(bd, bd.stm) && nonKingPieceCount(bd, bd.stm) >= 2){
-        Board nb = bd;
-        nb.epSquare = -1;
-        nb.stm = other(nb.stm);
-        nb.recomputeHash();
+        NullUndo nullUndo{};
+        bd.makeNullMove(nullUndo);
         advanceNnueNull(ctx, ply);
-        ctx.repetition.push_back(nb.hash);
+        ctx.repetition.push_back(bd.hash);
         int reduction = 2 + depth / 4;
         if(depth >= 7) reduction++;
         if(!improving) reduction++;
         if(staticEval >= beta + 120) reduction++;
         reduction = std::clamp(reduction, 2, std::max(2, depth - 2));
-        int score = -negamax(nb, ctx, depth - 1 - reduction, -beta, -beta + 1, ply + 1, invalidMove(), false);
+        int score = -negamax(bd, ctx, depth - 1 - reduction, -beta, -beta + 1, ply + 1, invalidMove(), false);
         ctx.repetition.pop_back();
+        bd.undoNullMove(nullUndo);
         if(ctx.stop) return 0;
         if(score >= beta){
             if(depth >= 6){

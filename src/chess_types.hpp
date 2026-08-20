@@ -162,6 +162,11 @@ struct Undo {
     u64 hash=0;
 };
 
+struct NullUndo {
+    int epSquare=-1;
+    u64 hash=0;
+};
+
 inline std::string moveToUCI(const Move& m){
     Square a = indexToSq(m.from);
     Square b = indexToSq(m.to);

@@ -638,6 +638,25 @@ struct Board {
         }
     }
 
+    void makeNullMove(NullUndo& u){
+        u.epSquare = epSquare;
+        u.hash = hash;
+
+        if(z){
+            hash ^= z->epFile[enPassantHashFile()];
+            hash ^= z->epFile[8];
+            hash ^= z->sideToMove;
+        }
+        epSquare = -1;
+        stm = other(stm);
+    }
+
+    void undoNullMove(const NullUndo& u){
+        stm = other(stm);
+        epSquare = u.epSquare;
+        hash = u.hash;
+    }
+
     template<typename MoveContainer>
     void genLegalMoves(MoveContainer& legal){
         MoveList pseudo;

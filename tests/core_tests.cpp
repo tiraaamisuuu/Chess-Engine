@@ -94,6 +94,37 @@ void testMakeUnmakeAndHash(const Zobrist& zobrist){
     expect(samePosition(board, initial), "random playout should unwind exactly to the start position");
 }
 
+void testNullMoveAndHash(const Zobrist& zobrist){
+    const std::array<const char*, 3> positions{{
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 4 7",
+        "rnbqkbnr/pppp1ppp/8/8/4pP2/8/PPPP2PP/RNBQKBNR b KQkq f3 9 12",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 b - - 37 61"
+    }};
+
+    for(const char* fen : positions){
+        Board board;
+        board.setZobrist(&zobrist);
+        expect(board.loadFEN(fen), "null-move FEN should load");
+        const Board original = board;
+        const Color originalSide = board.stm;
+        const int originalHalfmove = board.halfmoveClock;
+        const int originalFullmove = board.fullmoveNumber;
+
+        NullUndo undo{};
+        board.makeNullMove(undo);
+        expect(board.stm == other(originalSide), "null move should change side to move");
+        expect(board.epSquare == -1, "null move should clear en passant");
+        expect(board.halfmoveClock == originalHalfmove && board.fullmoveNumber == originalFullmove,
+               "search-only null move should preserve move counters");
+        const u64 incrementalHash = board.hash;
+        board.recomputeHash();
+        expect(board.hash == incrementalHash, "null-move incremental hash should match recomputation");
+
+        board.undoNullMove(undo);
+        expect(samePosition(board, original), "null move should restore the exact position");
+    }
+}
+
 void testEvaluationOrientation(const Zobrist& zobrist){
     Board board;
     board.setZobrist(&zobrist);
@@ -539,6 +570,7 @@ int main(){
     const bool quick = std::getenv("CHESS_TEST_QUICK") != nullptr;
     testPerft(zobrist, quick);
     testMakeUnmakeAndHash(zobrist);
+    testNullMoveAndHash(zobrist);
     testEvaluationOrientation(zobrist);
     testPseudoMobilityCounter(zobrist);
     testEnPassantHashing(zobrist);
