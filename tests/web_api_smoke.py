@@ -251,7 +251,7 @@ def main() -> int:
 
         with urlopen(base + "/", timeout=5) as response:
             page = response.read()
-            assert b"CHESS ENGINE" in page and b"DEV / V1" in page
+            assert b"CHESS ENGINE" in page and b"V1.0 / LOCAL" in page
             assert b"position-status" in page and b'value="cvc"' in page
             assert b"pvc-profile-summary" in page
             assert b"export-modal" in page and b"run-analysis" in page
