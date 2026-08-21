@@ -220,6 +220,16 @@ and CSV metrics, model weights, the deployable quantized network, and a
 checksummed training manifest. Export fails instead of clipping overflowing
 integer weights or accepting a Python/C++ prediction mismatch.
 
+The historical baseline uses `--loss centipawn-huber`. Experiments can instead
+use `--loss wdl --wdl-scale 400` to optimize calibrated win probability. The
+teacher centipawn score is converted through a stable logistic function, the
+game result is blended in probability space using `--result-weight`, and the
+best checkpoint is selected by game-disjoint validation loss. The model still
+exports centipawn values in the unchanged `HalfKP-v1` network format, so WDL
+training does not require a different C++ loader. Manifests record the loss,
+calibration scale, validation Brier score, centipawn errors, and selection
+objective.
+
 Resume an interrupted run with the original options plus:
 
 ```powershell

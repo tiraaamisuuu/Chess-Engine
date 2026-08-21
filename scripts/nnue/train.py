@@ -62,6 +62,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scheduler", choices=("cosine", "none"), default="cosine")
     parser.add_argument("--validation-fraction", type=float, default=0.02)
     parser.add_argument("--result-weight", type=float, default=0.15)
+    parser.add_argument(
+        "--loss", choices=("centipawn-huber", "wdl"), default="centipawn-huber",
+        help="Training objective; WDL optimizes calibrated win probability",
+    )
+    parser.add_argument(
+        "--wdl-scale", type=float, default=400.0,
+        help="Centipawn logistic scale used by the WDL objective",
+    )
     parser.add_argument("--target-scale", type=float, default=600.0,
                         help="Centipawns per normalized model output unit")
     parser.add_argument("--huber-beta-cp", type=float, default=100.0)
@@ -96,20 +104,53 @@ class TrainingSample:
     first: list[int]
     second: list[int]
     target: float
+    wdl_target: float
     board_bytes: bytes
     turn: chess.Color
     teacher_score_cp: int
 
 
+def score_to_win_probability(score_cp: float, scale_cp: float) -> float:
+    if scale_cp <= 0:
+        raise ValueError("WDL scale must be positive")
+    value = score_cp / scale_cp
+    if value >= 0:
+        decay = math.exp(-value)
+        return 1.0 / (1.0 + decay)
+    growth = math.exp(value)
+    return growth / (1.0 + growth)
+
+
+def training_loss(
+    prediction: torch.Tensor,
+    target_cp: torch.Tensor,
+    target_wdl: torch.Tensor,
+    loss_mode: str,
+    target_scale: float,
+    huber_beta_cp: float,
+    wdl_scale: float,
+) -> torch.Tensor:
+    if loss_mode == "centipawn-huber":
+        return torch.nn.functional.smooth_l1_loss(
+            prediction, target_cp / target_scale,
+            beta=huber_beta_cp / target_scale,
+        )
+    if loss_mode == "wdl":
+        predicted_wdl = torch.sigmoid(prediction * target_scale / wdl_scale)
+        return torch.nn.functional.mse_loss(predicted_wdl, target_wdl)
+    raise ValueError(f"unsupported loss mode: {loss_mode}")
+
+
 class PositionsDataset(Dataset):
     """Random-access mixed JSONL/compact position dataset."""
 
-    def __init__(self, paths: list[Path], result_weight: float):
+    def __init__(self, paths: list[Path], result_weight: float, wdl_scale: float = 400.0):
         self.paths = [path.resolve() for path in paths]
         self.sources: list[DataSource] = []
         self.starts: list[int] = []
         self._handles: dict[int, BinaryIO] = {}
         self.result_weight = result_weight
+        self.wdl_scale = wdl_scale
         total = 0
 
         for path in self.paths:
@@ -205,31 +246,58 @@ class PositionsDataset(Dataset):
         score = max(-3000.0, min(3000.0, float(score_cp)))
         result_target = result * 1000.0
         target = score * (1.0 - self.result_weight) + result_target * self.result_weight
-        return TrainingSample(first, second, target, board_bytes, turn, score_cp)
+        teacher_probability = score_to_win_probability(score, self.wdl_scale)
+        result_probability = (result + 1.0) * 0.5
+        wdl_target = (
+            teacher_probability * (1.0 - self.result_weight)
+            + result_probability * self.result_weight
+        )
+        return TrainingSample(
+            first, second, target, wdl_target, board_bytes, turn, score_cp,
+        )
 
-    def __getitem__(self, index: int) -> tuple[list[int], list[int], float]:
+    def __getitem__(
+        self, index: int,
+    ) -> tuple[list[int], list[int], float, float, float]:
         sample = self.sample(index)
-        return sample.first, sample.second, sample.target
+        return (
+            sample.first, sample.second, sample.target,
+            sample.wdl_target, float(sample.teacher_score_cp),
+        )
 
 
-def collate(samples: list[tuple[list[int], list[int], float]]) -> tuple[torch.Tensor, ...]:
+def collate(samples: list[tuple]) -> tuple[torch.Tensor, ...]:
     first_flat: list[int] = []
     second_flat: list[int] = []
     first_offsets: list[int] = []
     second_offsets: list[int] = []
     targets: list[float] = []
-    for first, second, target in samples:
+    wdl_targets: list[float] = []
+    teacher_scores: list[float] = []
+    for sample in samples:
+        if len(sample) == 3:
+            first, second, target = sample
+            wdl_target = 0.5
+            teacher_score = target
+        elif len(sample) == 5:
+            first, second, target, wdl_target, teacher_score = sample
+        else:
+            raise ValueError("training samples must contain 3 or 5 values")
         first_offsets.append(len(first_flat))
         second_offsets.append(len(second_flat))
         first_flat.extend(first)
         second_flat.extend(second)
         targets.append(target)
+        wdl_targets.append(wdl_target)
+        teacher_scores.append(teacher_score)
     return (
         torch.tensor(first_flat, dtype=torch.long),
         torch.tensor(first_offsets, dtype=torch.long),
         torch.tensor(second_flat, dtype=torch.long),
         torch.tensor(second_offsets, dtype=torch.long),
         torch.tensor(targets, dtype=torch.float32),
+        torch.tensor(wdl_targets, dtype=torch.float32),
+        torch.tensor(teacher_scores, dtype=torch.float32),
     )
 
 
@@ -355,8 +423,7 @@ def verify_quantization(model: HalfKpV1, dataset: Dataset, sample_count: int,
     errors: list[float] = []
     with torch.no_grad():
         for index in indices:
-            first, second, target = dataset[index]
-            del target
+            first, second, *_unused = dataset[index]
             batch = collate([(first, second, 0.0)])
             prediction = float(state(*batch[:4]).item()) * target_scale
             quantized_prediction = quantized_predict(quantized, first, second)
@@ -411,26 +478,51 @@ def verify_cpp_export(tools: Path, network: Path,
     }
 
 
-def evaluate(model: HalfKpV1, loader: DataLoader, device: torch.device,
-             target_scale: float) -> dict[str, float | int]:
+def evaluate(
+    model: HalfKpV1,
+    loader: DataLoader,
+    device: torch.device,
+    target_scale: float,
+    loss_mode: str = "centipawn-huber",
+    huber_beta_cp: float = 100.0,
+    wdl_scale: float = 400.0,
+) -> dict[str, float | int]:
     model.eval()
+    total_loss = 0.0
+    total_brier = 0.0
     total_squared_error = 0.0
     total_absolute_error = 0.0
+    total_teacher_squared_error = 0.0
     correct_signs = 0
     samples = 0
     with torch.no_grad():
-        for first, first_offsets, second, second_offsets, target in batches(loader, device):
-            prediction = model(first, first_offsets, second, second_offsets) * target_scale
+        for (first, first_offsets, second, second_offsets, target,
+             target_wdl, teacher_score) in batches(loader, device):
+            normalized_prediction = model(first, first_offsets, second, second_offsets)
+            batch_loss = training_loss(
+                normalized_prediction, target, target_wdl, loss_mode,
+                target_scale, huber_beta_cp, wdl_scale,
+            )
+            prediction = normalized_prediction * target_scale
             error = prediction - target
+            bounded_teacher = torch.clamp(teacher_score, -3000.0, 3000.0)
+            teacher_error = prediction - bounded_teacher
+            predicted_wdl = torch.sigmoid(prediction / wdl_scale)
+            total_loss += batch_loss.item() * target.numel()
+            total_brier += torch.sum((predicted_wdl - target_wdl) ** 2).item()
             total_squared_error += torch.sum(error ** 2).item()
             total_absolute_error += torch.sum(torch.abs(error)).item()
+            total_teacher_squared_error += torch.sum(teacher_error ** 2).item()
             correct_signs += int(torch.sum((prediction >= 0) == (target >= 0)).item())
             samples += target.numel()
     denominator = max(1, samples)
     return {
         "samples": samples,
+        "loss": total_loss / denominator,
+        "brierScore": total_brier / denominator,
         "rmseCp": math.sqrt(total_squared_error / denominator),
         "maeCp": total_absolute_error / denominator,
+        "teacherRmseCp": math.sqrt(total_teacher_squared_error / denominator),
         "signAccuracy": correct_signs / denominator,
     }
 
@@ -535,12 +627,14 @@ def atomic_torch_save(value: object, destination: Path) -> None:
     temporary.replace(destination)
 
 
-def save_metrics(metrics: list[dict[str, float | int]], json_path: Path) -> tuple[Path, Path]:
+def save_metrics(metrics: list[dict[str, object]], json_path: Path) -> tuple[Path, Path]:
     csv_path = json_path.with_suffix(".csv")
     write_json_atomic(json_path, metrics)
     temporary = csv_path.with_name(csv_path.name + ".tmp")
     with temporary.open("w", encoding="utf-8", newline="") as output:
-        fieldnames = list(metrics[0]) if metrics else ["epoch"]
+        fieldnames = list(dict.fromkeys(
+            key for metric in metrics for key in metric
+        )) if metrics else ["epoch"]
         writer = csv.DictWriter(output, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(metrics)
@@ -594,8 +688,12 @@ def find_dataset_manifest(dataset_path: Path, dataset_sha256: str) -> Path | Non
 
 def checkpoint_payload(model: HalfKpV1, optimizer: torch.optim.Optimizer,
                        scheduler: torch.optim.lr_scheduler.LRScheduler | None,
-                       epoch: int, best_rmse: float, epochs_without_improvement: int,
-                       metrics: list[dict[str, float | int]], args: argparse.Namespace) -> dict[str, object]:
+                       epoch: int, best_objective: float, epochs_without_improvement: int,
+                       metrics: list[dict[str, object]], args: argparse.Namespace) -> dict[str, object]:
+    best_rmse = min(
+        (float(metric["validationRmseCp"]) for metric in metrics),
+        default=math.inf,
+    )
     return {
         "checkpointVersion": CHECKPOINT_VERSION,
         "epoch": epoch,
@@ -604,6 +702,10 @@ def checkpoint_payload(model: HalfKpV1, optimizer: torch.optim.Optimizer,
         "optimizer": optimizer.state_dict(),
         "scheduler": scheduler.state_dict() if scheduler else None,
         "bestValidationRmseCp": best_rmse,
+        "bestValidationObjective": best_objective,
+        "bestValidationObjectiveName": (
+            "validationLoss" if args.loss == "wdl" else "validationRmseCp"
+        ),
         "epochsWithoutImprovement": epochs_without_improvement,
         "metrics": metrics,
         "rng": {
@@ -614,6 +716,8 @@ def checkpoint_payload(model: HalfKpV1, optimizer: torch.optim.Optimizer,
         },
         "training": {
             "resultWeight": args.result_weight,
+            "loss": args.loss,
+            "wdlScale": args.wdl_scale,
             "seed": args.seed,
             "scheduler": args.scheduler,
             "epochsRequested": args.epochs,
@@ -641,6 +745,8 @@ def validate_resume_configuration(payload: dict[str, object], args: argparse.Nam
         raise SystemExit("resume checkpoint is missing training configuration")
     exact_settings = {
         "resultWeight": args.result_weight,
+        "loss": args.loss,
+        "wdlScale": args.wdl_scale,
         "seed": args.seed,
         "scheduler": args.scheduler,
         "batchSize": args.batch_size,
@@ -650,9 +756,13 @@ def validate_resume_configuration(payload: dict[str, object], args: argparse.Nam
         "huberBetaCp": args.huber_beta_cp,
     }
     for key, requested in exact_settings.items():
-        if saved.get(key) != requested:
+        saved_value = saved.get(
+            key,
+            "centipawn-huber" if key == "loss" else (400.0 if key == "wdlScale" else None),
+        )
+        if saved_value != requested:
             raise SystemExit(
-                f"resume checkpoint {key}={saved[key]!r} does not match requested {requested!r}"
+                f"resume checkpoint {key}={saved_value!r} does not match requested {requested!r}"
             )
     if args.scheduler == "cosine" and saved.get("epochsRequested", args.epochs) != args.epochs:
         raise SystemExit("cosine-scheduler resume must use the original --epochs value")
@@ -667,8 +777,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("learning rates must be non-negative and the initial rate must be positive")
     if not 0.0 <= args.result_weight <= 1.0:
         raise SystemExit("--result-weight must be in [0, 1]")
-    if args.target_scale <= 0 or args.huber_beta_cp <= 0:
-        raise SystemExit("--target-scale and --huber-beta-cp must be positive")
+    if args.target_scale <= 0 or args.huber_beta_cp <= 0 or args.wdl_scale <= 0:
+        raise SystemExit("--target-scale, --huber-beta-cp, and --wdl-scale must be positive")
     if args.validation_data is None and not args.allow_position_split:
         raise SystemExit("--validation-data is required unless --allow-position-split is explicit")
     if not args.validation_data and not 0.0 < args.validation_fraction < 1.0:
@@ -702,13 +812,15 @@ def main() -> int:
         torch.cuda.manual_seed_all(args.seed)
     device = torch.device(args.device)
 
-    dataset = PositionsDataset(args.data, args.result_weight)
+    dataset = PositionsDataset(args.data, args.result_weight, args.wdl_scale)
     if len(dataset) < 100:
         raise SystemExit("dataset must contain at least 100 positions")
     split_method = "game-disjoint-shards"
     if args.validation_data:
         training: Dataset = dataset
-        validation: Dataset = PositionsDataset(args.validation_data, args.result_weight)
+        validation: Dataset = PositionsDataset(
+            args.validation_data, args.result_weight, args.wdl_scale,
+        )
         if len(validation) == 0:
             raise SystemExit("validation dataset is empty")
     else:
@@ -736,12 +848,10 @@ def main() -> int:
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=max(1, args.epochs), eta_min=args.minimum_learning_rate,
         )
-    loss_function = nn.SmoothL1Loss(beta=args.huber_beta_cp / args.target_scale)
-
     start_epoch = 1
-    best_rmse = math.inf
+    best_objective = math.inf
     epochs_without_improvement = 0
-    metrics: list[dict[str, float | int]] = []
+    metrics: list[dict[str, object]] = []
     if args.resume:
         payload = torch.load(args.resume, map_location=device, weights_only=False)
         if not isinstance(payload, dict) or payload.get("checkpointVersion") != CHECKPOINT_VERSION:
@@ -754,14 +864,20 @@ def main() -> int:
         if scheduler and payload.get("scheduler"):
             scheduler.load_state_dict(payload["scheduler"])
         start_epoch = int(payload["epoch"]) + 1
-        best_rmse = float(payload.get("bestValidationRmseCp", math.inf))
+        best_objective = float(payload.get(
+            "bestValidationObjective",
+            payload.get("bestValidationRmseCp", math.inf),
+        ))
         epochs_without_improvement = int(payload.get("epochsWithoutImprovement", 0))
         metrics = list(payload.get("metrics", []))
         rng_state = payload.get("rng")
         if not isinstance(rng_state, dict):
             raise SystemExit("resume checkpoint is missing random-number generator state")
         restore_rng_state(rng_state)
-        print(f"resumed={args.resume} next_epoch={start_epoch} best_rmse_cp={best_rmse:.3f}")
+        print(
+            f"resumed={args.resume} next_epoch={start_epoch} "
+            f"best_objective={best_objective:.6f}"
+        )
 
     for epoch in range(start_epoch, args.epochs + 1):
         model.train()
@@ -770,10 +886,14 @@ def main() -> int:
         epoch_started = time.perf_counter()
         total_loss = 0.0
         samples = 0
-        for first, first_offsets, second, second_offsets, target in batches(training_loader, device):
+        for (first, first_offsets, second, second_offsets, target,
+             target_wdl, _teacher_score) in batches(training_loader, device):
             optimizer.zero_grad(set_to_none=True)
             prediction = model(first, first_offsets, second, second_offsets)
-            loss = loss_function(prediction, target / args.target_scale)
+            loss = training_loss(
+                prediction, target, target_wdl, args.loss,
+                args.target_scale, args.huber_beta_cp, args.wdl_scale,
+            )
             loss.backward()
             optimizer.step()
             total_loss += loss.item() * target.numel()
@@ -781,15 +901,27 @@ def main() -> int:
         if device.type == "cuda":
             torch.cuda.synchronize(device)
         duration = time.perf_counter() - epoch_started
-        validation_metrics = evaluate(model, validation_loader, device, args.target_scale)
+        validation_metrics = evaluate(
+            model, validation_loader, device, args.target_scale,
+            args.loss, args.huber_beta_cp, args.wdl_scale,
+        )
         rmse = float(validation_metrics["rmseCp"])
+        validation_loss = float(validation_metrics["loss"])
+        objective = validation_loss if args.loss == "wdl" else rmse
         learning_rate = float(optimizer.param_groups[0]["lr"])
         peak_memory = int(torch.cuda.max_memory_allocated(device)) if device.type == "cuda" else 0
-        metric: dict[str, float | int] = {
+        metric: dict[str, object] = {
             "epoch": epoch,
+            "lossMode": args.loss,
+            "trainingLoss": round(total_loss / max(1, samples), 8),
             "trainingLossNormalized": round(total_loss / max(1, samples), 6),
+            "validationLoss": round(validation_loss, 8),
+            "validationBrierScore": round(float(validation_metrics["brierScore"]), 8),
             "validationRmseCp": round(rmse, 6),
             "validationMaeCp": round(float(validation_metrics["maeCp"]), 6),
+            "validationTeacherRmseCp": round(
+                float(validation_metrics["teacherRmseCp"]), 6,
+            ),
             "validationSignAccuracy": round(float(validation_metrics["signAccuracy"]), 6),
             "learningRate": learning_rate,
             "durationSeconds": round(duration, 6),
@@ -798,9 +930,9 @@ def main() -> int:
         }
         metrics.append(metric)
 
-        improved = rmse < best_rmse
+        improved = objective < best_objective
         if improved:
-            best_rmse = rmse
+            best_objective = objective
             epochs_without_improvement = 0
         else:
             epochs_without_improvement += 1
@@ -808,7 +940,7 @@ def main() -> int:
             scheduler.step()
 
         payload = checkpoint_payload(
-            model, optimizer, scheduler, epoch, best_rmse,
+            model, optimizer, scheduler, epoch, best_objective,
             epochs_without_improvement, metrics, args,
         )
         atomic_torch_save(payload, checkpoint_path)
@@ -819,6 +951,7 @@ def main() -> int:
         save_metrics(metrics, metrics_path)
         print(
             f"epoch={epoch} train_loss_normalized={metric['trainingLossNormalized']:.4f} "
+            f"validation_loss={validation_loss:.6f} "
             f"validation_rmse_cp={rmse:.2f} "
             f"validation_mae_cp={metric['validationMaeCp']:.2f} "
             f"validation_sign_accuracy={metric['validationSignAccuracy']:.3f} "
@@ -836,7 +969,10 @@ def main() -> int:
         best_payload = torch.load(best_checkpoint_path, map_location=device, weights_only=False)
         model.load_state_dict(best_payload["model"])
 
-    best_validation_metrics = evaluate(model, validation_loader, device, args.target_scale)
+    best_validation_metrics = evaluate(
+        model, validation_loader, device, args.target_scale,
+        args.loss, args.huber_beta_cp, args.wdl_scale,
+    )
     best_validation_slices = validation_error_diagnostics(
         model, validation, device, args.target_scale, args.batch_size,
     )
@@ -914,6 +1050,8 @@ def main() -> int:
             "minimumLearningRate": args.minimum_learning_rate,
             "scheduler": args.scheduler,
             "resultWeight": args.result_weight,
+            "loss": args.loss,
+            "wdlScale": args.wdl_scale,
             "targetScale": args.target_scale,
             "huberBetaCp": args.huber_beta_cp,
             "seed": args.seed,
@@ -921,7 +1059,11 @@ def main() -> int:
             "outputScale": args.output_scale,
             "resumedFrom": str(args.resume.resolve()) if args.resume else None,
         },
-        "bestValidationRmseCp": best_rmse,
+        "bestValidationRmseCp": best_validation_metrics["rmseCp"],
+        "bestValidationObjective": {
+            "name": "validationLoss" if args.loss == "wdl" else "validationRmseCp",
+            "value": best_objective,
+        },
         "bestValidation": best_validation_metrics,
         "bestValidationSlices": best_validation_slices,
         "quantization": quantization,
@@ -941,7 +1083,9 @@ def main() -> int:
     write_json_atomic(manifest_path, manifest)
     print(
         f"exported={args.output} hidden={args.hidden} train_positions={len(training)} "
-        f"validation_positions={len(validation)} best_rmse_cp={best_rmse:.2f} "
+        f"validation_positions={len(validation)} "
+        f"best_rmse_cp={float(best_validation_metrics['rmseCp']):.2f} "
+        f"best_objective={best_objective:.6f} "
         f"quantization_rmse_cp={quantization['rmseCp']:.3f} manifest={manifest_path}"
     )
     return 0
