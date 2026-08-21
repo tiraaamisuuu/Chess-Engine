@@ -21,17 +21,28 @@ and measurable playing strength take priority over accumulating heuristics.
 - Batched validation error slices by king square, phase, material imbalance,
   and teacher-evaluation magnitude
 
-## Current priority: large-data NNUE baseline
+## Completed five-million-position NNUE baseline
 
 1. **Complete:** 127,784 same-position 5k-vs-20k comparisons selected 20k for
    the first baseline (97.499% sign agreement; fourfold fixed-node cost).
-2. Obtain and checksum a modern Lichess standard-rated CC0 monthly archive.
-3. Generate and audit five million diverse 20k-node training positions.
-4. Train the unchanged 256-wide HalfKP architecture on CUDA.
-5. Require quantization checks and exact C++ agreement during export.
-6. Run a 400-game classical-vs-NNUE diagnostic, followed by SPRT only if the
-   network is competitive.
-7. Promote the model only after statistically supported strength evidence.
+2. **Complete:** checksum the July 2026 Lichess standard-rated CC0 archive.
+3. **Complete:** generate and audit 5,000,000 training plus 616,632 game-disjoint
+   validation positions at 20k nodes (92.50% HalfKP input coverage).
+4. **Complete:** train the unchanged 256-wide HalfKP architecture on CUDA.
+5. **Complete:** pass quantization checks and exact C++ agreement during export.
+6. **Complete:** run the 400-game classical-vs-NNUE diagnostic; the network
+   scored 32.5% (-127.0 +/- 33.4 Elo) with no technical failures.
+7. **Decision:** reject the network and retain classical evaluation by default.
+
+WDL-probability training and configurable classical/NNUE blending are now
+available for controlled experiments. Neither has yet earned promotion.
+
+## Current priority: release evidence
+
+- Run a slower, adequately sized `dev/v1` versus `v0.4.0` paired match.
+- Complete all C++/Python/web gates from a clean Release build.
+- Resolve any failing CI check and preserve the exact release artifacts.
+- Open the release pull request only when the evidence and branch are clean.
 
 ## Search follow-up
 
@@ -42,11 +53,12 @@ and measurable playing strength take priority over accumulating heuristics.
 - Improve root-parallel scaling and prove equal-time Elo before changing the
   one-thread default.
 
-## After the five-million baseline
+## Next NNUE iteration
 
-- Scale to 20M positions if learning curves and coverage still improve.
-- Test wider layers, HalfKA-style features, alternate target/result blending,
-  and self-play data one controlled variable at a time.
+- Target the 3,070 unseen and 21,184 at-most-100-frequency HalfKP inputs.
+- Test a stronger two-perspective hidden stack or HalfKA-style features before
+  spending on an unchanged 20M repeat.
+- Retain WDL/result-blending experiments and self-play as isolated variables.
 - Automate network-vs-current-champion promotion while preserving manifests,
   binaries, PGNs, logs, and decisions.
 - Establish automatically tuned classical parameters as a strong fallback and

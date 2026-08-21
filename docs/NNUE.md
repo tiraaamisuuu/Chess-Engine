@@ -155,6 +155,12 @@ coverage, phase, material imbalance, teacher magnitude/sign, game result, and
 ply distributions. Sparse king squares or many features seen only a handful of
 times are a reason to improve sampling/data before tuning the model.
 
+The completed 5M audit saw 37,890/40,960 inputs (92.50%). Of all inputs,
+3,070 were unseen and 21,184 occurred at most 100 times; the median frequency
+among seen inputs was only 114. This is a major improvement over the earlier
+71.83% coverage, but it also shows that targeted long-tail sampling remains
+more valuable than blindly repeating the same corpus.
+
 ## Combine data produced on Windows and Debian
 
 The portable merger accepts either worker part manifests or complete dataset
@@ -280,10 +286,16 @@ trade throughput for complementary positional information.
 
 ## Later experiments
 
-After the five-million 256-wide baseline, change one variable at a time. The
-trainer already exposes hidden width, target/result blending, loss scale,
-learning rate/scheduler, quantization scales, and reproducible seeds. Plausible
-next experiments include 20M positions, wider hidden layers, improved HalfKA
-features, phase-aware sampling, self-play data, and automatic network-vs-champion
-promotion. Every format or feature change must be versioned and retain exact
-Python/C++ agreement tests.
+The five-million 256-wide baseline scored 32.5% over 400 games and was rejected.
+Follow-up probability-space WDL training and classical/NNUE blending improved
+small screens but did not establish a gain. Full results are in
+`docs/results/2026-08-21-five-million-nnue.md`.
+
+Change one variable at a time. First target the measured long-tail features and
+prototype a stronger two-perspective hidden stack or HalfKA-style representation;
+then consider scaling toward 20M positions if the learning curves justify it.
+The trainer already exposes hidden width, target/result blending, loss mode and
+scale, learning-rate scheduling, quantization scales, and reproducible seeds.
+Phase-aware sampling and self-play remain candidate inputs, not assumed wins.
+Every format or feature change must be versioned and retain exact Python/C++
+agreement tests.

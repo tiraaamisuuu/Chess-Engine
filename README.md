@@ -76,11 +76,14 @@ testing. It supports target-sized generation, cross-machine shard merging,
 feature-coverage audits, teacher-budget comparisons and sliced validation
 errors.
 
-The largest experiment so far used only 158,699 training positions and covered
-71.8% of the HalfKP feature space. Its network lost decisively to the classical
-evaluator and was rejected. Classical evaluation therefore remains the default;
-the next controlled experiment scales the unchanged 256-wide model to five
-million diverse positions.
+The first production experiment retained five million Stockfish-18-labelled
+training positions and 616,632 game-disjoint validation positions from the
+July 2026 Lichess CC0 archive. It covered 92.5% of the HalfKP inputs, passed
+quantization and exact C++ verification, and completed a 400-game match without
+technical failures. The fixed 256-wide network still lost decisively to the
+classical evaluator and was rejected. A WDL objective and configurable hybrid
+evaluation improved the diagnostic results but did not establish a strength
+gain, so classical evaluation remains the default.
 
 <!-- NNUE PIPELINE VISUAL
 Recommended: horizontal SVG of Lichess/self-play → sampling → Stockfish teacher
@@ -133,14 +136,14 @@ repository.
 
 **Current**
 
-- Acquire and checksum a modern Lichess CC0 monthly archive
-- Generate and audit a five-million-position, game-disjoint NNUE dataset
-- Train and test the unchanged 256-wide HalfKP baseline
+- Complete the slower release-candidate strength gate against `v0.4.0`
+- Confirm retained search gains at a slower time control
+- Profile root-parallel scaling and duplicated work
 
 **Next**
 
-- Iterate data scale, sampling and NNUE architecture from measured errors
-- Add engine self-play and targeted rare-position data
+- Target rare HalfKP inputs and prototype a stronger NNUE representation
+- Add engine self-play and targeted rare-position data only as controlled inputs
 - Automate candidate-vs-champion promotion and rejection
 
 **Longer term**

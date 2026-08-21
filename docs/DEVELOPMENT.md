@@ -9,7 +9,8 @@ needed to take the v1 development line to a release.
 - Active development branch: `dev/v1`
 - Release branch: `main`
 - Classical evaluation remains the default.
-- NNUE is optional and fully wired, but no network has earned promotion.
+- NNUE is optional and fully wired. The completed five-million-position
+  baseline and follow-up WDL/hybrid candidates did not earn promotion.
 - Generated builds, datasets, downloaded engines, networks, match logs, and
   environments are intentionally ignored by Git.
 - Do not merge `dev/v1` into `main` until the release gates below pass.
@@ -232,22 +233,20 @@ material, and teacher magnitude, and checksummed cross-machine merging.
 
 ## Prioritized roadmap
 
-### Priority 1: establish the large-data NNUE baseline
+### Priority 1: finish release evidence
 
-1. **Complete:** the 127,784-position 5k-vs-20k comparison selected 20k for
-   the first 5M baseline (97.499% score-sign agreement).
-2. Obtain and checksum a modern Lichess CC0 standard archive.
-3. Generate the five-million-position 20k-node dataset.
-4. Audit coverage and distributions; do not train if obvious holes remain.
-5. Train the fixed 256-wide baseline on CUDA with the C++ verification gate.
-6. Inspect the validation error slices and run a 400-game classical-vs-NNUE
-   diagnostic.
-7. Promote only if competitive, then run a larger SPRT; otherwise use those
-   error slices to improve sampling/training and iterate.
+1. **Complete:** the five-million-position, 20k-node production dataset,
+   coverage audit, 256-wide CUDA training, quantization, exact C++ verification,
+   and 400-game diagnostic.
+2. **Decision:** reject the pure network after a 32.5% score against classical;
+   WDL/hybrid follow-ups also did not establish a gain.
+3. Run the slower, adequately sized `dev/v1` versus `v0.4.0` paired match.
+4. Complete clean Release, C++, Python, perft, UCI, and web gates.
+5. Resolve remote CI failures before opening the release pull request.
 
-This is the single highest-value path because the engine implementation and
-training/export plumbing are already complete, while the existing network is
-known to be data-starved.
+The full NNUE evidence is recorded in
+`docs/results/2026-08-21-five-million-nnue.md`. Classical evaluation remains
+the release configuration.
 
 ### Priority 2: validate retained search gains
 
@@ -267,13 +266,15 @@ known to be data-starved.
 - Require a paired-match strength gain before changing the default from one.
 - A deeper shared-tree design is higher risk than current NNUE data work.
 
-### Priority 4: evaluation and future NNUE work
+### Priority 4: evaluation and NNUE v2
 
 - Establish a tuned classical parameter baseline rather than hand-adjusting
   many correlated terms.
-- After the 5M network, try 20M positions before changing feature architecture.
-- Then evaluate wider layers, HalfKA-style features, alternative target blends,
-  and self-play data one controlled variable at a time.
+- Target the 3,070 unseen and 21,184 low-frequency HalfKP inputs measured in
+  the completed 5M corpus.
+- Evaluate a stronger two-perspective hidden stack or HalfKA-style features,
+  then scale data only if validation and playing evidence justify it.
+- Keep WDL calibration, result blending, and self-play as controlled variables.
 
 ## Release gates
 

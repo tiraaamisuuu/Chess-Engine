@@ -231,8 +231,33 @@ maximum 32,540 cp difference. Score signs agreed on 97.499% of positions;
 consistent across all eight shards. At four times the fixed-node work, a 5M
 20k run projects to about 21 hours on the measured Ryzen 9 5900X configuration.
 
-The project therefore selects 20k labels for the first 5M, 256-wide HalfKP
-baseline. Production generation has not started because a modern monthly
-archive is not present locally. Full provenance, command, per-shard ranges,
-caveats, and output hashes are in
+The project therefore selected 20k labels for the first 5M, 256-wide HalfKP
+baseline. At that checkpoint production generation had not started because a
+modern monthly archive was not present locally. Full provenance, command,
+per-shard ranges, caveats, and output hashes are in
 `docs/results/2026-08-20-stockfish-teacher-budget.md`.
+
+## Five-million-position NNUE result — 2026-08-21
+
+The July 2026 Lichess standard-rated CC0 archive produced exactly 5,000,000
+Stockfish-18-labelled training positions plus 616,632 game-disjoint validation
+positions at 20,000 nodes per label. The audit covered 37,890/40,960 HalfKP
+inputs (92.50%); 3,070 remained unseen and 21,184 occurred at most 100 times.
+
+The original 256-wide network passed quantization and exact C++ verification,
+but scored `102-242-56` against classical over 400 paired `10+0.1` games (32.5%,
+-127.0 +/- 33.4 Elo). There were no technical failures, so it was rejected on
+strength rather than correctness.
+
+An opt-in probability-space WDL objective improved the best pure-network
+40-game screen to `15-20-5` (43.8%). A new tested `NNUE Weight` UCI option then
+allowed classical/NNUE blends. The most promising 50% blend scored `16-15-9`
+in its initial 40-game screen, but a fresh-seed 200-game confirmation scored
+`76-82-42` (48.5%, -10.4 +/- 43.0 Elo, LOS 31.7%) with zero failures. It also
+searched only 33,728 NPS at fixed depth 8 versus 62,682 for classical because
+both evaluators run at every leaf.
+
+The full pipeline is proven, but no model earned promotion. Classical remains
+the release evaluator. Data hashes, network hashes, validation/quantization
+metrics, frozen binary identity, all screening results, and the decision are
+recorded in `docs/results/2026-08-21-five-million-nnue.md`.
