@@ -1251,7 +1251,8 @@ inline int runSearchBenchmark(const Zobrist& zob, int depth, int perPositionTime
     std::cout << "Benchmark: depth=" << depth
               << " timeLimit=" << perPositionTimeMs
               << "ms threads=" << threads
-              << " evaluator=" << (evaluator && evaluator->usingNnue() ? "nnue" : "classical")
+              << " evaluator=" << (evaluator ? evaluator->backendName() : "classical")
+              << " nnueWeight=" << (evaluator ? evaluator->nnueWeight() : 0)
               << " nnueMode=" << (evaluator && evaluator->usingNnue()
                     ? (incrementalNnue ? "incremental" : "rebuild") : "n/a")
               << " positions=" << positions.size() << "\n";

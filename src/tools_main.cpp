@@ -24,9 +24,10 @@ void printHelp(){
         << "  chess-engine-tools --divide DEPTH [--fen FEN]\n"
         << "  chess-engine-tools --perft-tests [--max-depth DEPTH]\n"
         << "  chess-engine-tools --fen-after \"UCI MOVES...\" [--fen FEN]\n"
-        << "  chess-engine-tools --eval [--fen FEN] [--nnue NETWORK]\n"
+        << "  chess-engine-tools --eval [--fen FEN] [--nnue NETWORK] [--nnue-weight PERCENT]\n"
         << "  chess-engine-tools --bench [--bench-depth DEPTH] [--bench-time MS]\n"
         << "                  [--bench-tt MB] [--threads N] [--nnue NETWORK]\n"
+        << "                  [--nnue-weight PERCENT]\n"
         << "                  [--nnue-rebuild]\n";
 }
 
@@ -44,6 +45,7 @@ int main(int argc, char** argv){
     int benchmarkTimeMs = 4000;
     int benchmarkTTMB = 256;
     int threads = 1;
+    int nnueWeight = 100;
     std::string fen;
     std::string movesForFen;
     std::string nnuePath;
@@ -80,6 +82,12 @@ int main(int argc, char** argv){
             const char* value = valueFor("--nnue");
             if(!value) return 1;
             nnuePath = value;
+        } else if(argument == "--nnue-weight"){
+            const char* value = valueFor("--nnue-weight");
+            if(!value || !parseInteger(value, nnueWeight) || nnueWeight < 0 || nnueWeight > 100){
+                std::cerr << "--nnue-weight must be between 0 and 100\n";
+                return 1;
+            }
         } else if(argument == "--nnue-rebuild"){
             nnueRebuild = true;
         } else if(argument == "--max-depth"){
@@ -114,6 +122,10 @@ int main(int argc, char** argv){
         std::cerr << "--nnue-rebuild requires --bench and --nnue\n";
         return 1;
     }
+    if(nnueWeight != 100 && nnuePath.empty()){
+        std::cerr << "--nnue-weight requires --nnue\n";
+        return 1;
+    }
     if(!nnuePath.empty()){
         std::string error;
         if(!evaluator.loadNnue(nnuePath, &error)){
@@ -121,6 +133,7 @@ int main(int argc, char** argv){
             return 1;
         }
         evaluator.setUseNnue(true);
+        evaluator.setNnueWeight(nnueWeight);
     }
     if(benchmark){
         return runSearchBenchmark(
@@ -137,7 +150,8 @@ int main(int argc, char** argv){
             return 1;
         }
         std::cout << "evaluation_cp=" << evaluator.evaluate(board)
-                  << " backend=" << (evaluator.usingNnue() ? "nnue" : "classical") << '\n';
+                  << " backend=" << evaluator.backendName()
+                  << " nnue_weight=" << evaluator.nnueWeight() << '\n';
         return 0;
     }
 

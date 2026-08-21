@@ -357,6 +357,25 @@ void testNnueFormat(const Zobrist& zobrist){
     board.setZobrist(&zobrist);
     board.reset();
     expect(evaluator.evaluate(board) == 42, "NNUE quantized inference should match fixture output");
+
+    const int classical = evaluateClassical(board);
+    evaluator.setNnueWeight(25);
+    const int expectedHybrid = (classical * 75 + 42 * 25) / 100;
+    expect(evaluator.evaluate(board) == expectedHybrid,
+           "hybrid evaluation should use the configured NNUE percentage");
+    NnueAccumulator accumulator;
+    evaluator.refreshAccumulator(board, accumulator);
+    expect(evaluator.evaluate(board, accumulator) == expectedHybrid,
+           "incremental hybrid evaluation should match full evaluation");
+    expect(std::string(evaluator.backendName()) == "hybrid",
+           "partial NNUE weight should report the hybrid backend");
+
+    evaluator.setNnueWeight(-1);
+    expect(evaluator.nnueWeight() == 0 && evaluator.evaluate(board) == classical,
+           "NNUE weight should clamp to the classical endpoint");
+    evaluator.setNnueWeight(101);
+    expect(evaluator.nnueWeight() == 100 && evaluator.evaluate(board) == 42,
+           "NNUE weight should clamp to the neural endpoint");
     std::error_code removeError;
     std::filesystem::remove(path, removeError);
 }

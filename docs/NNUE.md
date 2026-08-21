@@ -269,7 +269,14 @@ UCI activation is independent of source code:
 ```text
 setoption name EvalFile value D:\ChessNetworks\halfkp-256-5m-sf18-20k.nnue
 setoption name Use NNUE value true
+setoption name NNUE Weight value 100
 ```
+
+`NNUE Weight` accepts `0..100`. `100` is pure NNUE and preserves the original
+behavior; intermediate values blend the classical and neural centipawn scores.
+Changing the weight clears search state through the UCI option path. Treat
+hybrid weights as measured experiments: they evaluate both backends and may
+trade throughput for complementary positional information.
 
 ## Later experiments
 

@@ -399,13 +399,17 @@ inline int evaluateClassical(const Board& bd){
 class PositionEvaluator {
 public:
     int evaluate(const Board& board) const {
-        return useNnue_ && nnue_.loaded() ? nnue_.evaluate(board) : evaluateClassical(board);
+        if(!usingNnue() || nnueWeightPercent_ == 0) return evaluateClassical(board);
+        const int neural = nnue_.evaluate(board);
+        if(nnueWeightPercent_ == 100) return neural;
+        return blend(evaluateClassical(board), neural);
     }
 
     int evaluate(const Board& board, const NnueAccumulator& accumulator) const {
-        return useNnue_ && nnue_.loaded()
-            ? nnue_.evaluate(board, accumulator)
-            : evaluateClassical(board);
+        if(!usingNnue() || nnueWeightPercent_ == 0) return evaluateClassical(board);
+        const int neural = nnue_.evaluate(board, accumulator);
+        if(nnueWeightPercent_ == 100) return neural;
+        return blend(evaluateClassical(board), neural);
     }
 
     void refreshAccumulator(const Board& board, NnueAccumulator& accumulator) const {
@@ -435,11 +439,27 @@ public:
         return useNnue_ == enabled;
     }
 
+    void setNnueWeight(int percent){
+        nnueWeightPercent_ = std::clamp(percent, 0, 100);
+    }
+
     bool usingNnue() const { return useNnue_ && nnue_.loaded(); }
     bool hasNnue() const { return nnue_.loaded(); }
+    int nnueWeight() const { return nnueWeightPercent_; }
+    const char* backendName() const {
+        if(!usingNnue() || nnueWeightPercent_ == 0) return "classical";
+        return nnueWeightPercent_ == 100 ? "nnue" : "hybrid";
+    }
     const NnueNetwork& nnue() const { return nnue_; }
 
 private:
+    int blend(int classical, int neural) const {
+        const int64_t weighted = static_cast<int64_t>(classical) * (100 - nnueWeightPercent_)
+            + static_cast<int64_t>(neural) * nnueWeightPercent_;
+        return static_cast<int>(weighted / 100);
+    }
+
     NnueNetwork nnue_;
     bool useNnue_ = false;
+    int nnueWeightPercent_ = 100;
 };

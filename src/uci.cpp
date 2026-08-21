@@ -254,6 +254,7 @@ int runUCILoop(int defaultThreads){
                       << "option name Clear Hash type button\n"
                       << "option name EvalFile type string default <empty>\n"
                       << "option name Use NNUE type check default false\n"
+                      << "option name NNUE Weight type spin default 100 min 0 max 100\n"
                       << "uciok\n" << std::flush;
         } else if(lower == "isready"){
             std::lock_guard<std::mutex> lock(outputMutex);
@@ -284,6 +285,13 @@ int runUCILoop(int defaultThreads){
                 if(!accepted){
                     std::lock_guard<std::mutex> lock(outputMutex);
                     std::cout << "info string Use NNUE requires a valid EvalFile\n" << std::flush;
+                }
+            } else if(lower.find("name nnue weight") != std::string::npos && valuePosition != std::string::npos){
+                int value = 100;
+                if(parseIntStrict(trim(line.substr(valuePosition + 7)), value)){
+                    stopSearch();
+                    evaluator.setNnueWeight(value);
+                    resetSearch();
                 }
             } else if(lower.find("name hash") != std::string::npos && valuePosition != std::string::npos){
                 int value = 0;

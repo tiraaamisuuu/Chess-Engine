@@ -206,3 +206,19 @@ scripts/compare_engines.py \
 To compare NNUE against classical evaluation, omit the eval-file option on the
 classical side. A network should not become the default until it passes loader
 tests and a properly powered paired match.
+
+To screen a classical/NNUE blend without changing the network or executable,
+set the candidate's UCI weight explicitly. For example, this compares a 25%
+NNUE blend against pure classical evaluation:
+
+```powershell
+python scripts\compare_engines.py `
+  --baseline dev/v1 --candidate dev/v1 `
+  --candidate-eval-file D:\ChessNetworks\candidate.nnue `
+  --candidate-option "NNUE Weight=25" `
+  --games 100 --tc 10+0.1 --threads 1 --hash 256
+```
+
+Screen several predeclared weights with identical openings and settings. Do not
+select a weight from a tiny match and then report that same match as independent
+confirmation; rerun the selected candidate with a fresh seed and larger sample.
