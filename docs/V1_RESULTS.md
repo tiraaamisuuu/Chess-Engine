@@ -79,6 +79,24 @@ time, so this is strong evidence that v1 is materially better, but the exact
 Elo figure remains preliminary. A longer SPRT at a slower time control is still
 required for a release-grade strength claim.
 
+## v1 release match versus v0.4.0
+
+A fixed 400-game paired confirmation compared clean candidate `4cb398f6f0`
+with tag `v0.4.0` (`1b52752430`). It used the UHO 4060 suite with reversed
+colours, one thread and 256 MiB hash per engine, seed 83, and a slower `10+0.1`
+time control.
+
+| Candidate wins | Legacy wins | Draws | Candidate score | Relative Elo |
+|---:|---:|---:|---:|---:|
+| 299 | 18 | 83 | 85.1% | +303.0 +/- 37.1 |
+
+Cute Chess reported 100% likelihood of superiority. v1 scored 90.0% as White
+and 80.2% as Black, with zero time forfeits, crashes, illegal moves, or
+disconnects. This passes the release playing-strength gate while remaining a
+relative result under the named test contract, not an absolute rating claim.
+Full hashes, environment, match settings, caveats, and gate results are in
+`docs/results/2026-08-21-v1-release-gate.md`.
+
 ## Node-efficiency match
 
 A second 100-game paired match compared optimized revision `dea7450bba` with

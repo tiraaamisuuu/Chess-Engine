@@ -37,12 +37,19 @@ and measurable playing strength take priority over accumulating heuristics.
 WDL-probability training and configurable classical/NNUE blending are now
 available for controlled experiments. Neither has yet earned promotion.
 
-## Current priority: release evidence
+## Completed release evidence
 
-- Run a slower, adequately sized `dev/v1` versus `v0.4.0` paired match.
-- Complete all C++/Python/web gates from a clean Release build.
-- Resolve any failing CI check and preserve the exact release artifacts.
-- Open the release pull request only when the evidence and branch are clean.
+- **Complete:** 400 paired `10+0.1` games versus `v0.4.0` scored `299-18-83`
+  (85.1%, +303.0 +/- 37.1 Elo, 100% LOS) with zero technical failures.
+- **Complete:** all local C++/Python/perft/UCI/web gates pass.
+- **Complete:** Ubuntu, macOS, Windows, sanitizers, and web GitHub jobs pass.
+- **Complete:** the merge tree against `main` is conflict-free.
+
+## Current priority: publish v1.0.0
+
+- Review and merge `dev/v1` into `main`.
+- Tag `v1.0.0` and publish the verified release package.
+- Preserve classical evaluation and one thread as release defaults.
 
 ## Search follow-up
 

@@ -13,7 +13,8 @@ needed to take the v1 development line to a release.
   baseline and follow-up WDL/hybrid candidates did not earn promotion.
 - Generated builds, datasets, downloaded engines, networks, match logs, and
   environments are intentionally ignored by Git.
-- Do not merge `dev/v1` into `main` until the release gates below pass.
+- The release gates below pass as of 2026-08-21; merge and tagging remain
+  deliberate repository-wide release actions.
 
 Before changing the engine, fetch the remote, inspect the current branch and
 worktree, and review:
@@ -233,20 +234,23 @@ material, and teacher magnitude, and checksummed cross-machine merging.
 
 ## Prioritized roadmap
 
-### Priority 1: finish release evidence
+### Priority 1: release v1
 
 1. **Complete:** the five-million-position, 20k-node production dataset,
    coverage audit, 256-wide CUDA training, quantization, exact C++ verification,
    and 400-game diagnostic.
 2. **Decision:** reject the pure network after a 32.5% score against classical;
    WDL/hybrid follow-ups also did not establish a gain.
-3. Run the slower, adequately sized `dev/v1` versus `v0.4.0` paired match.
-4. Complete clean Release, C++, Python, perft, UCI, and web gates.
-5. Resolve remote CI failures before opening the release pull request.
+3. **Complete:** the 400-game `10+0.1` release match scored `299-18-83`
+   (85.1%, +303.0 +/- 37.1 Elo, 100% LOS) with zero technical failures.
+4. **Complete:** clean Release, C++, Python, perft, UCI, and web gates.
+5. **Complete:** Ubuntu, macOS, Windows, sanitizer, and web GitHub jobs pass.
+6. Review and merge `dev/v1`, then tag and package `v1.0.0`.
 
-The full NNUE evidence is recorded in
-`docs/results/2026-08-21-five-million-nnue.md`. Classical evaluation remains
-the release configuration.
+The NNUE and release evidence is recorded in
+`docs/results/2026-08-21-five-million-nnue.md` and
+`docs/results/2026-08-21-v1-release-gate.md`. Classical evaluation remains the
+release configuration.
 
 ### Priority 2: validate retained search gains
 

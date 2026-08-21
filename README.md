@@ -47,7 +47,7 @@ claims. Full hardware, commands, commits and uncertainty are preserved in
 
 | Measurement | Result | Interpretation |
 |---|---:|---|
-| v1 vs `v0.4.0`, 100 paired fast games | `70–13–17` | 78.5% score; strong preliminary evidence, not release-grade Elo |
+| v1 vs `v0.4.0`, 400 paired `10+0.1` games | `299–18–83` | 85.1%, +303.0 +/- 37.1 Elo, 100% LOS; release strength gate passed |
 | Depth-10 search work | 270,343 → 186,618 nodes | Qsearch SEE pruning plus continuation history; changed tree |
 | Incremental null move | 5,108 → 4,951 ms | 3.1% median reduction with identical tree |
 | Incremental NNUE accumulator | 13,457 → 46,010 median NPS | 3.42× over full accumulator rebuild on the same smoke network |
@@ -136,12 +136,14 @@ repository.
 
 **Current**
 
-- Complete the slower release-candidate strength gate against `v0.4.0`
-- Confirm retained search gains at a slower time control
-- Profile root-parallel scaling and duplicated work
+- Review and merge the release-ready `dev/v1` branch into `main`
+- Tag and package `v1.0.0` after the merge
+- Keep classical evaluation and one search thread as the proven defaults
 
 **Next**
 
+- Confirm retained search gains at a slower time control
+- Profile root-parallel scaling and duplicated work
 - Target rare HalfKP inputs and prototype a stronger NNUE representation
 - Add engine self-play and targeted rare-position data only as controlled inputs
 - Automate candidate-vs-champion promotion and rejection
