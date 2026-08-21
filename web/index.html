@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0d0c">
+  <title>Chess Engine — Local Analysis</title>
+  <meta name="description" content="A focused local interface for playing and analysing with local chess engines.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="Chess engine home">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span><strong>CHESS ENGINE</strong><small>V1.0 / LOCAL</small></span>
+    </a>
+    <div class="connection" id="connection">
+      <span class="connection-dot"></span>
+      <span id="connection-label">Connecting</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="button compact" id="manage-engines" type="button">Engines <span id="engine-count">0</span></button>
+      <button class="button button-primary compact" id="new-game-top" type="button">New game</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <section class="play-area" aria-label="Chess game">
+      <div class="player-strip" id="top-player">
+        <div class="avatar"><span id="top-monogram">CE</span></div>
+        <div class="player-copy">
+          <strong id="top-name">Chess Engine</strong>
+          <span id="top-detail">Engine · 650 ms</span>
+        </div>
+        <div class="turn-pill" id="top-turn">WAITING</div>
+      </div>
+
+      <div class="board-stage">
+        <div class="evaluation" aria-label="Position evaluation">
+          <div class="evaluation-white" id="evaluation-fill"></div>
+          <span id="evaluation-score">0.00</span>
+        </div>
+        <div class="board-shell">
+          <div class="board" id="board" role="grid" aria-label="Chessboard"></div>
+          <div class="thinking-overlay" id="thinking-overlay" aria-live="polite">
+            <div class="thinking-dial" id="thinking-dial" aria-hidden="true">
+              <span class="thinking-dial-core">
+                <output id="thinking-countdown">•••</output>
+                <small>SECONDS</small>
+              </span>
+            </div>
+            <strong id="thinking-title">Engine is thinking</strong>
+            <small id="thinking-detail">Searching the position</small>
+            <span class="thinking-phases" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="player-strip" id="bottom-player">
+        <div class="avatar human"><span id="bottom-monogram">YOU</span></div>
+        <div class="player-copy">
+          <strong id="bottom-name">You</strong>
+          <span id="bottom-detail">White pieces</span>
+        </div>
+        <div class="turn-pill active" id="bottom-turn">YOUR MOVE</div>
+      </div>
+
+      <div class="board-actions">
+        <button class="icon-button" id="undo" title="Undo move" aria-label="Undo move"><span>↶</span>Undo</button>
+        <button class="icon-button" id="flip" title="Flip board" aria-label="Flip board"><span>⇅</span>Flip</button>
+        <button class="icon-button" id="auto-play" title="Pause computer play" aria-label="Pause computer play" hidden><span>Ⅱ</span>Pause</button>
+        <button class="icon-button" id="export-game" title="Export game log" aria-label="Export game log"><span>⇩</span>Export</button>
+        <button class="icon-button" id="new-game" title="New game" aria-label="New game"><span>＋</span>New</button>
+      </div>
+    </section>
+
+    <aside class="side-panel">
+      <div class="status-card">
+        <div>
+          <span class="eyebrow">POSITION</span>
+          <h1 id="position-status">Your move</h1>
+        </div>
+        <div class="status-activity">
+          <div class="status-countdown" id="status-countdown" hidden>
+            <output id="status-countdown-value">0.00s</output>
+            <small>REMAINING</small>
+          </div>
+          <span class="status-pulse" id="status-pulse"></span>
+        </div>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Game information">
+        <button class="tab active" data-tab="moves" role="tab" aria-selected="true">Moves</button>
+        <button class="tab" data-tab="analysis" role="tab" aria-selected="false">Analysis</button>
+      </div>
+
+      <section class="panel-view active" id="moves-view" aria-label="Move list">
+        <div class="moves-list" id="moves-list">
+          <div class="empty-state">
+            <span>01</span>
+            <p>Your game will appear here.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel-view" id="analysis-view" aria-label="Engine analysis">
+        <div class="analysis-hero">
+          <span class="eyebrow">EVALUATION</span>
+          <strong id="analysis-score">0.00</strong>
+          <small id="analysis-depth">Waiting for a position</small>
+        </div>
+        <div class="pv-block">
+          <span class="eyebrow">PRINCIPAL VARIATION</span>
+          <p id="analysis-pv">Analysis begins after the first move.</p>
+        </div>
+        <div class="metric-grid">
+          <div><span>DEPTH</span><strong id="metric-depth">—</strong></div>
+          <div><span>NODES</span><strong id="metric-nodes">—</strong></div>
+          <div><span>NPS</span><strong id="metric-nps">—</strong></div>
+          <div><span>TIME</span><strong id="metric-time">—</strong></div>
+        </div>
+        <button class="button analysis-button" id="run-analysis" type="button">Analyse position</button>
+      </section>
+
+      <div class="engine-card">
+        <div class="engine-icon" aria-hidden="true"><span></span></div>
+        <div>
+          <span class="eyebrow">ACTIVE ENGINE / MODEL</span>
+          <strong id="engine-name">Chess Engine</strong>
+        </div>
+        <span class="engine-state" id="engine-state">UCI</span>
+      </div>
+    </aside>
+  </main>
+
+  <dialog class="modal new-game-modal" id="new-game-modal">
+    <form method="dialog" id="new-game-form">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow">CHOOSE YOUR MATCH</span>
+          <h2>What do you want to play?</h2>
+          <p class="modal-intro">Choose the players, engine and thinking time before the board begins.</p>
+        </div>
+        <button class="modal-close" id="close-new-game" type="button" aria-label="Return to current board">×</button>
+      </div>
+
+      <fieldset>
+        <legend>Match type</legend>
+        <div class="segmented three">
+          <label><input type="radio" name="mode" value="pvp"><span>PvP</span></label>
+          <label><input type="radio" name="mode" value="pvc" checked><span>PvC</span></label>
+          <label><input type="radio" name="mode" value="cvc"><span>CvC</span></label>
+        </div>
+        <p class="field-help" id="mode-help">Play against a selected local engine or model.</p>
+      </fieldset>
+
+      <div id="pvc-options">
+        <fieldset>
+          <legend>Play as</legend>
+          <div class="segmented three">
+            <label><input type="radio" name="side" value="white" checked><span>White</span></label>
+            <label><input type="radio" name="side" value="random"><span>Random</span></label>
+            <label><input type="radio" name="side" value="black"><span>Black</span></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Computer engine / model</legend>
+          <select class="profile-select" id="pvc-profile" name="pvc-profile" aria-label="Computer engine or model"></select>
+          <div class="profile-summary" id="pvc-profile-summary" aria-live="polite">
+            <span class="profile-badge"></span>
+            <span class="profile-summary-copy"><strong></strong><small></small></span>
+          </div>
+        </fieldset>
+      </div>
+
+      <div class="matchup-grid" id="cvc-options" hidden>
+        <fieldset>
+          <legend>White engine / model</legend>
+          <select class="profile-select" id="white-profile" name="white-profile" aria-label="White engine or model"></select>
+          <div class="profile-summary" id="white-profile-summary" aria-live="polite">
+            <span class="profile-badge"></span>
+            <span class="profile-summary-copy"><strong></strong><small></small></span>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Black engine / model</legend>
+          <select class="profile-select" id="black-profile" name="black-profile" aria-label="Black engine or model"></select>
+          <div class="profile-summary" id="black-profile-summary" aria-live="polite">
+            <span class="profile-badge"></span>
+            <span class="profile-summary-copy"><strong></strong><small></small></span>
+          </div>
+        </fieldset>
+      </div>
+
+      <section class="engine-onboarding" id="engine-onboarding" aria-live="polite">
+        <div class="engine-onboarding-copy">
+          <span class="eyebrow" id="stockfish-kicker">OFFICIAL OPPONENT</span>
+          <strong id="stockfish-title">Want to play Stockfish?</strong>
+          <p id="stockfish-copy">Install the verified official build for this computer with one click.</p>
+        </div>
+        <div class="engine-onboarding-actions">
+          <button class="button compact" id="import-other-engine" type="button">Other engine</button>
+          <button class="button button-primary compact" id="setup-engine-action" type="button">Install Stockfish</button>
+        </div>
+      </section>
+
+      <fieldset id="strength-field">
+        <legend>Thinking time per move</legend>
+        <div class="time-presets" aria-label="Thinking time presets">
+          <button type="button" class="time-preset" data-time="250"><strong>250</strong><span>ms</span></button>
+          <button type="button" class="time-preset active" data-time="650"><strong>650</strong><span>ms</span></button>
+          <button type="button" class="time-preset" data-time="1500"><strong>1.5</strong><span>sec</span></button>
+          <button type="button" class="time-preset" data-time="5000"><strong>5</strong><span>sec</span></button>
+          <button type="button" class="time-preset" data-time="10000"><strong>10</strong><span>sec</span></button>
+        </div>
+        <div class="time-control">
+          <div class="time-readout">
+            <span>Custom control</span>
+            <output id="engine-time-output" for="engine-time-slider">650 ms</output>
+          </div>
+          <input type="range" id="engine-time-slider" min="0" max="1000" value="484"
+                 aria-label="Custom thinking time" aria-describedby="engine-time-hint">
+          <input type="hidden" id="engine-time" name="engine-time" value="650">
+          <div class="time-scale" aria-hidden="true"><span>50 ms</span><span>10 sec</span></div>
+        </div>
+        <p class="field-help" id="engine-time-hint">Drag for a custom value. The control snaps gently to the presets above.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Board orientation</legend>
+        <div class="segmented three">
+          <label><input type="radio" name="orientation" value="white"><span>White</span></label>
+          <label><input type="radio" name="orientation" value="auto" checked><span>Auto</span></label>
+          <label><input type="radio" name="orientation" value="black"><span>Black</span></label>
+        </div>
+      </fieldset>
+
+      <button class="button button-primary modal-submit" value="default" type="submit">Start game</button>
+    </form>
+  </dialog>
+
+  <dialog class="modal engine-library-modal" id="engine-library-modal">
+    <form id="engine-import-form">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow">UCI ENGINE LIBRARY</span>
+          <h2>Manage chess engines</h2>
+          <p class="modal-intro">Install official Stockfish automatically, or import another UCI executable.</p>
+        </div>
+        <button class="modal-close" id="close-engine-library" type="button" aria-label="Close">×</button>
+      </div>
+
+      <div class="stockfish-download-strip" id="stockfish-installer">
+        <span><strong id="stockfish-installer-title">Official Stockfish 18</strong><small id="stockfish-installer-detail">Verified download for this computer · GPL-3.0</small></span>
+        <span class="stockfish-installer-actions">
+          <a href="https://github.com/official-stockfish/Stockfish/releases/tag/sf_18" target="_blank" rel="noreferrer">Source &amp; licence ↗</a>
+          <button class="button button-primary compact" id="library-install-stockfish" type="button">Install</button>
+        </span>
+      </div>
+
+      <div class="library-divider"><span>Import another UCI engine</span></div>
+      <div class="engine-import-grid">
+        <label class="file-picker" for="engine-file">
+          <span class="file-picker-mark" aria-hidden="true">＋</span>
+          <span><strong id="engine-file-label">Choose engine executable</strong><small>Any trusted UCI-compatible binary</small></span>
+          <input id="engine-file" name="engine-file" type="file" required>
+        </label>
+        <label class="text-field" for="engine-label">
+          <span>Display name <small>optional</small></span>
+          <input id="engine-label" name="engine-label" maxlength="120" placeholder="Use the engine's own name">
+        </label>
+      </div>
+      <p class="engine-security-note">Only import engines you trust. The selected executable is copied into this local project, launched on your computer, and verified with a UCI handshake.</p>
+      <button class="button button-primary engine-import-submit" id="import-engine" type="submit">Verify and import</button>
+
+      <div class="library-divider"><span>Available profiles</span></div>
+      <div class="engine-library-list" id="engine-library-list" aria-live="polite"></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal export-modal" id="export-modal">
+    <form method="dialog" id="export-form">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow">GAME LOG</span>
+          <h2>Export this game</h2>
+        </div>
+        <button class="modal-close" id="close-export" type="button" aria-label="Close">×</button>
+      </div>
+
+      <fieldset>
+        <legend>Format</legend>
+        <div class="segmented three">
+          <label><input type="radio" name="export-format" value="pgn" checked><span>PGN</span></label>
+          <label><input type="radio" name="export-format" value="fen"><span>FEN</span></label>
+          <label><input type="radio" name="export-format" value="json"><span>JSON</span></label>
+        </div>
+        <p class="field-help" id="export-help">Standard PGN for Chessigma and other game-analysis tools.</p>
+      </fieldset>
+
+      <div class="export-metadata" id="export-metadata">
+        <label><span>Event</span><input id="export-event" name="event" value="Local Game" maxlength="120"></label>
+        <label><span>White</span><input id="export-white" name="white" maxlength="120"></label>
+        <label><span>Black</span><input id="export-black" name="black" maxlength="120"></label>
+      </div>
+
+      <label class="export-preview-label" for="export-preview">Preview</label>
+      <textarea class="export-preview" id="export-preview" readonly spellcheck="false">Preparing export…</textarea>
+      <div class="export-actions">
+        <button class="button" id="copy-export" type="button">Copy</button>
+        <button class="button button-primary" id="download-export" type="button">Download .pgn</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="promotion-modal" id="promotion-modal">
+    <div>
+      <span class="eyebrow">PROMOTION</span>
+      <h2>Choose a piece</h2>
+      <div class="promotion-options" id="promotion-options"></div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

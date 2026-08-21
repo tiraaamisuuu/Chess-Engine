@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-g++ -std=c++17 src/main.cpp src/ui.cpp -o gui $(pkg-config --cflags --libs sfml-graphics sfml-window sfml-system)
+cmake -S . -B build-linux -DCHESS_BUILD_GUI=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build-linux --parallel
 
-echo "Built ./gui"
+echo "Built build-linux/gui and build-linux/chess-engine-uci"

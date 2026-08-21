@@ -9,6 +9,8 @@ struct Board {
     int epSquare = -1;          // en passant target square index or -1
     u8 castling = 0b1111;       // 1=WK,2=WQ,4=BK,8=BQ
     int halfmoveClock = 0;      // 50-move heuristic
+    int fullmoveNumber = 1;
+    std::array<int, 2> kingSquare{{-1, -1}};
     u64 hash = 0;
 
     const Zobrist* z = nullptr;
@@ -19,13 +21,17 @@ struct Board {
         epSquare = -1;
         castling = 0b1111;
         halfmoveClock = 0;
+        fullmoveNumber = 1;
+        kingSquare = {{-1, -1}};
         hash = 0;
     }
 
     void reset(){
         clear();
         auto set = [&](int file, int rank, Color c, PieceType t){
-            b[rank*8 + file] = Piece{t,c};
+            const int square = rank * 8 + file;
+            b[static_cast<size_t>(square)] = Piece{t,c};
+            if(t == PieceType::King) kingSquare[c == Color::White ? 0 : 1] = square;
         };
 
         // White
@@ -54,6 +60,7 @@ struct Board {
         epSquare = -1;
         castling = 0b1111;
         halfmoveClock=0;
+        fullmoveNumber=1;
 
         recomputeHash();
     }
@@ -71,6 +78,8 @@ struct Board {
 
         int rank = 7;
         int file = 0;
+        int whiteKings = 0;
+        int blackKings = 0;
         for(char ch : boardPart){
             if(ch == '/'){
                 if(file != 8) return false;
@@ -100,10 +109,15 @@ struct Board {
 
             if(rank < 0 || file >= 8) return false;
             b[rank*8 + file] = Piece{pt, pc};
+            if(pt == PieceType::King){
+                kingSquare[pc == Color::White ? 0 : 1] = rank * 8 + file;
+                if(pc == Color::White) whiteKings++;
+                else blackKings++;
+            }
             file++;
         }
 
-        if(rank != 0 || file != 8) return false;
+        if(rank != 0 || file != 8 || whiteKings != 1 || blackKings != 1) return false;
 
         if(stmPart == "w") stm = Color::White;
         else if(stmPart == "b") stm = Color::Black;
@@ -132,7 +146,7 @@ struct Board {
         }
 
         halfmoveClock = std::max(0, halfmove);
-        (void)fullmove;
+        fullmoveNumber = std::max(1, fullmove);
 
         recomputeHash();
         return true;
@@ -144,6 +158,26 @@ struct Board {
     void setZobrist(const Zobrist* zz){
         z = zz;
         recomputeHash();
+    }
+
+    bool hasEnPassantCapture() const {
+        if(epSquare < 0) return false;
+        const int targetRank = epSquare / 8;
+        const int targetFile = epSquare % 8;
+        const int pawnRank = targetRank + (stm == Color::White ? -1 : 1);
+        if(pawnRank < 0 || pawnRank > 7) return false;
+
+        for(const int fileOffset : {-1, 1}){
+            const int pawnFile = targetFile + fileOffset;
+            if(pawnFile < 0 || pawnFile > 7) continue;
+            const Piece pawn = b[static_cast<size_t>(pawnRank * 8 + pawnFile)];
+            if(pawn.t == PieceType::Pawn && pawn.c == stm) return true;
+        }
+        return false;
+    }
+
+    int enPassantHashFile() const {
+        return hasEnPassantCapture() ? epSquare % 8 : 8;
     }
 
     void recomputeHash(){
@@ -158,18 +192,56 @@ struct Board {
         }
         if(stm==Color::Black) h ^= z->sideToMove;
         h ^= z->castling[castling & 0xF];
-        int epF = 8;
-        if(epSquare>=0) epF = epSquare % 8;
-        h ^= z->epFile[epF];
+        h ^= z->epFile[enPassantHashFile()];
         hash = h;
     }
 
-    int findKing(Color c) const {
-        for(int i=0;i<64;i++){
-            auto p=b[i];
-            if(p.t==PieceType::King && p.c==c) return i;
+    std::string toFEN() const {
+        std::ostringstream out;
+        for(int rank = 7; rank >= 0; rank--){
+            int empty = 0;
+            for(int file = 0; file < 8; file++){
+                const Piece piece = b[static_cast<size_t>(rank * 8 + file)];
+                if(isNone(piece)){
+                    empty++;
+                    continue;
+                }
+                if(empty > 0){ out << empty; empty = 0; }
+                char symbol = '?';
+                switch(piece.t){
+                    case PieceType::Pawn: symbol = 'p'; break;
+                    case PieceType::Knight: symbol = 'n'; break;
+                    case PieceType::Bishop: symbol = 'b'; break;
+                    case PieceType::Rook: symbol = 'r'; break;
+                    case PieceType::Queen: symbol = 'q'; break;
+                    case PieceType::King: symbol = 'k'; break;
+                    default: break;
+                }
+                if(piece.c == Color::White){
+                    symbol = static_cast<char>(std::toupper(static_cast<unsigned char>(symbol)));
+                }
+                out << symbol;
+            }
+            if(empty > 0) out << empty;
+            if(rank > 0) out << '/';
         }
-        return -1;
+
+        out << (stm == Color::White ? " w " : " b ");
+        if(castling == 0){
+            out << '-';
+        } else {
+            if(castling & 0b0001) out << 'K';
+            if(castling & 0b0010) out << 'Q';
+            if(castling & 0b0100) out << 'k';
+            if(castling & 0b1000) out << 'q';
+        }
+        out << ' ' << (epSquare >= 0 ? sqName(indexToSq(epSquare)) : "-")
+            << ' ' << halfmoveClock << ' ' << fullmoveNumber;
+        return out.str();
+    }
+
+    int findKing(Color c) const {
+        return kingSquare[c == Color::White ? 0 : 1];
     }
 
     bool isSquareAttacked(int sq, Color by) const {
@@ -239,7 +311,8 @@ struct Board {
         return isSquareAttacked(k, other(c));
     }
 
-    void genPseudoMoves(std::vector<Move>& out) const {
+    template<typename MoveContainer>
+    void genPseudoMoves(MoveContainer& out) const {
         out.clear();
         Color us = stm;
 
@@ -382,10 +455,13 @@ struct Board {
     }
 
     bool makeMove(const Move& m, Undo& u){
+        if(m.from >= 64 || m.to >= 64) return false;
         u.m = m;
         u.epSquare = epSquare;
         u.castling = castling;
         u.halfmoveClock = halfmoveClock;
+        u.fullmoveNumber = fullmoveNumber;
+        u.kingSquare = kingSquare;
         u.hash = hash;
         u.captured = Piece{};
 
@@ -396,7 +472,7 @@ struct Board {
         halfmoveClock = resetHalf ? 0 : (halfmoveClock + 1);
 
         if(z){
-            int oldEpF = (epSquare>=0) ? (epSquare%8) : 8;
+            const int oldEpF = enPassantHashFile();
             hash ^= z->epFile[oldEpF];
             hash ^= z->castling[castling & 0xF];
             if(stm==Color::Black) hash ^= z->sideToMove;
@@ -428,6 +504,9 @@ struct Board {
 
         b[m.to] = b[m.from];
         b[m.from] = Piece{};
+        if(moving.t == PieceType::King){
+            kingSquare[moving.c == Color::White ? 0 : 1] = m.to;
+        }
 
         if(z){
             int mc = (moving.c==Color::White)?0:1;
@@ -501,6 +580,7 @@ struct Board {
             }
         }
 
+        if(moving.c == Color::Black) fullmoveNumber++;
         stm = other(stm);
 
         if(inCheck(other(stm))){
@@ -509,7 +589,7 @@ struct Board {
         }
 
         if(z){
-            int newEpF = (epSquare>=0) ? (epSquare%8) : 8;
+            const int newEpF = enPassantHashFile();
             hash ^= z->epFile[newEpF];
             hash ^= z->castling[castling & 0xF];
             if(stm==Color::Black) hash ^= z->sideToMove;
@@ -526,6 +606,8 @@ struct Board {
         epSquare = u.epSquare;
         castling = u.castling;
         halfmoveClock = u.halfmoveClock;
+        fullmoveNumber = u.fullmoveNumber;
+        kingSquare = u.kingSquare;
         hash = u.hash;
 
         Piece moved = b[m.to];
@@ -556,8 +638,28 @@ struct Board {
         }
     }
 
-    void genLegalMoves(std::vector<Move>& legal){
-        std::vector<Move> pseudo;
+    void makeNullMove(NullUndo& u){
+        u.epSquare = epSquare;
+        u.hash = hash;
+
+        if(z){
+            hash ^= z->epFile[enPassantHashFile()];
+            hash ^= z->epFile[8];
+            hash ^= z->sideToMove;
+        }
+        epSquare = -1;
+        stm = other(stm);
+    }
+
+    void undoNullMove(const NullUndo& u){
+        stm = other(stm);
+        epSquare = u.epSquare;
+        hash = u.hash;
+    }
+
+    template<typename MoveContainer>
+    void genLegalMoves(MoveContainer& legal){
+        MoveList pseudo;
         genPseudoMoves(pseudo);
         legal.clear();
         legal.reserve(pseudo.size());
@@ -581,27 +683,37 @@ struct Board {
     bool insufficientMaterial() const {
         int wMinor=0,bMinor=0;
         int wB=0,wN=0,bB=0,bN=0;
-        int wOther=0,bOther=0;
-        for(auto& p: b){
+        int whiteBishopSquare = -1;
+        int blackBishopSquare = -1;
+        for(size_t square = 0; square < b.size(); square++){
+            const Piece& p = b[square];
             if(isNone(p) || p.t==PieceType::King) continue;
             if(p.t==PieceType::Pawn || p.t==PieceType::Rook || p.t==PieceType::Queen){
-                if(p.c==Color::White) wOther++;
-                else bOther++;
+                return false;
             } else {
-                if(p.c==Color::White){ wMinor++; if(p.t==PieceType::Bishop) wB++; if(p.t==PieceType::Knight) wN++; }
-                else { bMinor++; if(p.t==PieceType::Bishop) bB++; if(p.t==PieceType::Knight) bN++; }
+                if(p.c==Color::White){
+                    wMinor++;
+                    if(p.t==PieceType::Bishop){ wB++; whiteBishopSquare = static_cast<int>(square); }
+                    if(p.t==PieceType::Knight) wN++;
+                } else {
+                    bMinor++;
+                    if(p.t==PieceType::Bishop){ bB++; blackBishopSquare = static_cast<int>(square); }
+                    if(p.t==PieceType::Knight) bN++;
+                }
             }
         }
-        if(wOther>0 || bOther>0) return false;
         if(wMinor==0 && bMinor==0) return true;
         if(wMinor==1 && bMinor==0 && (wB==1 || wN==1)) return true;
         if(bMinor==1 && wMinor==0 && (bB==1 || bN==1)) return true;
-        if(wMinor==1 && bMinor==1 && wB==1 && bB==1) return true;
+        if(wMinor==1 && bMinor==1 && wB==1 && bB==1){
+            const auto squareColor = [](int square){ return ((square / 8) + (square % 8)) & 1; };
+            return squareColor(whiteBishopSquare) == squareColor(blackBishopSquare);
+        }
         return false;
     }
 };
 
-static std::string moveToSAN(const Board& position, const Move& m){
+inline std::string moveToSAN(const Board& position, const Move& m){
     Piece moving = position.at(m.from);
     if(isNone(moving)) return moveToUCI(m);
 

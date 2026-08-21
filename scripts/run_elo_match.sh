@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CANDIDATE_BIN="${1:-./build/gui}"
-BASELINE_BIN="${2:-./build/gui}"
+CANDIDATE_BIN="${1:-./build/chess-engine-uci}"
+BASELINE_BIN="${2:-./build/chess-engine-uci}"
 
 GAMES="${GAMES:-200}"
 CONCURRENCY="${CONCURRENCY:-2}"
@@ -10,6 +10,8 @@ TC="${TC:-10+0.1}"
 HASH_MB="${HASH_MB:-256}"
 THREADS="${THREADS:-1}"
 OUT_DIR="${OUT_DIR:-artifacts/elo}"
+OPENINGS_FILE="${OPENINGS_FILE:-tests/openings.epd}"
+OPENINGS_ORDER="${OPENINGS_ORDER:-random}"
 
 if ! command -v cutechess-cli >/dev/null 2>&1; then
   echo "Error: cutechess-cli not found in PATH." >&2
@@ -27,6 +29,11 @@ if [[ ! -x "$BASELINE_BIN" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$OPENINGS_FILE" ]]; then
+  echo "Error: opening suite not found: $OPENINGS_FILE" >&2
+  exit 1
+fi
+
 mkdir -p "$OUT_DIR"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 PGN="$OUT_DIR/match-$STAMP.pgn"
@@ -37,6 +44,7 @@ CMD=(
   -engine "name=Candidate" "cmd=$CANDIDATE_BIN" "arg=--uci"
   -engine "name=Baseline" "cmd=$BASELINE_BIN" "arg=--uci"
   -each "proto=uci" "tc=$TC" "option.Hash=$HASH_MB" "option.Threads=$THREADS"
+  -openings "file=$OPENINGS_FILE" "format=epd" "order=$OPENINGS_ORDER"
   -games "$GAMES"
   -repeat
   -recover
@@ -62,6 +70,7 @@ echo "Baseline : $BASELINE_BIN"
 echo "Games    : $GAMES"
 echo "TC       : $TC"
 echo "Threads  : $THREADS"
+echo "Openings : $OPENINGS_FILE ($OPENINGS_ORDER, paired colors)"
 echo "Log      : $LOG"
 echo "PGN      : $PGN"
 

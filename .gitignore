@@ -3,6 +3,7 @@ gui
 *.o
 *.out
 build/
+build-*/
 build-win64/
 cmake-build-*/
 dist/
@@ -17,3 +18,14 @@ moves.txt
 # editor junk
 .vscode/
 .idea/
+.venv/
+.venv-web/
+.tools/
+__pycache__/
+*.pyc
+
+# Local NNUE datasets, checkpoints, and generated networks
+data/
+networks/
+*.pt
+*.nnue

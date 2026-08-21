@@ -1,199 +1,157 @@
-# README – Build Instructions
+# Chess Engine
 
-## Overview
-This project is a C++ chess engine with an SFML 2.6.x GUI.
-It will NOT compile against SFML 3.x.
-Make sure you are using SFML 2.6.x on all platforms.
-The same binary also supports a UCI mode (`--uci`) for engine-vs-engine testing.
-Source files:
-- `src/main.cpp` (app entrypoint)
-- `src/ui.cpp` / `src/ui.hpp` (UI assets + mode helpers)
-- `src/chess_core.hpp` (umbrella include)
-- `src/chess_types.hpp`, `src/board.hpp`, `src/search.hpp` (core chess modules)
-- `CMakeLists.txt` (cross-platform build, including Windows)
+A high-performance C++17 chess engine combining modern alpha-beta search with
+classical and custom trainable NNUE evaluation. The project includes a local
+chess interface, UCI support, CUDA/PyTorch training, Stockfish teacher
+labelling, incremental NNUE inference, and reproducible strength testing.
 
-## BUILDING ON WINDOWS (MSVC + CMake)
+`C++` · `UCI` · `NNUE` · `CUDA / PyTorch` · `SFML`
 
-### Requirements
+<!-- HERO IMAGE
+Recommended: a clean screenshot of the web interface during an interesting
+middlegame, with the board, evaluation, PV and engine identity visible.
+Suggested size: 1600 × 900 (16:9), WebP or PNG.
+Save as: docs/assets/engine-room-hero.webp
+Enable with: ![Chess Engine interface](docs/assets/engine-room-hero.webp)
+-->
 
-Windows 10/11
-Visual Studio 2022 or later (Desktop development with C++)
-CMake 3.21+
-SFML 2.6.x (not 3.x)
+## Highlights
 
-### Configure and build
+- Iterative-deepening alpha-beta/PVS with transposition tables, quiescence,
+  null-move pruning, LMR, aspiration windows, SEE and history-based ordering
+- Correct legal move generation with castling, en passant, promotion,
+  repetition and rule-draw handling
+- Standalone UCI engine plus a responsive local web interface for PvP, PvC,
+  CvC, external engines, live analysis and game export
+- Optional versioned HalfKP NNUE with quantized C++ inference and incremental
+  per-ply accumulators
+- Resumable Stockfish labelling from streamed Lichess `.pgn.zst` archives and
+  CUDA training with exact Python/C++ export verification
+- Perft, deterministic core tests, CI, fixed-position benchmarks, paired
+  opening matches, Stockfish calibration and SPRT support
 
-Set `SFML_DIR` to SFML's CMake package folder (example path shown below), then run:
-```bat
-set SFML_DIR=C:\libs\SFML-2.6.2\lib\cmake\SFML
-cmake -S . -B build-windows -G "Visual Studio 17 2022" -A x64 -DSFML_DIR="%SFML_DIR%"
-cmake --build build-windows --config Release
+<!-- ENGINE ARCHITECTURE VISUAL
+Recommended: restrained monochrome SVG showing UCI/web input → board state →
+iterative search → classical or NNUE evaluation → best move/PV, with TT and
+time management as supporting components.
+Suggested size: 1400 × 760 (approximately 16:9).
+Save as: docs/assets/engine-architecture.svg
+Enable with: ![Engine architecture](docs/assets/engine-architecture.svg)
+-->
+
+## Performance
+
+All figures below are relative development measurements, not absolute Elo
+claims. Full hardware, commands, commits and uncertainty are preserved in
+[`docs/results/`](docs/results/).
+
+| Measurement | Result | Interpretation |
+|---|---:|---|
+| v1 vs `v0.4.0`, 400 paired `10+0.1` games | `299–18–83` | 85.1%, +303.0 +/- 37.1 Elo, 100% LOS; release strength gate passed |
+| Depth-10 search work | 270,343 → 186,618 nodes | Qsearch SEE pruning plus continuation history; changed tree |
+| Incremental null move | 5,108 → 4,951 ms | 3.1% median reduction with identical tree |
+| Incremental NNUE accumulator | 13,457 → 46,010 median NPS | 3.42× over full accumulator rebuild on the same smoke network |
+| Six-thread root search | 1.51×–1.68× benchmark throughput | No proven playing-strength gain; one thread remains default |
+
+The retained qsearch SEE change scored `38–28–34` in its 100-game diagnostic.
+Continuation history scored `37–31–32` and remains provisional pending a
+slower, longer match. Pawn correction history and a selection-scan move picker
+were rejected after neutral or negative measurements.
+
+<!-- PERFORMANCE VISUAL
+Recommended later, once another release-grade match exists: a simple line or
+step chart of measured candidate score across tagged engine revisions. Include
+sample size and uncertainty; do not mix NPS and Elo on one axis.
+Suggested size: 1400 × 800 (7:4).
+Save as: docs/assets/strength-development.svg
+Enable with: ![Measured engine development](docs/assets/strength-development.svg)
+-->
+
+## NNUE
+
+The custom `HalfKP-v1` pipeline turns licensed game archives into deterministic,
+game-disjoint datasets, labels sampled positions with Stockfish, trains on
+CUDA, quantizes the network, and verifies exact C++ predictions before match
+testing. It supports target-sized generation, cross-machine shard merging,
+feature-coverage audits, teacher-budget comparisons and sliced validation
+errors.
+
+The first production experiment retained five million Stockfish-18-labelled
+training positions and 616,632 game-disjoint validation positions from the
+July 2026 Lichess CC0 archive. It covered 92.5% of the HalfKP inputs, passed
+quantization and exact C++ verification, and completed a 400-game match without
+technical failures. The fixed 256-wide network still lost decisively to the
+classical evaluator and was rejected. A WDL objective and configurable hybrid
+evaluation improved the diagnostic results but did not establish a strength
+gain, so classical evaluation remains the default.
+
+<!-- NNUE PIPELINE VISUAL
+Recommended: horizontal SVG of Lichess/self-play → sampling → Stockfish teacher
+→ compact dataset → CUDA/PyTorch → quantization → C++ verification → paired
+match → promote/reject.
+Suggested size: 1800 × 700 (18:7).
+Save as: docs/assets/nnue-pipeline.svg
+Enable with: ![NNUE training and promotion pipeline](docs/assets/nnue-pipeline.svg)
+-->
+
+## Quick start
+
+Launch the local web interface:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_web_gui.ps1
 ```
 
-If you have Visual Studio 18 / 2026 installed instead of VS2022, use the matching generator and instance path:
-```bat
-set SFML_DIR=C:\libs\SFML-2.6.2\lib\cmake\SFML
-cmake -S . -B build-vs18 -G "Visual Studio 18 2026" -A x64 -DCMAKE_GENERATOR_INSTANCE="C:\Program Files\Microsoft Visual Studio\18\Community" -DSFML_DIR="%SFML_DIR%"
-cmake --build build-vs18 --config Release
+On macOS/Linux, use `scripts/run_web_gui.sh`. The launcher creates its isolated
+Python environment, builds the headless engine when necessary, and opens the
+local interface.
+
+Build and test the headless engine directly:
+
+```sh
+cmake -S . -B build -DCHESS_BUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-Run:
-```bat
-build-windows\Release\gui.exe
-```
+The principal executables are `chess-engine-uci`, `chess-engine-tools`, and
+`chess-core-tests`.
 
-You can also use:
-```bat
-scripts\build_windows.bat
-```
-after setting `SFML_DIR`.
+## Documentation
 
-## BUILDING ON macOS (Apple Silicon / Intel)
+- **[Technical Wiki](wiki/Home.md)** — architecture, search, evaluation, NNUE,
+  building, testing and development workflows
+- [NNUE training and promotion](docs/NNUE.md) — exact production commands
+- [Benchmarking and strength testing](docs/BENCHMARKING.md) — paired matches,
+  calibration and SPRT
+- [Development status](docs/DEVELOPMENT.md) — current configuration and release
+  gates
+- [Raw experimental results](docs/results/) — permanent reproducibility record
 
-### Requirements
+The Wiki source is kept in this repository until GitHub Wiki is enabled, after
+which the same pages can be published to the repository's separate Wiki Git
+repository.
 
-macOS
-clang++
-SFML 2.6.x (built from source or installed locally)
+## Roadmap
 
-#### Important
-Homebrew installs SFML 3.x by default.
-This codebase uses SFML 2.6.x APIs, so you must NOT link against SFML 3.x.
-Recommended setup
-Build SFML 2.6.2 locally into ~/.local/sfml-2.6.2
-#### Compile command
-```bash
-clang++ -O2 -std=c++17 src/main.cpp src/ui.cpp -o gui -I"$HOME/.local/sfml-2.6.2/include" -L"$HOME/.local/sfml-2.6.2/lib" -lsfml-graphics -lsfml-window -lsfml-system -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo -pthread -Wl,-rpath,"$HOME/.local/sfml-2.6.2/lib" -Wl,-sectcreate,__TEXT,__info_plist,macos/Info.plist
-```
-Run
-```bash
-./gui
-./gui --threads 8
-```
+**Current**
 
-If you get missing dylib or freetype errors, it means the runtime linker cannot find SFML’s bundled frameworks. Re-check the rpath and that SFML was installed correctly.
+- Review and merge the release-ready `dev/v1` branch into `main`
+- Tag and package `v1.0.0` after the merge
+- Keep classical evaluation and one search thread as the proven defaults
 
-## BUILDING ON Fedora / Linux
+**Next**
 
-### Requirements
-g++ or clang++
-SFML 2.6.x development packages
-pkg-config
-#### Install dependencies (Fedora example)
-```bash
-sudo dnf install sfml-devel pkg-config
-```
+- Confirm retained search gains at a slower time control
+- Profile root-parallel scaling and duplicated work
+- Target rare HalfKP inputs and prototype a stronger NNUE representation
+- Add engine self-play and targeted rare-position data only as controlled inputs
+- Automate candidate-vs-champion promotion and rejection
 
-#### Compile command
-```bash
-g++ -O2 -std=c++17 src/main.cpp src/ui.cpp -o gui $(pkg-config --cflags --libs sfml-graphics sfml-window sfml-system) -pthread
+**Longer term**
 
-```
-Run
-```bash
-./gui
-```
+- Continue isolated search, parallelism and time-management experiments
+- Build a repeatable `generate → train → test → promote` improvement loop
 
-## ENGINE TOOLS (HEADLESS)
-
-After building, you can run engine-only tools from the CLI:
-
-```bash
-./build/gui --help
-./build/gui --uci
-./build/gui --uci --threads 4
-./build/gui --perft 4
-./build/gui --divide 3
-./build/gui --perft-tests --max-depth 4
-./build/gui --bench --bench-depth 6 --bench-time 1500 --bench-tt 128
-./build/gui --bench --bench-depth 6 --bench-time 1500 --bench-tt 128 --threads 4
-```
-
-Automated regression runner:
-
-```bash
-scripts/run_regression.sh ./build/gui
-```
-
-UCI protocol smoke test:
-
-```bash
-scripts/run_uci_smoke.sh ./build/gui
-```
-
-Example interactive UCI session with threads:
-
-```text
-uci
-setoption name Threads value 4
-isready
-position startpos
-go movetime 1000
-```
-
-One-command quality gate (regression + UCI smoke):
-
-```bash
-scripts/run_quality_gate.sh ./build/gui
-```
-
-Optional: include an Elo match in the quality gate (requires `cutechess-cli`):
-
-```bash
-RUN_ELO=1 BASELINE_BIN=./build/gui scripts/run_quality_gate.sh ./build/gui
-```
-
-## ELO MATCH RUNNER (CUTECHESS)
-
-Standalone Elo/SPRT script:
-
-```bash
-scripts/run_elo_match.sh <candidate_bin> <baseline_bin>
-```
-
-Useful environment overrides:
-- `GAMES` (default `200`)
-- `CONCURRENCY` (default `2`)
-- `TC` (default `10+0.1`)
-- `HASH_MB` (default `256`)
-- `THREADS` (default `1`, passed as UCI `option.Threads`)
-- `SPRT=1` (enables SPRT mode; configure with `ELO0`, `ELO1`, `ALPHA`, `BETA`)
-
-Example:
-
-```bash
-GAMES=400 CONCURRENCY=4 TC=40/10+0.1 THREADS=4 scripts/run_elo_match.sh ./build/gui ./build/gui
-```
-
-## NOTES
-
-Default AI search depth is defined in `src/main.cpp`.
-Current default:
-`int aiMaxDepth = 20;`
-
-AI search runs on a worker thread to avoid UI freezes.
-
-GUI and UCI searches now use adaptive soft/hard time budgets:
-- the configured move time is treated as a base budget
-- obvious positions spend less time
-- sharp or unstable positions can spend more time up to the hard limit
-
-GUI thread count can be set at launch:
-```bash
-./gui --threads 8
-```
-
-UCI thread count can be set either at launch or via UCI:
-```text
-./build/gui --uci --threads 8
-setoption name Threads value 8
-```
-
-Board flipping is visual only and does not affect game logic.
-
-Assets required:
-assets/pieces_png/white_.png
-assets/pieces_png/black_.png
-
-Fonts are loaded dynamically from common Windows/Linux/macOS paths.
-If no font loads, text will not render but the game will still run.
+The project follows one rule throughout: **implement → test → measure → keep or
+reject → document**.

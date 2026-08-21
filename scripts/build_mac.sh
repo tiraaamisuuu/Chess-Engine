@@ -3,13 +3,10 @@ set -euo pipefail
 
 SFML_PREFIX="${SFML_PREFIX:-$HOME/.local/sfml-2.6.2}"
 
-clang++ -O3 -DNDEBUG -flto -std=c++17 src/main.cpp src/ui.cpp -o gui \
-  -I"$SFML_PREFIX/include" \
-  -L"$SFML_PREFIX/lib" \
-  -lsfml-graphics -lsfml-window -lsfml-system \
-  -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo \
-  -pthread \
-  -Wl,-rpath,"$SFML_PREFIX/lib" \
-  -Wl,-sectcreate,__TEXT,__info_plist,macos/Info.plist
+cmake -S . -B build-macos \
+  -DCHESS_BUILD_GUI=ON \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH="$SFML_PREFIX"
+cmake --build build-macos --parallel
 
-echo "Built ./gui"
+echo "Built build-macos/gui and build-macos/chess-engine-uci"
