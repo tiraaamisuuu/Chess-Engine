@@ -5,6 +5,26 @@
 
 #include "chess_core.hpp"
 
+namespace ForkliftTheme {
+inline const sf::Color canvas{9, 10, 10};
+inline const sf::Color surface{13, 14, 14};
+inline const sf::Color surfaceRaised{18, 19, 19};
+inline const sf::Color border{42, 44, 43};
+inline const sf::Color borderStrong{72, 76, 73};
+inline const sf::Color text{235, 235, 231};
+inline const sf::Color textSoft{177, 180, 175};
+inline const sf::Color textMuted{105, 109, 106};
+inline const sf::Color accent{164, 211, 122};
+inline const sf::Color warning{218, 184, 119};
+inline const sf::Color danger{214, 116, 116};
+inline const sf::Color boardLight{199, 199, 190};
+inline const sf::Color boardDark{73, 78, 73};
+inline const sf::Color lastMoveLight{177, 173, 112};
+inline const sf::Color lastMoveDark{101, 98, 65};
+inline const sf::Color selectedLight{149, 174, 130};
+inline const sf::Color selectedDark{74, 111, 79};
+}
+
 inline sf::Vector2f snap(sf::Vector2f p){
     return sf::Vector2f(std::round(p.x), std::round(p.y));
 }

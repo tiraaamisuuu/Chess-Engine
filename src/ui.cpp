@@ -61,6 +61,7 @@ float drawWrappedText(sf::RenderTarget& target,
 }
 
 bool PieceAtlas::loadAll(const std::string& dir){
+    tex.clear();
     const std::vector<std::string> colors = {"white_","black_"};
     const std::vector<std::string> names  = {"king","queen","rook","bishop","knight","pawn"};
 
@@ -68,7 +69,10 @@ bool PieceAtlas::loadAll(const std::string& dir){
         for(const auto& n : names){
             std::string key = c+n;
             sf::Texture t;
-            if(!t.loadFromFile(dir + "/" + key + ".png")) return false;
+            if(!t.loadFromFile(dir + "/" + key + ".png")){
+                tex.clear();
+                return false;
+            }
             t.setSmooth(false);
             tex.emplace(key, std::move(t));
         }
@@ -85,9 +89,9 @@ const sf::Texture* PieceAtlas::get(const Piece& p) const {
 
 std::string modeStr(GameMode m){
     switch(m){
-        case GameMode::PvP: return "PvP";
-        case GameMode::PvAI: return "PvAI";
-        case GameMode::AIvAI: return "AIvAI";
-        default: return "Menu";
+        case GameMode::PvP: return "pvp";
+        case GameMode::PvAI: return "player vs Forklift";
+        case GameMode::AIvAI: return "Forklift vs Forklift";
+        default: return "menu";
     }
 }

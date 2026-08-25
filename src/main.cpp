@@ -239,7 +239,7 @@ int main(int argc, char** argv){
     ctx.antialiasingLevel = 0;
     sf::RenderWindow window(
         sf::VideoMode(windowW, windowH),
-        "Chess Engine (SFML 2.6) - NEA Build",
+        "Forklift | Chess Engine",
         sf::Style::Titlebar | sf::Style::Close,
         ctx
     );
@@ -247,21 +247,28 @@ int main(int argc, char** argv){
     window.setFramerateLimit(60);
 
     const float tile = 96.f;
-    const sf::Vector2f boardOrigin(40.f, 40.f);
+    const sf::Vector2f boardOrigin(40.f, 72.f);
 
     // SFML2: don't use FloatRect.position/size – use explicit vectors.
     const sf::Vector2f panelPos(boardOrigin.x + 8.f*tile + 30.f, boardOrigin.y);
     const sf::Vector2f panelSize(440.f, 8.f*tile);
-    const float gameCardY = panelPos.y + 74.f;
-    const float engineCardY = panelPos.y + 236.f;
-    const float statusCardY = panelPos.y + 494.f;
-    const float moveLogCardY = panelPos.y + 618.f;
+    const float engineCardY = panelPos.y + 194.f;
+    const float statusCardY = panelPos.y + 506.f;
+    const float moveLogCardY = panelPos.y + 608.f;
+
+    std::filesystem::path executableDir;
+    if(argc > 0 && argv[0] && argv[0][0] != '\0'){
+        std::error_code pathError;
+        const std::filesystem::path executablePath = std::filesystem::absolute(argv[0], pathError);
+        if(!pathError) executableDir = executablePath.parent_path();
+    }
 
     // Font: include Linux candidates (and keep your mac ones harmless)
     sf::Font font;
     bool hasFont=false;
     {
         std::vector<std::string> candidates = {
+          (executableDir / "assets/fonts/Inter-Regular.ttf").string(),
           "assets/fonts/Inter-Regular.ttf",
           // Windows
           "C:/Windows/Fonts/segoeui.ttf",
@@ -289,7 +296,17 @@ int main(int argc, char** argv){
     }
 
     PieceAtlas atlas;
-    bool hasIcons = atlas.loadAll("assets/pieces_png");
+    bool hasIcons = false;
+    const std::array<std::filesystem::path, 2> pieceDirectories = {
+        std::filesystem::path("assets/pieces_png"),
+        executableDir / "assets/pieces_png"
+    };
+    for(const auto& pieceDirectory : pieceDirectories){
+        if(!pieceDirectory.empty() && atlas.loadAll(pieceDirectory.string())){
+            hasIcons = true;
+            break;
+        }
+    }
 
     // UI thread never calls search now; search runs in a worker thread.
     const int ttSizeMB = 256;
@@ -455,7 +472,7 @@ int main(int argc, char** argv){
     GameMode pending = GameMode::PvP;
     Color humanColor = Color::White;   
 
-    std::string status = hasIcons ? "Ready." : "Missing icons: assets/pieces_png/*.png";
+    std::string status = hasIcons ? "ready" : "piece assets unavailable";
 
     std::optional<int> selectedSq;
     std::vector<Move> selectedMoves;
@@ -501,19 +518,35 @@ int main(int argc, char** argv){
     };
     auto getMenuCardRects = [&]()->std::array<sf::FloatRect,4>{
         return {
-            sf::FloatRect(96.f, 234.f, 760.f, 102.f),
-            sf::FloatRect(96.f, 350.f, 760.f, 102.f),
-            sf::FloatRect(96.f, 466.f, 760.f, 102.f),
-            sf::FloatRect(96.f, 582.f, 760.f, 102.f)
+            sf::FloatRect(72.f, 246.f, 780.f, 80.f),
+            sf::FloatRect(72.f, 338.f, 780.f, 80.f),
+            sf::FloatRect(72.f, 430.f, 780.f, 80.f),
+            sf::FloatRect(72.f, 522.f, 780.f, 80.f)
         };
     };
     auto getMenuStartRect = [&]()->sf::FloatRect{
-        return sf::FloatRect(908.f, 586.f, 204.f, 58.f);
-    };
-    auto getAiPauseRect = [&]()->sf::FloatRect{
-        return sf::FloatRect(panelPos.x + panelSize.x - 168.f, engineCardY + 18.f, 146.f, 30.f);
+        return sf::FloatRect(900.f, 530.f, 348.f, 72.f);
     };
 
+    struct GameActionRects {
+        sf::FloatRect reset;
+        sf::FloatRect undo;
+        sf::FloatRect flip;
+        sf::FloatRect pause;
+    };
+    auto getGameActionRects = [&]()->GameActionRects{
+        const float x = panelPos.x + 20.f;
+        const float y = panelPos.y + 118.f;
+        const float w = 88.f;
+        const float h = 32.f;
+        const float gap = 8.f;
+        return GameActionRects{
+            sf::FloatRect(x, y, w, h),
+            sf::FloatRect(x + (w + gap), y, w, h),
+            sf::FloatRect(x + 2.f*(w + gap), y, w, h),
+            sf::FloatRect(x + 3.f*(w + gap), y, w, h)
+        };
+    };
     auto isHumanSide = [&](Color c)->bool{
         if(mode==GameMode::PvP) return true;
         if(mode==GameMode::PvAI) return (c==humanColor);
@@ -539,7 +572,7 @@ int main(int argc, char** argv){
         moveListSAN.clear();
         dragging=false;
         dragFrom.reset();
-        status = "Reset.";
+        status = "game reset";
     };
     auto startPendingGame = [&](){
         mode = pending;
@@ -551,7 +584,7 @@ int main(int argc, char** argv){
             flipBoard = false;
         }
 
-        status = "Game started: " + modeStr(mode);
+        status = "game started  /  " + modeStr(mode);
     };
 
     auto tryMoveFromTo = [&](int from, int to)->bool{
@@ -574,7 +607,7 @@ int main(int argc, char** argv){
             lastMove = chosen;
             selectedSq.reset();
             selectedMoves.clear();
-            status = "Played " + sqName(indexToSq(chosen.from)) + "->" + sqName(indexToSq(chosen.to));
+            status = "played  /  " + sqName(indexToSq(chosen.from)) + "-" + sqName(indexToSq(chosen.to));
             return true;
         }
         return false;
@@ -601,12 +634,12 @@ int main(int argc, char** argv){
         sf::FloatRect timePlus;
     };
     auto getEngineStepperRects = [&]()->EngineStepperRects{
-        const float btnW = 32.f;
-        const float btnH = 24.f;
-        const float plusX  = panelPos.x + panelSize.x - 56.f;
+        const float btnW = 30.f;
+        const float btnH = 26.f;
+        const float plusX  = panelPos.x + panelSize.x - 50.f;
         const float minusX = plusX - 38.f;
-        const float depthY = engineCardY + 74.f;
-        const float timeY  = engineCardY + 106.f;
+        const float depthY = engineCardY + 92.f;
+        const float timeY  = engineCardY + 126.f;
         return EngineStepperRects{
             sf::FloatRect(minusX, depthY, btnW, btnH),
             sf::FloatRect(plusX,  depthY, btnW, btnH),
@@ -620,11 +653,11 @@ int main(int argc, char** argv){
     };
     auto adjustDepth = [&](int delta){
         aiMaxDepth = std::clamp(aiMaxDepth + delta, 1, 150);
-        status = "AI max depth = " + std::to_string(aiMaxDepth);
+        status = "depth  /  " + std::to_string(aiMaxDepth);
     };
     auto adjustTime = [&](int deltaMs){
         aiTimeMs = std::clamp(aiTimeMs + deltaMs, 100, 180000);
-        status = "AI time = " + std::to_string(aiTimeMs) + "ms";
+        status = "move time  /  " + std::to_string(aiTimeMs) + " ms";
     };
 
     auto stopAiThread = [&](){
@@ -699,9 +732,9 @@ int main(int argc, char** argv){
         aiPaused.store(pausedNow);
         if(pausedNow){
             stopAiThread();
-            status = "AI paused.";
+            status = "Forklift paused";
         } else {
-            status = "AI resumed.";
+            status = "Forklift resumed";
         }
     };
     auto runUndo = [&](){
@@ -713,7 +746,7 @@ int main(int argc, char** argv){
         dragFrom.reset();
         if(undoStack.empty()) lastMove.reset();
         else lastMove = undoStack.back().m;
-        status = "Undo.";
+        status = "move undone";
     };
 
     while(window.isOpen()){
@@ -770,7 +803,7 @@ int main(int argc, char** argv){
 
                     if(code == sf::Keyboard::F){
                         flipBoard = !flipBoard;
-                        status = std::string("Flip: ") + (flipBoard ? "ON" : "OFF");
+                        status = std::string("board flipped  /  ") + (flipBoard ? "black" : "white");
                     }
 
                     // depth
@@ -811,7 +844,19 @@ int main(int argc, char** argv){
             if(mode!=GameMode::Menu){
                 if(e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left){
                     sf::Vector2f mp(float(e.mouseButton.x), float(e.mouseButton.y));
-                    if(getAiPauseRect().contains(mp)){ toggleAiPause(); continue; }
+                    const GameActionRects actions = getGameActionRects();
+                    if(actions.reset.contains(mp)){
+                        stopAiThread();
+                        resetGame();
+                        continue;
+                    }
+                    if(actions.undo.contains(mp)){ runUndo(); continue; }
+                    if(actions.flip.contains(mp)){
+                        flipBoard = !flipBoard;
+                        status = std::string("board flipped  /  ") + (flipBoard ? "black" : "white");
+                        continue;
+                    }
+                    if(actions.pause.contains(mp)){ toggleAiPause(); continue; }
                     const EngineStepperRects step = getEngineStepperRects();
                     if(pointInRect(mp, step.depthMinus)){ adjustDepth(-1); continue; }
                     if(pointInRect(mp, step.depthPlus)){  adjustDepth(+1); continue; }
@@ -867,7 +912,7 @@ int main(int argc, char** argv){
                                     int to = sqToIndex(*sq);
                                     if(to != *dragFrom){
                                         bool ok = tryMoveFromTo(*dragFrom, to);
-                                        if(!ok) status = "Illegal move.";
+                                        if(!ok) status = "illegal move";
                                     }
                                 }
                             }
@@ -901,9 +946,9 @@ int main(int argc, char** argv){
                     if(pushMove(m)){
                         lastMove = m;
                         aiClock.restart();
-                        status = "AI: " + moveToUCI(m);
+                        status = "Forklift  /  " + moveToUCI(m);
                     } else {
-                        status = "AI produced illegal move (should not happen).";
+                        status = "unexpected illegal engine move";
                     }
 
                     aiMoveReady.store(false);
@@ -911,7 +956,8 @@ int main(int argc, char** argv){
             }
         }
 
-        window.clear(sf::Color(10,12,20));
+        using namespace ForkliftTheme;
+        window.clear(canvas);
 
         // -------- Menu --------
         if(mode==GameMode::Menu){
@@ -927,6 +973,22 @@ int main(int argc, char** argv){
                     window.draw(t);
                 };
 
+                auto drawCenteredText = [&](const sf::FloatRect& rect,
+                                            unsigned size,
+                                            sf::Color col,
+                                            const std::string& str){
+                    sf::Text t;
+                    t.setFont(font);
+                    t.setCharacterSize(size);
+                    t.setFillColor(col);
+                    t.setString(str);
+                    const sf::FloatRect bounds = t.getLocalBounds();
+                    const float x = rect.left + (rect.width - bounds.width) * 0.5f;
+                    const float y = rect.top + (rect.height - font.getLineSpacing(size)) * 0.5f + 1.f;
+                    setCrispTextPosition(t, sf::Vector2f(x, y));
+                    window.draw(t);
+                };
+
                 auto isModeSelected = [&](int id)->bool{
                     if(id==1) return pending==GameMode::PvP;
                     if(id==2) return pending==GameMode::PvAI && humanColor==Color::White;
@@ -935,101 +997,116 @@ int main(int argc, char** argv){
                 };
 
                 auto selectionLabel = [&]()->std::string{
-                    if(pending==GameMode::PvP) return "Player vs Player";
-                    if(pending==GameMode::AIvAI) return "Watch AI vs AI";
-                    return (humanColor==Color::White)
-                        ? "Player vs AI (Play as White)"
-                        : "Player vs AI (Play as Black)";
+                    if(pending==GameMode::PvP) return "Player vs player";
+                    if(pending==GameMode::AIvAI) return "Watch Forklift play";
+                    return (humanColor==Color::White) ? "Play as white" : "Play as black";
                 };
 
-                sf::RectangleShape shell(sf::Vector2f(windowW - 120.f, windowH - 120.f));
-                shell.setPosition(snap(sf::Vector2f(60.f, 60.f)));
-                shell.setFillColor(sf::Color(12,14,24));
-                shell.setOutlineThickness(2.f);
-                shell.setOutlineColor(sf::Color(52,60,88));
-                window.draw(shell);
+                drawText(72.f, 34.f, 18, text, "forklift");
+                drawText(127.f, 34.f, 18, accent, "/");
+                drawText(1142.f, 37.f, 13, textMuted, "v1.0  /  local");
 
-                sf::RectangleShape accent(sf::Vector2f(shell.getSize().x, 8.f));
-                accent.setPosition(shell.getPosition());
-                accent.setFillColor(sf::Color(58,132,255));
-                window.draw(accent);
+                sf::RectangleShape topRule(sf::Vector2f(1176.f, 1.f));
+                topRule.setPosition(snap(sf::Vector2f(72.f, 80.f)));
+                topRule.setFillColor(border);
+                window.draw(topRule);
 
-                drawText(96.f, 95.f, 22, sf::Color(130,160,220), "CHESS ENGINE", sf::Text::Bold);
-                drawText(96.f, 134.f, 48, sf::Color(240,244,255), "Choose Your Match");
-                drawText(96.f, 184.f, 18, sf::Color(160,170,200), "Use arrows, click a card, or press 1-4, then Enter to start.");
+                drawText(72.f, 120.f, 43, text, "choose a game");
+                drawText(72.f, 178.f, 15, textMuted,
+                         "select a mode, then start when you are ready.");
 
                 sf::Vector2i mousePixel = sf::Mouse::getPosition(window);
                 sf::Vector2f mousePos(float(mousePixel.x), float(mousePixel.y));
+                const auto menuRects = getMenuCardRects();
 
-                auto drawModeCard = [&](float y, int key, const std::string& title, const std::string& subtitle){
+                auto drawModeCard = [&](size_t index,
+                                        int key,
+                                        const std::string& title,
+                                        const std::string& subtitle){
                     const bool selected = isModeSelected(key);
-                    const sf::FloatRect cardRect(96.f, y, 760.f, 102.f);
+                    const sf::FloatRect cardRect = menuRects[index];
                     const bool hover = cardRect.contains(mousePos);
 
-                    sf::RectangleShape card(sf::Vector2f(760.f, 102.f));
-                    card.setPosition(snap(sf::Vector2f(96.f, y)));
-                    card.setFillColor(selected ? sf::Color(30,74,150) : (hover ? sf::Color(28,35,56) : sf::Color(20,24,36)));
-                    card.setOutlineThickness(2.f);
-                    card.setOutlineColor(selected ? sf::Color(120,190,255) : (hover ? sf::Color(92,126,188) : sf::Color(50,58,82)));
+                    sf::RectangleShape card(sf::Vector2f(cardRect.width, cardRect.height));
+                    card.setPosition(snap(sf::Vector2f(cardRect.left, cardRect.top)));
+                    card.setFillColor(selected ? surfaceRaised : (hover ? surface : canvas));
+                    card.setOutlineThickness(1.f);
+                    card.setOutlineColor(selected ? borderStrong : border);
                     window.draw(card);
 
-                    sf::RectangleShape keyChip(sf::Vector2f(46.f, 46.f));
-                    keyChip.setPosition(snap(sf::Vector2f(114.f, y + 28.f)));
-                    keyChip.setFillColor(selected ? sf::Color(150,210,255) : sf::Color(36,42,62));
-                    keyChip.setOutlineThickness(1.f);
-                    keyChip.setOutlineColor(selected ? sf::Color(215,240,255) : sf::Color(70,80,110));
-                    window.draw(keyChip);
+                    if(selected){
+                        sf::RectangleShape selectionRule(sf::Vector2f(3.f, cardRect.height));
+                        selectionRule.setPosition(snap(sf::Vector2f(cardRect.left, cardRect.top)));
+                        selectionRule.setFillColor(accent);
+                        window.draw(selectionRule);
+                    }
 
-                    drawText(130.f, y + 38.f, 24, selected ? sf::Color(16,26,40) : sf::Color(220,228,245), std::to_string(key), sf::Text::Bold);
-                    drawText(178.f, y + 26.f, 30, sf::Color(238,242,255), title);
-                    drawText(178.f, y + 62.f, 18, selected ? sf::Color(210,228,255) : sf::Color(160,174,206), subtitle);
+                    std::ostringstream keyLabel;
+                    keyLabel << '0' << key;
+                    drawText(cardRect.left + 20.f, cardRect.top + 27.f, 13,
+                             selected ? accent : textMuted, keyLabel.str());
+                    drawText(cardRect.left + 72.f, cardRect.top + 14.f, 22, text, title);
+                    drawText(cardRect.left + 72.f, cardRect.top + 47.f, 14,
+                             selected ? textSoft : textMuted, subtitle);
 
                     if(selected){
-                        sf::RectangleShape tag(sf::Vector2f(106.f, 34.f));
-                        tag.setPosition(snap(sf::Vector2f(730.f, y + 34.f)));
-                        tag.setFillColor(sf::Color(215,240,255));
-                        tag.setOutlineThickness(1.f);
-                        tag.setOutlineColor(sf::Color(140,190,230));
-                        window.draw(tag);
-                        drawText(744.f, y + 41.f, 16, sf::Color(16,36,56), "Selected", sf::Text::Bold);
+                        sf::CircleShape marker(4.f);
+                        marker.setPosition(snap(sf::Vector2f(cardRect.left + cardRect.width - 28.f,
+                                                            cardRect.top + 36.f)));
+                        marker.setFillColor(accent);
+                        window.draw(marker);
                     }
                 };
 
-                drawModeCard(234.f, 1, "Player vs Player", "Two humans on one board.");
-                drawModeCard(350.f, 2, "Player vs AI (White)", "You move first, AI responds.");
-                drawModeCard(466.f, 3, "Player vs AI (Black)", "AI opens, you defend and counter.");
-                drawModeCard(582.f, 4, "Watch AI vs AI", "Let both engines play automatically.");
+                drawModeCard(0, 1, "player vs player", "two people, one board.");
+                drawModeCard(1, 2, "play Forklift as white", "you move first.");
+                drawModeCard(2, 3, "play Forklift as black", "Forklift opens.");
+                drawModeCard(3, 4, "Forklift vs Forklift", "watch the engine play itself.");
 
-                sf::RectangleShape side(sf::Vector2f(244.f, 450.f));
-                side.setPosition(snap(sf::Vector2f(888.f, 234.f)));
-                side.setFillColor(sf::Color(18,22,34));
-                side.setOutlineThickness(2.f);
-                side.setOutlineColor(sf::Color(45,54,80));
+                const sf::FloatRect sideRect(900.f, 246.f, 348.f, 356.f);
+                sf::RectangleShape side(sf::Vector2f(sideRect.width, sideRect.height));
+                side.setPosition(snap(sf::Vector2f(sideRect.left, sideRect.top)));
+                side.setFillColor(surface);
+                side.setOutlineThickness(1.f);
+                side.setOutlineColor(border);
                 window.draw(side);
 
-                drawText(908.f, 262.f, 24, sf::Color(232,238,252), "Session");
-                drawText(908.f, 300.f, 18, sf::Color(165,178,210), "Current:");
-                drawText(908.f, 326.f, 19, sf::Color(220,230,250), selectionLabel());
-                drawText(908.f, 376.f, 18, sf::Color(165,178,210), "Controls:");
-                drawText(908.f, 404.f, 18, sf::Color(220,230,250), "Arrows / click mode");
-                drawText(908.f, 430.f, 18, sf::Color(220,230,250), "Enter start game");
-                drawText(908.f, 456.f, 18, sf::Color(220,230,250), "Esc   quit");
-                drawText(908.f, 506.f, 18, sf::Color(165,178,210), "Assets:");
-                drawText(908.f, 534.f, 18, hasIcons ? sf::Color(145,220,170) : sf::Color(255,180,180),
-                         hasIcons ? "Piece icons loaded" : "Piece icons missing");
+                drawText(924.f, 270.f, 13, textMuted, "session");
+                drawText(924.f, 302.f, 24, text, selectionLabel());
+
+                sf::RectangleShape sideRule(sf::Vector2f(300.f, 1.f));
+                sideRule.setPosition(snap(sf::Vector2f(924.f, 354.f)));
+                sideRule.setFillColor(border);
+                window.draw(sideRule);
+
+                sf::CircleShape readyDot(3.5f);
+                readyDot.setPosition(snap(sf::Vector2f(924.f, 386.f)));
+                readyDot.setFillColor(hasIcons ? accent : danger);
+                window.draw(readyDot);
+                drawText(940.f, 379.f, 14, hasIcons ? textSoft : danger,
+                         hasIcons ? "ready" : "piece assets unavailable");
+                drawText(924.f, 420.f, 13, textMuted, "controls");
+                drawText(924.f, 448.f, 14, textSoft, "arrow keys / click to select");
+                drawText(924.f, 474.f, 14, textSoft, "enter to start");
+                drawText(924.f, 500.f, 14, textSoft, "esc to quit");
 
                 const sf::FloatRect startRect = getMenuStartRect();
                 const bool startHover = startRect.contains(mousePos);
                 sf::RectangleShape startBtn(sf::Vector2f(startRect.width, startRect.height));
                 startBtn.setPosition(snap(sf::Vector2f(startRect.left, startRect.top)));
-                startBtn.setFillColor(startHover ? sf::Color(62,134,255) : sf::Color(46,108,214));
-                startBtn.setOutlineThickness(2.f);
-                startBtn.setOutlineColor(startHover ? sf::Color(184,220,255) : sf::Color(112,170,240));
+                startBtn.setFillColor(startHover ? accent : text);
+                startBtn.setOutlineThickness(1.f);
+                startBtn.setOutlineColor(startHover ? accent : text);
                 window.draw(startBtn);
-                drawText(startRect.left + 36.f, startRect.top + 10.f, 23, sf::Color(236,246,255), "Start Game", sf::Text::Bold);
-                drawText(startRect.left + 77.f, startRect.top + 35.f, 14, sf::Color(210,230,255), "Enter");
+                drawCenteredText(startRect, 18, canvas, "start game");
 
-                drawText(96.f, 752.f, 18, sf::Color(138,152,188), "Tip: press 2 or 3 to play against AI as White or Black.");
+                sf::RectangleShape bottomRule(sf::Vector2f(1176.f, 1.f));
+                bottomRule.setPosition(snap(sf::Vector2f(72.f, 790.f)));
+                bottomRule.setFillColor(border);
+                window.draw(bottomRule);
+                drawText(72.f, 812.f, 13, textMuted,
+                         "1-4 select   arrows navigate   enter start");
+                drawText(1176.f, 812.f, 13, textMuted, "esc quit");
             }
             window.display();
             continue;
@@ -1040,17 +1117,31 @@ int main(int argc, char** argv){
         const float boardPadR = 14.f;
         const float boardPadT = 20.f;
         const float boardPadB = 30.f;
+
+        if(hasFont){
+            sf::Text brand;
+            brand.setFont(font);
+            brand.setCharacterSize(17);
+            brand.setFillColor(text);
+            brand.setString("forklift/");
+            setCrispTextPosition(brand, sf::Vector2f(20.f, 20.f));
+            window.draw(brand);
+
+            sf::Text context;
+            context.setFont(font);
+            context.setCharacterSize(13);
+            context.setFillColor(textMuted);
+            context.setString("local game  /  esc quit");
+            setCrispTextPosition(context, sf::Vector2f(1122.f, 23.f));
+            window.draw(context);
+        }
+
         sf::RectangleShape boardShell(sf::Vector2f(8.f*tile + boardPadL + boardPadR, 8.f*tile + boardPadT + boardPadB));
         boardShell.setPosition(snap(sf::Vector2f(boardOrigin.x - boardPadL, boardOrigin.y - boardPadT)));
-        boardShell.setFillColor(sf::Color(16,20,32));
-        boardShell.setOutlineThickness(2.f);
-        boardShell.setOutlineColor(sf::Color(52,60,88));
+        boardShell.setFillColor(surface);
+        boardShell.setOutlineThickness(1.f);
+        boardShell.setOutlineColor(border);
         window.draw(boardShell);
-
-        sf::RectangleShape boardAccent(sf::Vector2f(boardShell.getSize().x, 6.f));
-        boardAccent.setPosition(boardShell.getPosition());
-        boardAccent.setFillColor(sf::Color(58,132,255));
-        window.draw(boardAccent);
 
         for(int r=0;r<8;r++){
             for(int f=0;f<8;f++){
@@ -1061,15 +1152,17 @@ int main(int argc, char** argv){
                 rect.setPosition(snap(squareToPixel(s, tile, boardOrigin, flipBoard)));
 
                 bool dark = ((f+r)%2)==1;
-                sf::Color base = dark ? sf::Color(78,83,108) : sf::Color(214,219,233);
+                sf::Color base = dark ? boardDark : boardLight;
 
                 if(lastMove && idx==lastMove->from){
-                    base = dark ? sf::Color(205,110,35) : sf::Color(245,150,70);
+                    base = dark ? lastMoveDark : lastMoveLight;
                 }
                 if(lastMove && idx==lastMove->to){
-                    base = dark ? sf::Color(50,145,225) : sf::Color(120,195,250);
+                    base = dark ? selectedDark : selectedLight;
                 }
-                if(selectedSq && idx==*selectedSq) base = lighten(base, 55);
+                if(selectedSq && idx==*selectedSq){
+                    base = dark ? selectedDark : selectedLight;
+                }
 
                 rect.setFillColor(base);
                 window.draw(rect);
@@ -1077,10 +1170,21 @@ int main(int argc, char** argv){
         }
 
         for(const auto& m : selectedMoves){
-            sf::RectangleShape hl(sf::Vector2f(tile,tile));
-            hl.setPosition(snap(squareToPixel(indexToSq(m.to), tile, boardOrigin, flipBoard)));
-            hl.setFillColor(sf::Color(88,208,164,116));
-            window.draw(hl);
+            const sf::Vector2f target = squareToPixel(indexToSq(m.to), tile, boardOrigin, flipBoard);
+            if(isNone(board.at(m.to))){
+                sf::CircleShape dot(8.f);
+                dot.setPosition(snap(sf::Vector2f(target.x + tile*0.5f - 8.f,
+                                                  target.y + tile*0.5f - 8.f)));
+                dot.setFillColor(sf::Color(accent.r, accent.g, accent.b, 180));
+                window.draw(dot);
+            } else {
+                sf::CircleShape ring(tile*0.5f - 9.f);
+                ring.setPosition(snap(sf::Vector2f(target.x + 9.f, target.y + 9.f)));
+                ring.setFillColor(sf::Color::Transparent);
+                ring.setOutlineThickness(3.f);
+                ring.setOutlineColor(sf::Color(accent.r, accent.g, accent.b, 190));
+                window.draw(ring);
+            }
         }
 
         for(Color c : {Color::White, Color::Black}){
@@ -1089,7 +1193,7 @@ int main(int argc, char** argv){
                 if(k>=0){
                     sf::RectangleShape red(sf::Vector2f(tile,tile));
                     red.setPosition(snap(squareToPixel(indexToSq(k), tile, boardOrigin, flipBoard)));
-                    red.setFillColor(sf::Color(228,76,76,124));
+                    red.setFillColor(sf::Color(danger.r, danger.g, danger.b, 112));
                     window.draw(red);
                 }
             }
@@ -1101,8 +1205,8 @@ int main(int argc, char** argv){
             for(int f=0; f<8; f++){
                 sf::Text t;
                 t.setFont(font);
-                t.setCharacterSize(14);
-                t.setFillColor(sf::Color(126,138,170));
+                t.setCharacterSize(12);
+                t.setFillColor(textMuted);
                 t.setString(std::string(1, char('a'+f)));
                 setCrispTextPosition(t, sf::Vector2f(boardOrigin.x + (flipBoard?(7-f):f)*tile + 6.f, fileLabelY));
                 window.draw(t);
@@ -1110,8 +1214,8 @@ int main(int argc, char** argv){
             for(int r=0; r<8; r++){
                 sf::Text t;
                 t.setFont(font);
-                t.setCharacterSize(14);
-                t.setFillColor(sf::Color(126,138,170));
+                t.setCharacterSize(12);
+                t.setFillColor(textMuted);
                 t.setString(std::to_string(r+1));
                 int rr = flipBoard ? (7-r) : r;
                 auto pos = squareToPixel(Square{0,rr}, tile, boardOrigin, flipBoard);
@@ -1148,15 +1252,10 @@ int main(int argc, char** argv){
         // panel
         sf::RectangleShape panelBg(panelSize);
         panelBg.setPosition(panelPos);
-        panelBg.setFillColor(sf::Color(14,18,30));
-        panelBg.setOutlineThickness(2.f);
-        panelBg.setOutlineColor(sf::Color(52,60,88));
+        panelBg.setFillColor(surface);
+        panelBg.setOutlineThickness(1.f);
+        panelBg.setOutlineColor(border);
         window.draw(panelBg);
-
-        sf::RectangleShape panelAccent(sf::Vector2f(panelSize.x, 6.f));
-        panelAccent.setPosition(panelPos);
-        panelAccent.setFillColor(sf::Color(58,132,255));
-        window.draw(panelAccent);
 
         if(hasFont){
             auto drawText = [&](float x, float y, unsigned size, sf::Color col, const std::string& str, sf::Uint32 style = sf::Text::Regular){
@@ -1170,35 +1269,33 @@ int main(int argc, char** argv){
                 window.draw(t);
             };
 
-            auto WRAPAT = [&](float x, float y, float w, const std::string& txt, int size=14, sf::Color col=sf::Color(220,228,245)){
+            auto WRAPAT = [&](float x, float y, float w, const std::string& txt, int size=14, sf::Color col=textSoft){
                 return drawWrappedText(window, font, txt, (unsigned)size, sf::Vector2f(x, y), w, col);
             };
 
-            auto drawCard = [&](float y, float h, const sf::Color& fill = sf::Color(20,24,36)){
-                sf::RectangleShape card(sf::Vector2f(panelSize.x - 22.f, h));
-                card.setPosition(snap(sf::Vector2f(panelPos.x + 11.f, y)));
-                card.setFillColor(fill);
-                card.setOutlineThickness(1.f);
-                card.setOutlineColor(sf::Color(50,58,82));
-                window.draw(card);
+            auto drawDivider = [&](float y){
+                sf::RectangleShape rule(sf::Vector2f(panelSize.x - 40.f, 1.f));
+                rule.setPosition(snap(sf::Vector2f(panelPos.x + 20.f, y)));
+                rule.setFillColor(border);
+                window.draw(rule);
             };
 
             std::vector<Move> legalMoves;
             board.genLegalMoves(legalMoves);
 
-            std::string stateLabel = "State: NORMAL";
-            sf::Color stateColor(170,184,218);
+            std::string stateLabel = "normal";
+            sf::Color stateColor = textMuted;
             if(legalMoves.empty()){
                 if(board.inCheck(board.stm)){
-                    stateLabel = "State: CHECKMATE";
-                    stateColor = sf::Color(255,175,175);
+                    stateLabel = "checkmate";
+                    stateColor = danger;
                 } else {
-                    stateLabel = "State: STALEMATE";
-                    stateColor = sf::Color(255,220,170);
+                    stateLabel = "stalemate";
+                    stateColor = warning;
                 }
             } else if(board.inCheck(board.stm)){
-                stateLabel = "State: CHECK";
-                stateColor = sf::Color(255,205,155);
+                stateLabel = "check";
+                stateColor = warning;
             }
 
             SearchStats s;
@@ -1229,41 +1326,61 @@ int main(int argc, char** argv){
                 return oss.str();
             };
 
-            drawText(panelPos.x + 16.f, panelPos.y + 18.f, 27, sf::Color(236,242,255), "Match Dashboard");
-            drawText(panelPos.x + 16.f, panelPos.y + 48.f, 16, sf::Color(142,156,190), "Live mode, engine and game-state telemetry.");
+            const float cardTextX = panelPos.x + 20.f;
+            const float cardW = panelSize.x - 40.f;
+            const float moveLogCardH = panelSize.y - (moveLogCardY - panelPos.y);
 
-            const float cardX = panelPos.x + 24.f;
-            const float cardW = panelSize.x - 48.f;
-            const float cardTextX = cardX + 12.f;
-            const float gameCardH = 150.f;
-            const float engineCardH = 246.f;
-            const float statusCardH = 112.f;
-            const float moveLogCardH = panelSize.y - (moveLogCardY - panelPos.y) - 12.f;
+            std::string modeLabel = "player vs player";
+            if(mode == GameMode::PvAI){
+                modeLabel = (humanColor == Color::White)
+                    ? "player vs Forklift  /  white"
+                    : "player vs Forklift  /  black";
+            } else if(mode == GameMode::AIvAI){
+                modeLabel = "Forklift vs Forklift";
+            }
 
-            drawCard(gameCardY, gameCardH);
-            drawText(cardTextX, gameCardY + 20.f, 18, sf::Color(190,204,236), "Game");
-            drawText(cardTextX, gameCardY + 48.f, 16, sf::Color(224,232,249), "Mode: " + modeStr(mode));
-            drawText(cardTextX, gameCardY + 72.f, 16, sf::Color(224,232,249),
-                     std::string("Turn: ") + (board.stm==Color::White ? "White" : "Black"));
-            drawText(cardTextX, gameCardY + 96.f, 16, stateColor, stateLabel, sf::Text::Bold);
-            drawText(cardTextX, gameCardY + 120.f, 14, sf::Color(168,182,215), "R reset  U undo  F flip  P pause  Esc quit");
+            drawText(cardTextX, panelPos.y + 18.f, 13, textMuted, "game");
+            drawText(cardTextX, panelPos.y + 47.f, 30, text,
+                     std::string(board.stm==Color::White ? "white" : "black") + " to move");
+            drawText(cardTextX, panelPos.y + 87.f, 14, stateColor,
+                     modeLabel + "  /  " + stateLabel);
 
-            drawCard(engineCardY, engineCardH);
-            drawText(cardTextX, engineCardY + 20.f, 18, sf::Color(190,204,236), "Engine");
+            drawDivider(panelPos.y + 174.f);
+            drawText(cardTextX, engineCardY, 13, textMuted, "engine");
             const TimeBudget liveBudget = pickGuiTimeBudget(board, aiTimeMs);
 
             std::ostringstream evalText;
             if(std::abs(s.bestScore) > MATE/2){
                 int matePly = std::max(1, MATE - std::abs(s.bestScore));
                 int mateMoves = std::max(1, (matePly + 1) / 2);
-                evalText << "Eval: " << (s.bestScore >= 0 ? "M" : "-M") << mateMoves;
+                evalText << (s.bestScore >= 0 ? "M" : "-M") << mateMoves;
             } else {
-                evalText << "Eval: " << std::showpos << std::fixed << std::setprecision(2) << pawns;
+                evalText << std::showpos << std::fixed << std::setprecision(2) << pawns;
             }
-            drawText(cardTextX, engineCardY + 44.f, 13, sf::Color(174,194,236), evalText.str());
-            drawText(cardTextX + 162.f, engineCardY + 44.f, 13, sf::Color(124,146,192),
-                     "TT " + std::to_string(ttSizeMB) + "MB | Thr " +
-                     std::to_string(s.workersUsed) + "/" + std::to_string(aiThreads));
+
+            std::string engineState = "idle";
+            sf::Color engineStateColor = textMuted;
+            if(aiThinking.load()){
+                const int elapsedMs = thinkClock.getElapsedTime().asMilliseconds();
+                const int remainingMs = std::max(0, liveBudget.softMs - elapsedMs);
+                std::ostringstream remaining;
+                remaining << "thinking  " << std::fixed << std::setprecision(1)
+                          << (double(remainingMs) / 1000.0) << "s";
+                engineState = remaining.str();
+                engineStateColor = warning;
+            } else if(aiPaused.load()){
+                engineState = "paused";
+                engineStateColor = accent;
+            }
+
+            drawText(cardTextX, engineCardY + 27.f, 31, text, evalText.str());
+            sf::CircleShape engineDot(3.5f);
+            engineDot.setPosition(snap(sf::Vector2f(panelPos.x + panelSize.x - 145.f,
+                                                    engineCardY + 39.f)));
+            engineDot.setFillColor(engineStateColor);
+            window.draw(engineDot);
+            drawText(panelPos.x + panelSize.x - 129.f, engineCardY + 31.f, 13,
+                     engineStateColor, engineState);
             {
                 float evalNorm = 0.5f;
                 if(std::abs(s.bestScore) > MATE/2){
@@ -1275,164 +1392,153 @@ int main(int argc, char** argv){
                 evalNorm = std::clamp(evalNorm, 0.f, 1.f);
 
                 const float barX = cardTextX;
-                const float barY = engineCardY + 60.f;
-                const float barW = cardW - 24.f;
-                const float barH = 10.f;
+                const float barY = engineCardY + 72.f;
+                const float barW = cardW;
+                const float barH = 4.f;
 
                 sf::RectangleShape barBg(sf::Vector2f(barW, barH));
                 barBg.setPosition(snap(sf::Vector2f(barX, barY)));
-                barBg.setFillColor(sf::Color(32,40,62));
-                barBg.setOutlineThickness(1.f);
-                barBg.setOutlineColor(sf::Color(62,84,124));
+                barBg.setFillColor(border);
                 window.draw(barBg);
 
-                sf::RectangleShape barFill(sf::Vector2f(std::max(2.f, barW * evalNorm), barH));
+                sf::RectangleShape barFill(sf::Vector2f(std::max(1.f, barW * evalNorm), barH));
                 barFill.setPosition(snap(sf::Vector2f(barX, barY)));
-                barFill.setFillColor(sf::Color(74,174,255));
+                barFill.setFillColor(accent);
                 window.draw(barFill);
 
-                sf::RectangleShape mid(sf::Vector2f(1.f, barH + 2.f));
-                mid.setPosition(snap(sf::Vector2f(barX + barW * 0.5f, barY - 1.f)));
-                mid.setFillColor(sf::Color(212,224,250,180));
+                sf::RectangleShape mid(sf::Vector2f(1.f, barH + 4.f));
+                mid.setPosition(snap(sf::Vector2f(barX + barW * 0.5f, barY - 2.f)));
+                mid.setFillColor(textSoft);
                 window.draw(mid);
             }
 
             const EngineStepperRects step = getEngineStepperRects();
             sf::Vector2i mousePixel = sf::Mouse::getPosition(window);
             sf::Vector2f mousePos(float(mousePixel.x), float(mousePixel.y));
-            const sf::FloatRect pauseRect = getAiPauseRect();
             auto drawStepperButton = [&](const sf::FloatRect& r, const std::string& label){
                 const bool hover = pointInRect(mousePos, r);
                 sf::RectangleShape btn(sf::Vector2f(r.width, r.height));
                 btn.setPosition(snap(sf::Vector2f(r.left, r.top)));
-                btn.setFillColor(hover ? sf::Color(56,80,130) : sf::Color(34,44,70));
+                btn.setFillColor(hover ? surfaceRaised : surface);
                 btn.setOutlineThickness(1.f);
-                btn.setOutlineColor(hover ? sf::Color(150,200,255) : sf::Color(96,128,192));
+                btn.setOutlineColor(hover ? borderStrong : border);
                 window.draw(btn);
-                drawText(r.left + 9.f, r.top + 2.f, 18, sf::Color(228,236,255), label, sf::Text::Bold);
+                drawText(r.left + 9.f, r.top + 3.f, 17, hover ? text : textSoft, label);
             };
-            {
-                const bool pauseHover = pauseRect.contains(mousePos);
-                sf::RectangleShape pauseBtn(sf::Vector2f(pauseRect.width, pauseRect.height));
-                pauseBtn.setPosition(snap(sf::Vector2f(pauseRect.left, pauseRect.top)));
-                pauseBtn.setFillColor(aiPaused.load()
-                    ? (pauseHover ? sf::Color(92,132,84) : sf::Color(68,110,62))
-                    : (pauseHover ? sf::Color(126,96,72) : sf::Color(102,76,58)));
-                pauseBtn.setOutlineThickness(1.f);
-                pauseBtn.setOutlineColor(aiPaused.load()
-                    ? sf::Color(176,228,160)
-                    : sf::Color(235,196,164));
-                window.draw(pauseBtn);
-                drawText(pauseRect.left + 10.f, pauseRect.top + 7.f, 14, sf::Color(236,244,255),
-                         aiPaused.load() ? "Resume AI (P)" : "Pause AI (P)", sf::Text::Bold);
-            }
+
+            auto drawActionButton = [&](const sf::FloatRect& r,
+                                        const std::string& label,
+                                        bool active = false){
+                const bool hover = pointInRect(mousePos, r);
+                sf::RectangleShape btn(sf::Vector2f(r.width, r.height));
+                btn.setPosition(snap(sf::Vector2f(r.left, r.top)));
+                btn.setFillColor(hover ? surfaceRaised : surface);
+                btn.setOutlineThickness(1.f);
+                btn.setOutlineColor(active ? accent : (hover ? borderStrong : border));
+                window.draw(btn);
+
+                sf::Text labelText;
+                labelText.setFont(font);
+                labelText.setCharacterSize(13);
+                labelText.setFillColor(active ? accent : (hover ? text : textSoft));
+                labelText.setString(label);
+                const sf::FloatRect labelBounds = labelText.getLocalBounds();
+                setCrispTextPosition(labelText, sf::Vector2f(
+                    r.left + (r.width - labelBounds.width) * 0.5f,
+                    r.top + 8.f));
+                window.draw(labelText);
+            };
+
+            const GameActionRects actions = getGameActionRects();
+            drawActionButton(actions.reset, "reset");
+            drawActionButton(actions.undo, "undo");
+            drawActionButton(actions.flip, "flip");
+            drawActionButton(actions.pause, aiPaused.load() ? "resume" : "pause", aiPaused.load());
 
             {
-                drawText(cardTextX, engineCardY + 74.f, 16, sf::Color(220,228,245),
-                         "Depth: " + std::to_string(aiMaxDepth));
-                drawText(cardTextX, engineCardY + 106.f, 16, sf::Color(220,228,245),
-                         "Time budget: " + std::to_string(aiTimeMs) + "ms");
+                std::ostringstream timeLabel;
+                timeLabel << std::fixed << std::setprecision(1)
+                          << (double(aiTimeMs) / 1000.0) << " s";
+                drawText(cardTextX, engineCardY + 96.f, 14, textMuted, "depth");
+                drawText(cardTextX + 82.f, engineCardY + 96.f, 14, text,
+                         std::to_string(aiMaxDepth));
+                drawText(cardTextX, engineCardY + 130.f, 14, textMuted, "move time");
+                drawText(cardTextX + 82.f, engineCardY + 130.f, 14, text,
+                         timeLabel.str());
                 drawStepperButton(step.depthMinus, "-");
                 drawStepperButton(step.depthPlus, "+");
                 drawStepperButton(step.timeMinus, "-");
                 drawStepperButton(step.timePlus, "+");
-                drawText(cardTextX, engineCardY + 134.f, 13, sf::Color(158,176,215),
-                         "Click +/- or use (+/-), (T/Y) | Book + TT on");
+                drawText(cardTextX, engineCardY + 162.f, 12, textMuted,
+                         "book on  /  tt " + std::to_string(ttSizeMB) + " mb  /  threads " +
+                         std::to_string(aiThreads));
             }
 
-            float statsY = engineCardY + 158.f;
-            if(aiThinking.load()){
-                int ms = thinkClock.getElapsedTime().asMilliseconds();
-                std::ostringstream oss;
-                oss << "Thinking... " << ms << "ms / " << liveBudget.softMs << "ms"
-                    << " (hard " << liveBudget.hardMs << "ms)";
-                drawText(cardTextX, statsY, 15, sf::Color(255,210,170), oss.str(), sf::Text::Bold);
-            } else if(aiPaused.load()){
-                drawText(cardTextX, statsY, 15, sf::Color(192,232,180), "Paused", sf::Text::Bold);
-            } else {
-                drawText(cardTextX, statsY, 15, sf::Color(150,220,168), "Idle");
-            }
-            statsY += 24.f;
+            float statsY = engineCardY + 190.f;
+            drawText(cardTextX, statsY, 12, textMuted, "search");
+            statsY += 23.f;
             {
                 std::ostringstream oss;
-                oss << "Depth " << s.depthReached
-                    << " | Score " << std::fixed << std::setprecision(2) << pawns
-                    << " | Time " << s.timeMs << "ms";
-                statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, oss.str(), 14, sf::Color(200,214,242));
-            }
-            {
-                const int softBudget = s.softTimeLimitMs > 0 ? s.softTimeLimitMs : liveBudget.softMs;
-                const int hardBudget = s.hardTimeLimitMs > 0 ? s.hardTimeLimitMs : liveBudget.hardMs;
-                std::ostringstream oss;
-                oss << "Budget soft " << softBudget
-                    << "ms | hard " << hardBudget
-                    << "ms | BM changes " << s.bestMoveChanges;
-                statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, oss.str(), 14, sf::Color(184,208,246));
+                oss << "depth " << s.depthReached
+                    << "  /  score " << std::showpos << std::fixed << std::setprecision(2) << pawns
+                    << "  /  " << s.timeMs << " ms";
+                statsY += WRAPAT(cardTextX, statsY, cardW, oss.str(), 13, textSoft);
             }
             {
                 std::ostringstream oss;
-                oss << "Nodes " << compactCount(s.nodes)
-                    << " | Q " << compactCount(s.qnodes)
+                oss << compactCount(s.nodes) << " nodes"
+                    << "  /  q " << compactCount(s.qnodes)
                     << " (" << std::fixed << std::setprecision(1) << qPct << "%)"
-                    << " | NPS " << compactCount(static_cast<u64>(std::max(0.0, nps)));
-                statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, oss.str(), 14, sf::Color(180,196,232));
+                    << "  /  " << compactCount(static_cast<u64>(std::max(0.0, nps))) << " nps";
+                statsY += WRAPAT(cardTextX, statsY, cardW, oss.str(), 13, textSoft);
             }
             {
                 const double rssMb = double(runtimeResources.rssBytes) / (1024.0 * 1024.0);
                 std::ostringstream oss;
-                oss << "Res CPU " << std::fixed << std::setprecision(1) << runtimeResources.cpuPercent
+                oss << "cpu " << std::fixed << std::setprecision(1) << runtimeResources.cpuPercent
                     << "% (~" << std::setprecision(1) << cpuCoresUsed << "c)"
-                    << " | RAM " << std::setprecision(1) << rssMb << "MB";
-                statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, oss.str(), 14, sf::Color(166,216,236));
-            }
-            {
-                std::ostringstream thr;
-                thr << "Threads used " << s.workersUsed
-                    << " | set " << aiThreads
-                    << " | hw " << s.hardwareThreads;
-                statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, thr.str(), 14, sf::Color(164,208,232));
-            }
-            {
-                std::ostringstream meta;
-                meta << "Pos: halfmove " << board.halfmoveClock
-                     << " | ep " << (board.epSquare>=0 ? sqName(indexToSq(board.epSquare)) : "-")
-                     << " | castling " << int(board.castling);
-                statsY += WRAPAT(cardTextX, statsY, cardW - 24.f, meta.str(), 14, sf::Color(160,178,210));
+                    << "  /  ram " << std::setprecision(1) << rssMb << " mb"
+                    << "  /  workers " << s.workersUsed;
+                statsY += WRAPAT(cardTextX, statsY, cardW, oss.str(), 13, textMuted);
             }
             if(!pv.empty()){
-                std::string pvCompact = "PV: " + pv;
-                if(pvCompact.size() > 64) pvCompact = pvCompact.substr(0, 61) + "...";
-                if(statsY + font.getLineSpacing(14) <= (engineCardY + engineCardH - 12.f)){
-                    drawText(cardTextX, statsY, 14, sf::Color(168,214,255), pvCompact);
-                }
+                std::string pvCompact = "pv  " + pv;
+                if(pvCompact.size() > 54) pvCompact = pvCompact.substr(0, 51) + "...";
+                drawText(cardTextX, statsY, 13, accent, pvCompact);
             }
 
-            drawCard(statusCardY, statusCardH);
-            drawText(cardTextX, statusCardY + 20.f, 18, sf::Color(190,204,236), "Status");
-            float statusY = statusCardY + 50.f;
-            statusY += WRAPAT(cardTextX, statusY, cardW - 24.f, status, 14, sf::Color(225,232,248));
+            drawDivider(statusCardY);
+            drawText(cardTextX, statusCardY + 18.f, 12, textMuted, "activity");
+            float statusY = statusCardY + 43.f;
+            statusY += WRAPAT(cardTextX, statusY, cardW, status, 13, textSoft);
             if(selectedSq){
-                if(statusY + font.getLineSpacing(14) <= statusCardY + statusCardH - 10.f){
-                    drawText(cardTextX, statusY, 14, sf::Color(178,196,232),
-                             "Selected " + sqName(indexToSq(*selectedSq)) + " | legal " + std::to_string((int)selectedMoves.size()));
-                    statusY += font.getLineSpacing(14);
+                if(statusY + font.getLineSpacing(13) <= moveLogCardY - 10.f){
+                    drawText(cardTextX, statusY, 13, textMuted,
+                             "selected " + sqName(indexToSq(*selectedSq)) + "  /  " +
+                             std::to_string((int)selectedMoves.size()) + " legal moves");
+                    statusY += font.getLineSpacing(13);
                 }
             }
             if(gameStatus.finished()){
-                if(statusY + font.getLineSpacing(14) <= statusCardY + statusCardH - 10.f){
-                    drawText(cardTextX, statusY, 14, sf::Color(220,212,170),
-                             std::string("Game over: ") + gameTerminationName(gameStatus.termination));
+                if(statusY + font.getLineSpacing(13) <= moveLogCardY - 10.f){
+                    drawText(cardTextX, statusY, 13, warning,
+                             std::string("game over  /  ") + gameTerminationName(gameStatus.termination));
                 }
             }
 
-            drawCard(moveLogCardY, moveLogCardH);
-            drawText(cardTextX, moveLogCardY + 20.f, 18, sf::Color(190,204,236), "Move Log");
+            drawDivider(moveLogCardY);
+            drawText(cardTextX, moveLogCardY + 18.f, 12, textMuted, "moves");
             float listY = moveLogCardY + 46.f;
-            int start = std::max(0, (int)moveListSAN.size()-16);
-            for(int i=start; i<(int)moveListSAN.size(); i++){
-                std::string prefix = (i%2==0) ? (std::to_string(i/2 + 1) + ". ") : "   ";
-                float used = WRAPAT(cardTextX, listY, cardW - 24.f, prefix + moveListSAN[i], 14, sf::Color(208,220,246));
-                listY += used;
+            if(moveListSAN.empty()){
+                drawText(cardTextX, listY, 13, textMuted, "no moves yet");
+            }
+            int start = std::max(0, (int)moveListSAN.size()-10);
+            start -= start % 2;
+            for(int i=start; i<(int)moveListSAN.size(); i+=2){
+                std::string line = std::to_string(i/2 + 1) + ".  " + moveListSAN[i];
+                if(i + 1 < (int)moveListSAN.size()) line += "    " + moveListSAN[i + 1];
+                drawText(cardTextX, listY, 13, textSoft, line);
+                listY += 22.f;
                 if(listY > (moveLogCardY + moveLogCardH - 18.f)) break;
             }
         }

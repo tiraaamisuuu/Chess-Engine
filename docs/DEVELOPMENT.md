@@ -60,7 +60,7 @@ The following defaults are deliberate:
 - `chess-engine-tools`: perft, FEN/evaluation inspection, and fixed-position
   benchmarking
 - `chess-core-tests`: deterministic core/search/NNUE tests
-- `gui`: legacy SFML 2.6 desktop interface when `CHESS_BUILD_GUI=ON`
+- `gui`: minimalist Forklift SFML 2.6 desktop interface when `CHESS_BUILD_GUI=ON`
 - `web/server.py`: local web interface and UCI bridge
 
 ### Chess core and correctness
