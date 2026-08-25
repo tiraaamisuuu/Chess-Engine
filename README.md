@@ -1,8 +1,8 @@
 # Chess Engine
 
-A high-performance C++17 chess engine combining modern alpha-beta search with
-classical and custom trainable NNUE evaluation. The project includes a local
-chess interface, UCI support, CUDA/PyTorch training, Stockfish teacher
+Forklift is a high-performance C++17 chess engine combining modern alpha-beta
+search with classical and custom trainable NNUE evaluation. The project includes
+a local chess interface, UCI support, CUDA/PyTorch training, Stockfish teacher
 labelling, incremental NNUE inference, and reproducible strength testing.
 
 `C++` · `UCI` · `NNUE` · `CUDA / PyTorch` · `SFML`
