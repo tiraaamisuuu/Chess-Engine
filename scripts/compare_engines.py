@@ -835,18 +835,19 @@ def main() -> int:
     print(f"  Manifest : {manifest_path}")
     print(f"  Output   : {output}\n")
 
-    with log.open("w", encoding="utf-8") as log_file:
+    with log.open("w", encoding="utf-8", buffering=1) as log_file:
         process = subprocess.Popen(
             command,
             cwd=ROOT,
             text=True,
+            bufsize=1,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             env=dict(os.environ),
         )
         assert process.stdout is not None
         for line in process.stdout:
-            print(line, end="")
+            print(line, end="", flush=True)
             log_file.write(line)
         exit_code = process.wait()
 

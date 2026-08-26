@@ -179,18 +179,19 @@ def unexpected_new_run_entries(run_dir: Path) -> list[Path]:
 
 def run_and_tee(command: list[str], log_path: Path) -> int:
     print("+ " + " ".join(command), flush=True)
-    with log_path.open("w", encoding="utf-8") as log_file:
+    with log_path.open("w", encoding="utf-8", buffering=1) as log_file:
         process = subprocess.Popen(
             command,
             cwd=ROOT,
             text=True,
+            bufsize=1,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             env=dict(os.environ),
         )
         assert process.stdout is not None
         for line in process.stdout:
-            print(line, end="")
+            print(line, end="", flush=True)
             log_file.write(line)
         return process.wait()
 

@@ -1,5 +1,5 @@
 param(
-    [string]$RunDir = 'E:\Dev\Forklift-Research\matches\absolute-calibration-main-pilot-20260826',
+    [string]$RunDir = 'E:\Dev\Forklift-Research\matches\absolute-calibration-main-20260826',
     [string]$Rungs = '2200,2400,2600,2800,3000,3190',
     [int]$GamesPerRung = 200,
     [string]$TimeControl = '10+0.1',
