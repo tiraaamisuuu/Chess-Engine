@@ -24,12 +24,12 @@ The comparison command automatically downloads and verifies the CC0
 `UHO_4060_v4` opening suite from the official Stockfish books repository. The
 bundled 24-position suite is used only by `--quick` installation checks.
 
-## Compare the latest release with the v1 development line
+## Compare the v1.0 release with the current mainline
 
 ```sh
 scripts/compare_engines.py \
-  --baseline v0.4.0 \
-  --candidate dev/v1 \
+  --baseline v1.0.0 \
+  --candidate main \
   --games 400 \
   --tc 10+0.1 \
   --threads 1 \
@@ -178,7 +178,7 @@ For a candidate expected to be at least five Elo stronger:
 ```sh
 scripts/compare_engines.py \
   --baseline v0.4.0 \
-  --candidate dev/v1 \
+  --candidate main \
   --games 10000 \
   --tc 10+0.1 \
   --sprt --elo0 0 --elo1 5
@@ -196,8 +196,8 @@ isolate the effect of two networks, use the same engine ref on both sides:
 
 ```sh
 scripts/compare_engines.py \
-  --baseline dev/v1 \
-  --candidate dev/v1 \
+  --baseline main \
+  --candidate main \
   --baseline-eval-file networks/network-a.nnue \
   --candidate-eval-file networks/network-b.nnue \
   --games 1000 --tc 10+0.1
@@ -213,7 +213,7 @@ NNUE blend against pure classical evaluation:
 
 ```powershell
 python scripts\compare_engines.py `
-  --baseline dev/v1 --candidate dev/v1 `
+  --baseline main --candidate main `
   --candidate-eval-file D:\ChessNetworks\candidate.nnue `
   --candidate-option "NNUE Weight=25" `
   --games 100 --tc 10+0.1 --threads 1 --hash 256

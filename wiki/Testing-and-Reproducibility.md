@@ -4,10 +4,12 @@ Every engine change should pass correctness tests first, then fixed-work perform
 
 ## Automated tests
 
-The CMake test suite builds two executables:
+The CMake test suite runs two primary checks:
 
-- `engine_tests` covers board state, legal move generation, make/unmake, hashing, search behaviour, evaluation, NNUE accumulators, transposition-table behaviour, and randomized legal sequences.
-- `uci_tests` covers protocol parsing and command behaviour.
+- `chess-core-tests` covers board state, legal move generation, make/unmake,
+  hashing, search behaviour, evaluation, NNUE accumulators,
+  transposition-table behaviour, and randomized legal sequences.
+- `uci-smoke` covers protocol startup, command handling, and shutdown.
 
 Run them with:
 
@@ -38,4 +40,4 @@ Parallel search is measured separately from single-thread strength. The benchmar
 
 The `docs/results` directory contains dated experiment reports and machine-readable artifacts. These are deliberately separate from the concise landing page: the README states verified headline results, while the raw reports preserve the full context and caveats.
 
-See [Benchmarking](https://github.com/tiraaamisuuu/Chess-Engine/blob/dev/v1/docs/BENCHMARKING.md) for commands and reporting conventions.
+See [Benchmarking](https://github.com/tiraaamisuuu/Chess-Engine/blob/main/docs/BENCHMARKING.md) for commands and reporting conventions.

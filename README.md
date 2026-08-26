@@ -108,6 +108,18 @@ On macOS/Linux, use `scripts/run_web_gui.sh`. The launcher creates its isolated
 Python environment, builds the headless engine when necessary, and opens the
 local interface.
 
+Build the Forklift desktop app with SFML 2.6 available:
+
+```powershell
+cmake -S . -B build-gui -DCHESS_BUILD_GUI=ON -DBUILD_TESTING=ON `
+  -DSFML_DIR=C:\path\to\SFML\lib\cmake\SFML
+cmake --build build-gui --config Release --parallel
+.\build-gui\Release\gui.exe
+```
+
+The desktop app includes smooth piece motion, original sound cues, live search
+telemetry, and manual or position-aware automatic time controls.
+
 Build and test the headless engine directly:
 
 ```sh
@@ -130,16 +142,16 @@ The principal executables are `chess-engine-uci`, `chess-engine-tools`, and
   gates
 - [Raw experimental results](docs/results/) — permanent reproducibility record
 
-The Wiki source is kept in this repository until GitHub Wiki is enabled, after
-which the same pages can be published to the repository's separate Wiki Git
-repository.
+The Wiki source is versioned in this repository and mirrored to the project's
+GitHub Wiki, so documentation changes remain reviewable with the code.
 
 ## Roadmap
 
 **Current**
 
-- Review and merge the release-ready `dev/v1` branch into `main`
-- Tag and package `v1.0.0` after the merge
+- `main` is the canonical development and release branch
+- `v1.0.0` is tagged and published; later mainline work includes the completed
+  Forklift desktop overhaul
 - Keep classical evaluation and one search thread as the proven defaults
 
 **Next**

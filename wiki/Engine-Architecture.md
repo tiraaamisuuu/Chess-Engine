@@ -114,5 +114,7 @@ avoid thread coordination costing more than the search.
   sessions; python-chess owns the displayed game state and export notation.
 - The browser renders the board, legal targets, analysis telemetry and setup
   dialogs but does not implement engine search.
-- The SFML application remains available as a legacy desktop shell.
+- The SFML application is the native Forklift desktop client, with animated
+  pieces, original sound cues, live process telemetry, and manual or
+  complexity-weighted automatic time controls.
 - Developer tools call the same core for perft, evaluation and benchmark runs.

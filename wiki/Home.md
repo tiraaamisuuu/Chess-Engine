@@ -30,14 +30,17 @@ properly powered match.
 
 ## Current status
 
-- Development branch: `dev/v1`
+- Canonical branch: `main`; `v1.0.0` is the published release baseline
 - Supported playing-strength default: one thread, classical evaluation
-- Current NNUE format: `HalfKP-v1`, 256 hidden units for the next baseline
+- Native client: minimalist Forklift desktop app with adaptive time profiles,
+  smooth movement, original sound cues, and live telemetry
+- Current NNUE format: `HalfKP-v1`; the completed 256-unit production candidate
+  remains optional after failing its promotion match
 - Teacher budget: 20k nodes selected after 127,784 same-position comparisons
-- Next training scale: five million training positions plus game-disjoint
-  validation
+- Completed training scale: five million positions plus 616,632 game-disjoint
+  validation positions
 
 Raw commands, hardware, commit IDs, checksums, match logs and negative results
 remain in the repository's
-[`docs/results/`](https://github.com/tiraaamisuuu/Chess-Engine/tree/dev/v1/docs/results)
+[`docs/results/`](https://github.com/tiraaamisuuu/Chess-Engine/tree/main/docs/results)
 directory. The Wiki explains the system; the result files are the evidence.

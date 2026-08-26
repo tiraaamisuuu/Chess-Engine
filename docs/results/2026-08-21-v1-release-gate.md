@@ -75,3 +75,9 @@ The evidence supports releasing the classical v1 configuration. The next
 external action is a reviewed merge of `dev/v1` into `main`, followed by a
 `v1.0.0` tag and release package. Those repository-wide actions are deliberately
 separate from the strength experiment.
+
+## Publication outcome
+
+The reviewed merge, `v1.0.0` tag, and cross-platform release publication were
+subsequently completed. `main` is now the canonical development and release
+branch; the text above is retained as the contemporaneous gate decision.

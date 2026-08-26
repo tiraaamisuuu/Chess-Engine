@@ -1,6 +1,9 @@
 # NNUE Training
 
-The NNUE toolchain covers source ingestion, teacher labelling, training, quantization, C++ verification, and engine-vs-engine promotion testing. The intended production architecture remains a 256-unit HalfKP network.
+The NNUE toolchain covers source ingestion, teacher labelling, training,
+quantization, C++ verification, and engine-vs-engine promotion testing. The
+completed production baseline used a 256-unit HalfKP network; it was rejected
+after its promotion match, while the verified pipeline was retained.
 
 ## Data contract
 
@@ -30,7 +33,8 @@ worth four times the work.
 The completed 2026-08-20 comparison used 127,784 identical boards. The 5k and
 20k scores had 366.40 cp MAE and 97.499% sign agreement. Because 3,196 labels
 changed which side was favoured and the projected 5M/20k run is about 21 hours
-on the measured host, 20k is selected for the first production-scale baseline.
+on the measured host, 20k was selected for the completed production-scale
+baseline.
 
 ## Training
 
@@ -46,4 +50,4 @@ After training, weights are quantized into the engine’s versioned network form
 
 Candidate networks are tested with paired openings and colour reversal. Match summaries, PGNs, engine logs, and reproducibility metadata are written to an artifact directory. Only a statistically credible improvement is promoted to the runtime default.
 
-For command examples and the exact current status, see the repository’s [NNUE documentation](https://github.com/tiraaamisuuu/Chess-Engine/blob/dev/v1/docs/NNUE.md).
+For command examples and the exact current status, see the repository’s [NNUE documentation](https://github.com/tiraaamisuuu/Chess-Engine/blob/main/docs/NNUE.md).

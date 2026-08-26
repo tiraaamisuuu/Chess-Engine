@@ -8,7 +8,7 @@ The following results are recorded in the repository’s experiment reports:
 
 | Change | Result | Decision |
 |---|---:|---|
-| v1 versus the legacy baseline | 70 wins, 13 losses, 17 draws | Promising preliminary result |
+| v1 versus `v0.4.0` | 299 wins, 18 losses, 83 draws | Released; +303 +/- 37 Elo in this test pool |
 | Mobility evaluation | 11.8% fewer nodes | Kept |
 | Stack-based move lists | 11.5% faster | Kept |
 | Clock and material fast path | 4.4% faster | Kept |
@@ -19,19 +19,21 @@ The following results are recorded in the repository’s experiment reports:
 | Original root-parallel version | 0/100 in safety match | Reworked before acceptance |
 | Correction history | 34-34-32 match | Reverted as neutral |
 | Selection-based move ordering | 17.5% slower | Reverted |
-| Small NNUE candidate | 2-37-1, 158,699 nodes, 71.8% of classical speed | Rejected |
+| Small NNUE candidate | 2-37-1, 158,699 positions, 71.8% input coverage | Rejected |
+| Five-million-position NNUE | 32.5% over 400 games versus classical | Rejected; pipeline retained |
 
 These figures are not mixed into one synthetic score. Node reductions, throughput gains, and match outcomes answer different questions.
 
 ## Current priority
 
-The immediate work is data quality for the 256-unit HalfKP NNUE:
+The immediate work is post-v1 strength validation:
 
-1. obtain and checksum a modern Lichess standard-rated CC0 monthly archive;
-2. generate and validate five million 20k-node training positions plus a
-   game-disjoint validation split;
-3. train, quantize, and verify the unchanged 256-wide HalfKP candidate; and
-4. run paired promotion matches against classical evaluation.
+1. confirm continuation history and qsearch SEE pruning at a slower time
+   control;
+2. profile root-parallel contention and prove equal-time strength before
+   changing the one-thread default;
+3. target rare HalfKP inputs and test a stronger representation; and
+4. automate candidate-versus-champion promotion while preserving every result.
 
 The teacher budget is now resolved: 127,784 same-position 5k-vs-20k searches
 had 97.499% score-sign agreement, leaving 3,196 disagreements. The project
@@ -50,4 +52,4 @@ After the data and NNUE gate, the roadmap continues through:
 6. packaging and release hardening; and
 7. continuing profiling and experiment-driven refinement.
 
-The detailed active checklist lives in [V1 Roadmap](https://github.com/tiraaamisuuu/Chess-Engine/blob/dev/v1/docs/V1_ROADMAP.md), and the current implementation state is recorded in [Development Status](https://github.com/tiraaamisuuu/Chess-Engine/blob/dev/v1/docs/DEVELOPMENT.md).
+The detailed active checklist lives in [V1 Roadmap](https://github.com/tiraaamisuuu/Chess-Engine/blob/main/docs/V1_ROADMAP.md), and the current implementation state is recorded in [Development Status](https://github.com/tiraaamisuuu/Chess-Engine/blob/main/docs/DEVELOPMENT.md).

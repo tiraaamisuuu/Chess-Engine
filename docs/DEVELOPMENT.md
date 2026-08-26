@@ -2,19 +2,19 @@
 
 This document records the current engineering state, reproducible development
 workflow, accepted and rejected experiments, and the highest-priority work
-needed to take the v1 development line to a release.
+after the v1 release.
 
 ## Repository state
 
-- Active development branch: `dev/v1`
-- Release branch: `main`
+- Canonical development and release branch: `main`
+- `v1.0.0` is tagged and published; subsequent mainline commits contain the
+  completed Forklift desktop overhaul.
 - Classical evaluation remains the default.
 - NNUE is optional and fully wired. The completed five-million-position
   baseline and follow-up WDL/hybrid candidates did not earn promotion.
 - Generated builds, datasets, downloaded engines, networks, match logs, and
   environments are intentionally ignored by Git.
-- The release gates below pass as of 2026-08-21; merge and tagging remain
-  deliberate repository-wide release actions.
+- The release gates below pass as of 2026-08-26 on the current mainline.
 
 Before changing the engine, fetch the remote, inspect the current branch and
 worktree, and review:
@@ -47,8 +47,9 @@ The following defaults are deliberate:
   Elo gain.
 - Classical evaluation remains the default until NNUE beats it in a properly
   powered paired test.
-- The HalfKP hidden width remains 256 for the next large-data experiment, so
-  the effect of data scale is measured independently from architecture changes.
+- The completed production baseline held HalfKP width at 256 to isolate data
+  scale. Future candidates should change one representation or training
+  variable at a time.
 - Failed experiments remain documented; rejected code should be reverted or
   cleanly disabled.
 
@@ -142,7 +143,7 @@ session should run the following checklist before feature work.
 
 ```powershell
 git fetch --all --prune
-git switch dev/v1
+git switch main
 git pull --ff-only
 git status --short --branch
 git log -5 --oneline --decorate
@@ -243,7 +244,7 @@ material, and teacher magnitude, and checksummed cross-machine merging.
 
 ## Prioritized roadmap
 
-### Priority 1: release v1
+### Priority 1: maintain the v1 release baseline
 
 1. **Complete:** the five-million-position, 20k-node production dataset,
    coverage audit, 256-wide CUDA training, quantization, exact C++ verification,
@@ -254,12 +255,17 @@ material, and teacher magnitude, and checksummed cross-machine merging.
    (85.1%, +303.0 +/- 37.1 Elo, 100% LOS) with zero technical failures.
 4. **Complete:** clean Release, C++, Python, perft, UCI, and web gates.
 5. **Complete:** Ubuntu, macOS, Windows, sanitizer, and web GitHub jobs pass.
-6. Review and merge `dev/v1`, then tag and package `v1.0.0`.
+6. **Complete:** merge the v1 line, tag `v1.0.0`, and publish the verified
+   cross-platform packages.
+7. **Complete:** land the minimalist desktop overhaul with native Windows icon,
+   sound, motion, adaptive time profiles, corrected telemetry, packaging, and
+   cross-platform CI.
 
 The NNUE and release evidence is recorded in
 `docs/results/2026-08-21-five-million-nnue.md` and
 `docs/results/2026-08-21-v1-release-gate.md`. Classical evaluation remains the
-release configuration.
+release configuration. The post-release desktop work is recorded in
+`docs/results/2026-08-26-forklift-desktop-overhaul.md`.
 
 ### Priority 2: validate retained search gains
 
@@ -291,7 +297,7 @@ release configuration.
 
 ## Release gates
 
-The v1 branch is ready for a pull request only when:
+The mainline is ready for a release only when:
 
 - clean Release builds and all C++/Python/web quality gates pass;
 - no known chess-rule, make/unmake, hash, TT, NNUE, or UCI regression remains;
@@ -299,8 +305,7 @@ The v1 branch is ready for a pull request only when:
   baseline;
 - any default NNUE has separately beaten the classical champion;
 - documentation contains reproducible commands and honestly qualified results;
-- the worktree is clean and the remote `dev/v1` branch contains every intended
-  commit.
+- the worktree is clean and remote `main` contains every intended commit.
 
 ## Git and experiment discipline
 

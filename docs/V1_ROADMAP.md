@@ -1,7 +1,8 @@
 # Chess Engine v1 Roadmap
 
-v1 is an evidence-driven rebuild on `dev/v1`. Correctness, reproducible testing,
-and measurable playing strength take priority over accumulating heuristics.
+v1 is an evidence-driven rebuild now integrated into `main`. Correctness,
+reproducible testing, and measurable playing strength take priority over
+accumulating heuristics.
 
 ## Completed foundations
 
@@ -44,12 +45,18 @@ available for controlled experiments. Neither has yet earned promotion.
 - **Complete:** all local C++/Python/perft/UCI/web gates pass.
 - **Complete:** Ubuntu, macOS, Windows, sanitizers, and web GitHub jobs pass.
 - **Complete:** the merge tree against `main` is conflict-free.
+- **Complete:** `v1.0.0` is tagged and published with verified platform
+  packages.
+- **Complete:** the subsequent Forklift desktop overhaul adds smooth movement,
+  original sound cues, native icon packaging, corrected resource telemetry,
+  and adaptive time profiles while preserving the tested engine core.
 
-## Current priority: publish v1.0.0
+## Current priority: post-v1 strength work
 
-- Review and merge `dev/v1` into `main`.
-- Tag `v1.0.0` and publish the verified release package.
-- Preserve classical evaluation and one thread as release defaults.
+- Preserve `main` as the single canonical branch.
+- Preserve classical evaluation and one thread as the proven defaults.
+- Confirm retained search gains at a slower time control before further search
+  expansion.
 
 ## Search follow-up
 

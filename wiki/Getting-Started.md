@@ -10,8 +10,8 @@ The headless engine requires:
 - Threads support supplied by the platform toolchain
 
 The web interface additionally uses Python and `python-chess`. The launchers
-create an isolated `.venv-web` automatically. SFML is not required unless the
-legacy desktop GUI is explicitly enabled.
+create an isolated `.venv-web` automatically. SFML 2.6 is required only when
+the Forklift desktop app is enabled.
 
 ## Run the local web interface
 
@@ -108,9 +108,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_max_performance.ps1
 This enables AVX2 and interprocedural optimization. The output is tuned for the
 machine that built it and is not a portable release artifact.
 
-## Legacy SFML GUI
+## Forklift desktop app
 
-The desktop target requires SFML 2.6.x; SFML 3 is not API-compatible:
+The desktop target requires the graphics, window, system, and audio components
+from SFML 2.6.x; SFML 3 is not API-compatible:
 
 ```sh
 cmake -S . -B build-gui \
@@ -121,7 +122,9 @@ cmake --build build-gui --parallel
 ```
 
 Set `SFML_PREFIX` or `SFML_DIR` when the package is outside a standard CMake
-location.
+location. The app provides smooth piece motion, original chess sound cues,
+manual and position-aware automatic time controls, live telemetry, and native
+Windows icon packaging.
 
 ## Platform notes
 
