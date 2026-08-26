@@ -56,7 +56,8 @@ jobs:
           python tests/web_api_smoke.py --engine ./build/chess-engine-uci
 
   windows-desktop:
-    runs-on: windows-latest
+    # SFML 2.6.2's official VC17 archive targets the Visual Studio 2022 ABI.
+    runs-on: windows-2022
     env:
       SFML_ARCHIVE_URL: https://www.sfml-dev.org/files/SFML-2.6.2-windows-vc17-64-bit.zip
       SFML_ARCHIVE_SHA256: F5995724604D74D06EFE89544315D11AC2D3C2D348854C6BE55A7A11FB7ECAD8

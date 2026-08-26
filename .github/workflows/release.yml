@@ -50,7 +50,8 @@ jobs:
           if-no-files-found: error
 
   windows-gui:
-    runs-on: windows-latest
+    # SFML 2.6.2's official VC17 archive targets the Visual Studio 2022 ABI.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v7
       - name: Download and verify SFML 2.6.2
