@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">Forklift v1 release-strength baseline</title>
+  <desc id="desc">A stacked bar showing 299 wins, 83 draws, and 18 losses in 400 paired games against v0.4.0, corresponding to an 85.1 percent score and plus 303 relative Elo.</desc>
+  <style>
+    .bg { fill: #0a0b0b; }
+    .frame { fill: none; stroke: #303332; stroke-width: 1; }
+    .title { fill: #f3f4f1; font: 500 30px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .sub { fill: #959a96; font: 400 16px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .label { fill: #f3f4f1; font: 500 17px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .small { fill: #a4a9a5; font: 400 14px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .value { fill: #f3f4f1; font: 500 25px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .win { fill: #9dce7a; }
+    .draw { fill: #6d736f; }
+    .loss { fill: #c77878; }
+    .neutral { fill: #c8ccc7; }
+    .accent { fill: #9dce7a; }
+    .warning { fill: #d7ae68; }
+    .threshold { stroke: #d7ae68; stroke-width: 2; stroke-dasharray: 6 5; }
+  </style>
+  <rect class="bg" width="1200" height="420" rx="8"/>
+  <rect class="frame" x="0.5" y="0.5" width="1199" height="419" rx="8"/>
+  <text class="title" x="70" y="67">Forklift v1 release-strength baseline</text>
+  <text class="sub" x="70" y="99">400 paired games · 10+0.1 · one thread · reversed openings</text>
+  <text class="value" x="1130" y="67" text-anchor="end">85.1% score</text>
+  <text class="sub" x="1130" y="99" text-anchor="end">+303.0 ± 37.1 relative Elo</text>
+  <rect class="win" x="70.00" y="175.0" width="792.35" height="92.0"/>
+  <text class="label" x="466.18" y="231" text-anchor="middle">299</text>
+  <rect class="draw" x="862.35" y="175.0" width="219.95" height="92.0"/>
+  <text class="label" x="972.33" y="231" text-anchor="middle">83</text>
+  <rect class="loss" x="1082.30" y="175.0" width="47.70" height="92.0"/>
+  <text class="label" x="1106.15" y="231" text-anchor="middle">18</text>
+  <rect class="win" x="70" y="304" width="14" height="14"/>
+  <text class="small" x="94" y="316">wins  299 · 74.8%</text>
+  <rect class="draw" x="310" y="304" width="14" height="14"/>
+  <text class="small" x="334" y="316">draws  83 · 20.8%</text>
+  <rect class="loss" x="550" y="304" width="14" height="14"/>
+  <text class="small" x="574" y="316">losses  18 · 4.5%</text>
+  <text class="small" x="70" y="375">Opponent: v0.4.0 · zero crashes, illegal moves, disconnects or time forfeits</text>
+  <text class="small" x="1130" y="375" text-anchor="end">source · docs/results/2026-08-21-v1-release-gate.md</text>
+</svg>

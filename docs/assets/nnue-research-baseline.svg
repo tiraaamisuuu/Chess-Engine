@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="590" viewBox="0 0 1200 590" role="img" aria-labelledby="title desc">
+  <title id="title">NNUE v1 offline and playing metrics</title>
+  <desc id="desc">Four separate bars show 92.5 percent dataset feature coverage, 84.12 percent validation sign accuracy for a WDL candidate, its 43.8 percent 40-game screen score, and the original centipawn candidate&#x27;s 32.5 percent 400-game match score.</desc>
+  <style>
+    .bg { fill: #0a0b0b; }
+    .frame { fill: none; stroke: #303332; stroke-width: 1; }
+    .title { fill: #f3f4f1; font: 500 30px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .sub { fill: #959a96; font: 400 16px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .label { fill: #f3f4f1; font: 500 17px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .small { fill: #a4a9a5; font: 400 14px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .value { fill: #f3f4f1; font: 500 25px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .win { fill: #9dce7a; }
+    .draw { fill: #6d736f; }
+    .loss { fill: #c77878; }
+    .neutral { fill: #c8ccc7; }
+    .accent { fill: #9dce7a; }
+    .warning { fill: #d7ae68; }
+    .threshold { stroke: #d7ae68; stroke-width: 2; stroke-dasharray: 6 5; }
+  </style>
+  <rect class="bg" width="1200" height="590" rx="8"/>
+  <rect class="frame" x="0.5" y="0.5" width="1199" height="589" rx="8"/>
+  <text class="title" x="70" y="67">NNUE v1 · offline quality did not prove playing strength</text>
+  <text class="sub" x="70" y="99">5,000,000 training positions · 616,632 held-out positions · distinct checkpoints and metrics</text>
+  <rect class="frame" x="107.5" y="160.0" width="155.0" height="230.0"/>
+  <rect class="neutral" x="107.5" y="177.25" width="155.0" height="212.75"/>
+  <text class="value" x="185.0" y="164.25" text-anchor="middle">92.50%</text>
+  <text class="label" x="185.0" y="423" text-anchor="middle"><tspan x="185.0" dy="0">Dataset feature</tspan><tspan x="185.0" dy="22">coverage</tspan></text>
+  <rect class="frame" x="377.5" y="160.0" width="155.0" height="230.0"/>
+  <rect class="accent" x="377.5" y="196.52" width="155.0" height="193.48"/>
+  <text class="value" x="455.0" y="183.52" text-anchor="middle">84.12%</text>
+  <text class="label" x="455.0" y="423" text-anchor="middle"><tspan x="455.0" dy="0">WDL validation</tspan><tspan x="455.0" dy="22">sign accuracy</tspan></text>
+  <rect class="frame" x="647.5" y="160.0" width="155.0" height="230.0"/>
+  <rect class="warning" x="647.5" y="289.26" width="155.0" height="100.74"/>
+  <text class="value" x="725.0" y="320.26" text-anchor="middle">43.80%</text>
+  <text class="label" x="725.0" y="423" text-anchor="middle"><tspan x="725.0" dy="0">WDL 40-game</tspan><tspan x="725.0" dy="22">screen score</tspan></text>
+  <line class="threshold" x1="639.5" y1="275.0" x2="810.5" y2="275.0"/>
+  <rect class="frame" x="917.5" y="160.0" width="155.0" height="230.0"/>
+  <rect class="loss" x="917.5" y="315.25" width="155.0" height="74.75"/>
+  <text class="value" x="995.0" y="346.25" text-anchor="middle">32.50%</text>
+  <text class="label" x="995.0" y="423" text-anchor="middle"><tspan x="995.0" dy="0">CP 400-game</tspan><tspan x="995.0" dy="22">match score</tspan></text>
+  <line class="threshold" x1="909.5" y1="275.0" x2="1080.5" y2="275.0"/>
+  <line class="threshold" x1="929" y1="121" x2="955" y2="121"/>
+  <text class="small" x="965" y="126">match promotion boundary · 50%</text>
+  <text class="small" x="70" y="494">Coverage describes the shared corpus. Accuracy belongs to the WDL candidate; the two match bars name their checkpoints and samples.</text>
+  <text class="small" x="70" y="522">The percentages are shown together to expose a research gap—not as interchangeable measures.</text>
+  <text class="small" x="1130" y="556" text-anchor="end">source · docs/results/2026-08-21-five-million-nnue.md</text>
+</svg>

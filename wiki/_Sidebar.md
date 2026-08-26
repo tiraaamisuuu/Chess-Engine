@@ -9,4 +9,5 @@
 - [Testing and Reproducibility](Testing-and-Reproducibility.md)
 - [Experiments and Roadmap](Experiments-and-Roadmap.md)
 - [Ultimate Roadmap](Ultimate-Roadmap.md)
+- [Research Notebook](Research-Notebook.md)
 - [Development Workflow](Development-Workflow.md)

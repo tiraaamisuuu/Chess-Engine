@@ -45,6 +45,8 @@ Before optimizing against a guessed rating, establish a durable baseline.
   match play.
 - Build a regression dashboard covering correctness, nodes, NPS, time losses,
   crashes and relative Elo.
+- Feed compact result summaries into the versioned research notebook while
+  keeping large raw evidence in `E:\Dev\Forklift-Research`.
 - Replace the current 2400–2700 working estimate only when this campaign
   produces repeatable evidence.
 

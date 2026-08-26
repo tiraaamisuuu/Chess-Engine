@@ -60,6 +60,8 @@ Continuation history scored `37–31–32` and remains provisional pending a
 slower, longer match. Pawn correction history and a selection-scan move picker
 were rejected after neutral or negative measurements.
 
+![Forklift v1 release match results](docs/assets/release-strength.svg)
+
 ### Strength estimate and informal game review
 
 Forklift does not yet have a defensible absolute Elo rating. Until it completes
@@ -102,6 +104,14 @@ technical failures. The fixed 256-wide network still lost decisively to the
 classical evaluator and was rejected. A WDL objective and configurable hybrid
 evaluation improved the diagnostic results but did not establish a strength
 gain, so classical evaluation remains the default.
+
+![NNUE v1 offline and playing metrics](docs/assets/nnue-research-baseline.svg)
+
+The mismatch between strong-looking offline percentages and weak match play is
+now preserved as a research baseline. The backburner
+[research notebook](research/README.md) records machine-readable results,
+candidate hypotheses and a reproducible figure generator without treating an
+eventual paper as a current development priority.
 
 <!-- NNUE PIPELINE VISUAL
 Recommended: horizontal SVG of Lichess/self-play → sampling → Stockfish teacher
@@ -158,6 +168,8 @@ The principal executables are `chess-engine-uci`, `chess-engine-tools`, and
   gates
 - [Ultimate roadmap](docs/ULTIMATE_ROADMAP.md) — the unbounded path from the
   current engine to a continuously improving research platform
+- [Research notebook](research/README.md) — compact evidence, research questions
+  and reproducible figures for possible future academic work
 - [Raw experimental results](docs/results/) — permanent reproducibility record
 
 The Wiki source is versioned in this repository and mirrored to the project's

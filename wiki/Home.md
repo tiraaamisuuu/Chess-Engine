@@ -27,6 +27,8 @@ properly powered match.
   work, current strongest configuration, and the staged improvement plan
 - [Ultimate Roadmap](Ultimate-Roadmap.md) — the open-ended route through
   stronger search, production NNUE, distributed testing and neural self-play
+- [Research Notebook](Research-Notebook.md) — preserved evidence and possible
+  future research questions without making a paper a present priority
 - [Development Workflow](Development-Workflow.md) — repository layout,
   experiment discipline, release gates, and contribution workflow
 
@@ -47,7 +49,13 @@ properly powered match.
   accuracy review and 2750 single-game performance rating; this is anecdotal,
   not an established engine rating
 
+![Forklift v1 release match results](https://raw.githubusercontent.com/tiraaamisuuu/Chess-Engine/main/docs/assets/release-strength.svg)
+
 Raw commands, hardware, commit IDs, checksums, match logs and negative results
 remain in the repository's
 [`docs/results/`](https://github.com/tiraaamisuuu/Chess-Engine/tree/main/docs/results)
 directory. The Wiki explains the system; the result files are the evidence.
+
+Compact research registries, hypotheses and reproducible plotting code live in
+the repository's
+[research notebook](https://github.com/tiraaamisuuu/Chess-Engine/tree/main/research).

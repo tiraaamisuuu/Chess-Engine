@@ -242,6 +242,20 @@ same-position teacher-budget comparison, streaming feature/distribution audits,
 validation RMSE/MAE/sign accuracy with error slices by king square, phase,
 material, and teacher magnitude, and checksummed cross-machine merging.
 
+## Backburner research archive
+
+Compact, versioned research metadata lives under `research/`; large future
+datasets, checkpoints, PGNs and telemetry belong under
+`E:\Dev\Forklift-Research`. This is deliberately not a current release
+priority. Normal development should preserve useful experimental data there
+when it is already being generated, without expanding an experiment merely to
+serve a hypothetical paper.
+
+Run `py -3 scripts\generate_research_figures.py` to regenerate the README and
+Wiki figures from the committed CSV registries. Candidate questions and the
+provisional RIFT sampling method are recorded in
+`research/RESEARCH_QUESTIONS.md`; neither is currently claimed as novel.
+
 ## Prioritized roadmap
 
 This section is the immediate engineering queue. The longer programme—from
