@@ -3,22 +3,28 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+env:
+  FORKLIFT_VERSION: "1.1.0"
+  SFML_ARCHIVE_URL: https://www.sfml-dev.org/files/SFML-2.6.2-windows-vc17-64-bit.zip
+  SFML_ARCHIVE_SHA256: F5995724604D74D06EFE89544315D11AC2D3C2D348854C6BE55A7A11FB7ECAD8
+
 jobs:
-  build:
+  headless:
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            label: linux-x64
+            label: Linux-x86_64
           - os: macos-latest
-            label: macos-arm64
+            label: Darwin-arm64
           - os: windows-latest
-            label: windows-x64
+            label: Windows-AMD64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -30,13 +36,70 @@ jobs:
         run: ctest --test-dir build -C Release --output-on-failure
       - name: Package
         run: cmake --build build --config Release --target package
+      - name: Stage named archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          $package = Get-ChildItem build -Filter 'Forklift-*.zip' | Select-Object -First 1
+          if (-not $package) { throw 'CPack did not create a Forklift ZIP archive.' }
+          Copy-Item $package.FullName "release-assets/Forklift-$env:FORKLIFT_VERSION-${{ matrix.label }}.zip"
       - uses: actions/upload-artifact@v7
         with:
-          name: chess-engine-${{ matrix.label }}
-          path: build/ChessEngine-*.zip
+          name: forklift-${{ matrix.label }}
+          path: release-assets/*.zip
+          if-no-files-found: error
+
+  windows-gui:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download and verify SFML 2.6.2
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'SFML-2.6.2.zip'
+          $root = Join-Path $env:RUNNER_TEMP 'sfml'
+          Invoke-WebRequest -Uri $env:SFML_ARCHIVE_URL -OutFile $archive
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
+          if ($actual -ne $env:SFML_ARCHIVE_SHA256) {
+            throw "SFML checksum mismatch: $actual"
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $root
+          $sfml = Get-ChildItem -LiteralPath $root -Directory | Select-Object -First 1
+          if (-not $sfml) { throw 'The SFML archive did not contain a root directory.' }
+          "SFML_DIR=$($sfml.FullName)\lib\cmake\SFML" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Configure desktop build
+        shell: pwsh
+        run: cmake -S . -B build-gui -G "Visual Studio 17 2022" -A x64 -DCHESS_BUILD_GUI=ON -DBUILD_TESTING=ON "-DSFML_DIR=$env:SFML_DIR"
+      - name: Build
+        run: cmake --build build-gui --config Release --parallel
+      - name: Test
+        run: ctest --test-dir build-gui -C Release --output-on-failure
+      - name: Package Windows desktop app
+        shell: pwsh
+        run: |
+          cmake --build build-gui --config Release --target package
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          $package = Get-ChildItem build-gui -Filter 'Forklift-*.zip' | Select-Object -First 1
+          if (-not $package) { throw 'CPack did not create the Windows GUI ZIP archive.' }
+          Copy-Item $package.FullName "release-assets/Forklift-$env:FORKLIFT_VERSION-Windows-AMD64-GUI.zip"
+      - name: Verify packaged runtime
+        shell: pwsh
+        run: |
+          $archive = "release-assets/Forklift-$env:FORKLIFT_VERSION-Windows-AMD64-GUI.zip"
+          $listing = tar -tf $archive
+          $required = @('bin/Forklift.exe', 'bin/sfml-graphics-2.dll', 'bin/sfml-window-2.dll', 'bin/sfml-system-2.dll', 'bin/sfml-audio-2.dll', 'bin/openal32.dll')
+          foreach ($entry in $required) {
+            if (-not ($listing -match [regex]::Escape($entry))) { throw "Missing packaged runtime: $entry" }
+          }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: forklift-Windows-AMD64-GUI
+          path: release-assets/*.zip
+          if-no-files-found: error
 
   publish:
-    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [headless, windows-gui]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -46,7 +109,16 @@ jobs:
         with:
           path: release-assets
           merge-multiple: true
+      - name: Verify release version
+        shell: bash
+        run: |
+          test "${GITHUB_REF_NAME}" = "v${FORKLIFT_VERSION}"
+          test "$(find release-assets -maxdepth 1 -name '*.zip' | wc -l)" -eq 4
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" release-assets/*.zip --generate-notes --verify-tag
+        run: >-
+          gh release create "${GITHUB_REF_NAME}" release-assets/*.zip
+          --title "Forklift ${GITHUB_REF_NAME}"
+          --notes-file "docs/releases/${GITHUB_REF_NAME}.md"
+          --verify-tag
