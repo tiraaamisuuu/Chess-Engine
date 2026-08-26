@@ -23,6 +23,8 @@ Enable with: ![Chess Engine interface](docs/assets/engine-room-hero.webp)
   repetition and rule-draw handling
 - Standalone UCI engine plus a responsive local web interface for PvP, PvC,
   CvC, external engines, live analysis and game export
+- Minimalist SFML desktop app with smooth piece motion, original move sounds,
+  live search telemetry and manual or position-aware automatic time limits
 - Optional versioned HalfKP NNUE with quantized C++ inference and incremental
   per-ply accumulators
 - Resumable Stockfish labelling from streamed Lichess `.pgn.zst` archives and

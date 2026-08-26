@@ -51,30 +51,50 @@ static size_t readProcessRSSBytes(){
 #endif
 }
 
+static double readProcessCpuSeconds(){
+#if defined(_WIN32)
+    FILETIME creationTime{};
+    FILETIME exitTime{};
+    FILETIME kernelTime{};
+    FILETIME userTime{};
+    if(!GetProcessTimes(GetCurrentProcess(), &creationTime, &exitTime, &kernelTime, &userTime)) return 0.0;
+
+    ULARGE_INTEGER kernel{};
+    ULARGE_INTEGER user{};
+    kernel.LowPart = kernelTime.dwLowDateTime;
+    kernel.HighPart = kernelTime.dwHighDateTime;
+    user.LowPart = userTime.dwLowDateTime;
+    user.HighPart = userTime.dwHighDateTime;
+    return static_cast<double>(kernel.QuadPart + user.QuadPart) / 10'000'000.0;
+#else
+    return static_cast<double>(std::clock()) / static_cast<double>(CLOCKS_PER_SEC);
+#endif
+}
+
 class RuntimeResourceTracker {
 public:
     RuntimeResourceTracker()
-    : lastWall(std::chrono::steady_clock::now()), lastCpu(std::clock()){}
+    : lastWall(std::chrono::steady_clock::now()), lastCpuSeconds(readProcessCpuSeconds()){}
 
     void tick(RuntimeResources& out){
         const auto now = std::chrono::steady_clock::now();
         const double wallSec = std::chrono::duration<double>(now - lastWall).count();
         if(wallSec < 0.25) return;
 
-        const std::clock_t cpuNow = std::clock();
-        const double cpuSec = double(cpuNow - lastCpu) / double(CLOCKS_PER_SEC);
+        const double cpuNowSeconds = readProcessCpuSeconds();
+        const double cpuSec = cpuNowSeconds - lastCpuSeconds;
         if(wallSec > 0.0 && cpuSec >= 0.0){
             out.cpuPercent = std::max(0.0, (cpuSec / wallSec) * 100.0);
         }
         out.rssBytes = readProcessRSSBytes();
 
         lastWall = now;
-        lastCpu = cpuNow;
+        lastCpuSeconds = cpuNowSeconds;
     }
 
 private:
     std::chrono::steady_clock::time_point lastWall;
-    std::clock_t lastCpu{};
+    double lastCpuSeconds = 0.0;
 };
 
 int main(int argc, char** argv){
@@ -265,14 +285,29 @@ int main(int argc, char** argv){
     const sf::Vector2f panelPos(boardOrigin.x + 8.f*tile + 30.f, boardOrigin.y);
     const sf::Vector2f panelSize(440.f, 8.f*tile);
     const float engineCardY = panelPos.y + 194.f;
-    const float statusCardY = panelPos.y + 506.f;
-    const float moveLogCardY = panelPos.y + 608.f;
+    const float statusCardY = panelPos.y + 564.f;
+    const float moveLogCardY = panelPos.y + 632.f;
 
     std::filesystem::path executableDir;
     if(argc > 0 && argv[0] && argv[0][0] != '\0'){
         std::error_code pathError;
         const std::filesystem::path executablePath = std::filesystem::absolute(argv[0], pathError);
         if(!pathError) executableDir = executablePath.parent_path();
+    }
+
+    {
+        sf::Image applicationIcon;
+        const std::array<std::filesystem::path, 2> iconCandidates = {
+            std::filesystem::path("assets/app/forklift-icon.png"),
+            executableDir / "assets/app/forklift-icon.png"
+        };
+        for(const auto& iconPath : iconCandidates){
+            if(!iconPath.empty() && applicationIcon.loadFromFile(iconPath.string())){
+                const sf::Vector2u iconSize = applicationIcon.getSize();
+                window.setIcon(iconSize.x, iconSize.y, applicationIcon.getPixelsPtr());
+                break;
+            }
+        }
     }
 
     // Font: include Linux candidates (and keep your mac ones harmless)
@@ -320,6 +355,26 @@ int main(int argc, char** argv){
         }
     }
 
+    ChessSoundSet chessSounds;
+
+    struct MoveAnimation {
+        int from = -1;
+        int to = -1;
+        int hideSquare = -1;
+        Piece piece{};
+    };
+    constexpr int MoveAnimationDurationMs = 190;
+    std::optional<MoveAnimation> moveAnimation;
+    sf::Clock moveAnimationClock;
+    auto isMoveAnimating = [&](){
+        return moveAnimation.has_value() &&
+               moveAnimationClock.getElapsedTime().asMilliseconds() < MoveAnimationDurationMs;
+    };
+    auto beginMoveAnimation = [&](int from, int to, int hideSquare, Piece piece){
+        moveAnimation = MoveAnimation{from, to, hideSquare, piece};
+        moveAnimationClock.restart();
+    };
+
     // UI thread never calls search now; search runs in a worker thread.
     const int ttSizeMB = 256;
     SearchContext aiSearchCtx;
@@ -334,6 +389,7 @@ int main(int argc, char** argv){
 
     auto pushMove = [&](const Move& m)->bool{
         const std::string san = moveToSAN(board, m);
+        const Piece movingPiece = board.at(m.from);
         Undo u{};
         if(board.makeMove(m, u)){
             undoStack.push_back(u);
@@ -341,6 +397,10 @@ int main(int argc, char** argv){
             moveListSAN.push_back(san);
             positionHistory.push_back(board.hash);
             gameStatus = assessGameStatus(board, positionHistory);
+            beginMoveAnimation(m.from, m.to, m.to, movingPiece);
+            chessSounds.playMove(m.isCapture || m.isEnPassant,
+                                 board.inCheck(board.stm),
+                                 gameStatus.finished());
             return true;
         }
         return false;
@@ -458,8 +518,10 @@ int main(int argc, char** argv){
     std::optional<int> dragFrom;
     sf::Vector2f dragPos(0,0);
 
-    int aiMaxDepth = 20;
     int aiTimeMs = 10000;
+    bool aiAutoTime = false;
+    GuiTimeProfile aiTimeProfile = GuiTimeProfile::Balanced;
+    int aiAutoMaxMs = 300000;
     int aiThreads = std::clamp(cliThreads, 1, 64);
     int aiDelayMs = 35;
     sf::Clock aiClock;
@@ -545,6 +607,7 @@ int main(int argc, char** argv){
         selectedSq.reset();
         selectedMoves.clear();
         lastMove.reset();
+        moveAnimation.reset();
         moveListSAN.clear();
         dragging=false;
         dragFrom.reset();
@@ -594,6 +657,7 @@ int main(int argc, char** argv){
     std::atomic<bool> aiMoveReady(false);
     std::atomic<bool> aiPaused(false);
     std::atomic<bool> aiAbortSearch(false);
+    std::atomic<int> aiActiveSoftLimitMs(aiTimeMs);
     RuntimeResourceTracker resourceTracker;
     RuntimeResources runtimeResources{};
     Move aiChosenMove{};
@@ -603,38 +667,78 @@ int main(int argc, char** argv){
     sf::Clock thinkClock;
     std::thread aiThread;
 
-    struct EngineStepperRects {
-        sf::FloatRect depthMinus;
-        sf::FloatRect depthPlus;
+    struct EngineControlRects {
+        sf::FloatRect manualMode;
+        sf::FloatRect autoMode;
         sf::FloatRect timeMinus;
         sf::FloatRect timePlus;
+        sf::FloatRect profileMinus;
+        sf::FloatRect profilePlus;
+        sf::FloatRect capMinus;
+        sf::FloatRect capPlus;
     };
-    auto getEngineStepperRects = [&]()->EngineStepperRects{
+    auto getEngineControlRects = [&]()->EngineControlRects{
         const float btnW = 34.f;
         const float btnH = 30.f;
-        const float groupW = 116.f;
+        const float groupW = 222.f;
         const float minusX = panelPos.x + panelSize.x - 20.f - groupW;
         const float plusX  = minusX + groupW - btnW;
-        const float depthY = engineCardY + 89.f;
+        const float modeY = engineCardY + 89.f;
         const float timeY  = engineCardY + 125.f;
-        return EngineStepperRects{
-            sf::FloatRect(minusX, depthY, btnW, btnH),
-            sf::FloatRect(plusX,  depthY, btnW, btnH),
+        const float profileY = engineCardY + 161.f;
+        const float capY = engineCardY + 197.f;
+        return EngineControlRects{
+            sf::FloatRect(minusX, modeY, groupW * 0.5f, btnH),
+            sf::FloatRect(minusX + groupW * 0.5f, modeY, groupW * 0.5f, btnH),
             sf::FloatRect(minusX, timeY,  btnW, btnH),
-            sf::FloatRect(plusX,  timeY,  btnW, btnH)
+            sf::FloatRect(plusX,  timeY,  btnW, btnH),
+            sf::FloatRect(minusX, profileY, btnW, btnH),
+            sf::FloatRect(plusX, profileY, btnW, btnH),
+            sf::FloatRect(minusX, capY, btnW, btnH),
+            sf::FloatRect(plusX, capY, btnW, btnH)
         };
     };
     auto pointInRect = [](sf::Vector2f p, const sf::FloatRect& r)->bool{
         return p.x >= r.left && p.x <= (r.left + r.width) &&
                p.y >= r.top  && p.y <= (r.top + r.height);
     };
-    auto adjustDepth = [&](int delta){
-        aiMaxDepth = std::clamp(aiMaxDepth + delta, 1, 150);
-        status = "depth  /  " + std::to_string(aiMaxDepth);
+    auto formatDuration = [](int durationMs)->std::string{
+        std::ostringstream text;
+        if(durationMs >= 60000 && durationMs % 60000 == 0){
+            text << durationMs / 60000 << " min";
+        } else if(durationMs >= 10000){
+            text << std::fixed << std::setprecision(0) << double(durationMs) / 1000.0 << " s";
+        } else {
+            text << std::fixed << std::setprecision(1) << double(durationMs) / 1000.0 << " s";
+        }
+        return text.str();
     };
-    auto adjustTime = [&](int deltaMs){
-        aiTimeMs = std::clamp(aiTimeMs + deltaMs, 100, 180000);
-        status = "move time  /  " + std::to_string(aiTimeMs) + " ms";
+    auto timeAdjustmentStep = [](int durationMs){
+        if(durationMs < 10000) return 1000;
+        if(durationMs < 60000) return 5000;
+        return 30000;
+    };
+    auto adjustTime = [&](int direction){
+        const int step = timeAdjustmentStep(aiTimeMs);
+        aiTimeMs = std::clamp(aiTimeMs + direction * step, 1000, 300000);
+        status = "time limit  /  " + formatDuration(aiTimeMs);
+    };
+    auto cycleTimeProfile = [&](int direction){
+        int index = static_cast<int>(aiTimeProfile);
+        index = (index + direction + 4) % 4;
+        aiTimeProfile = static_cast<GuiTimeProfile>(index);
+        status = std::string("auto profile  /  ") + guiTimeProfileName(aiTimeProfile);
+    };
+    auto adjustAutoCap = [&](int direction){
+        static constexpr std::array<int, 8> caps = {
+            5000, 10000, 30000, 60000, 120000, 180000, 240000, 300000
+        };
+        size_t index = 0;
+        while(index + 1 < caps.size() && caps[index] < aiAutoMaxMs) index++;
+        if(direction > 0 && index + 1 < caps.size()) index++;
+        if(direction < 0 && index > 0) index--;
+        aiAutoMaxMs = caps[index];
+        status = "maximum auto time  /  " + formatDuration(aiAutoMaxMs);
     };
 
     auto stopAiThread = [&](){
@@ -651,6 +755,7 @@ int main(int argc, char** argv){
         if(gameStatus.finished()) return;
 
         if(auto bm = getBookMove()){
+            aiActiveSoftLimitMs.store(0);
             {
                 std::lock_guard<std::mutex> lock(aiMutex);
                 aiChosenMove = *bm;
@@ -675,16 +780,25 @@ int main(int argc, char** argv){
 
         // snapshot board/settings so thread is safe
         Board searchBoard = board;
-        int threadMaxDepth = aiMaxDepth;
-        int threadTimeMs   = aiTimeMs;
+        const int threadTimeMs = aiTimeMs;
+        const bool threadAutoTime = aiAutoTime;
+        const int threadAutoMaxMs = aiAutoMaxMs;
+        const GuiTimeProfile threadProfile = aiTimeProfile;
         int threadThreads  = aiThreads;
         std::vector<u64> threadHistory = positionHistory;
+        const GuiTimeSuggestion suggestion = suggestGuiTimeLimit(
+            searchBoard, threadTimeMs, threadAutoMaxMs, threadProfile);
+        const int selectedLimitMs = threadAutoTime ? suggestion.limitMs : threadTimeMs;
+        const int hardCapMs = threadAutoTime ? suggestion.profileCapMs : 300000;
+        const TimeBudget budget = pickGuiTimeBudget(searchBoard, selectedLimitMs, hardCapMs);
+        aiActiveSoftLimitMs.store(budget.softMs);
 
-        aiThread = std::thread([&, searchBoard, threadMaxDepth, threadTimeMs, threadThreads, threadHistory]() mutable {
+        aiThread = std::thread([&, searchBoard, budget, threadThreads, threadHistory]() mutable {
             aiSearchCtx.abortFlag = &aiAbortSearch;
             aiSearchCtx.gameHistory = threadHistory;
-            const TimeBudget budget = pickGuiTimeBudget(searchBoard, threadTimeMs);
-            Move m = searchBestMove(searchBoard, aiSearchCtx, threadMaxDepth, budget.softMs, budget.hardMs, threadThreads);
+            // The GUI is time-driven; this deliberately unreachable practical depth
+            // remains only as a defensive guard for the iterative-deepening loop.
+            Move m = searchBestMove(searchBoard, aiSearchCtx, 150, budget.softMs, budget.hardMs, threadThreads);
             std::string pv = extractPVFromTT(searchBoard, aiSearchCtx, 12);
 
             if(aiAbortSearch.load() || aiPaused.load()){
@@ -716,6 +830,8 @@ int main(int argc, char** argv){
     };
     auto runUndo = [&](){
         stopAiThread();
+        std::optional<Move> undoneMove;
+        if(!undoStack.empty()) undoneMove = undoStack.back().m;
         popUndo();
         selectedSq.reset();
         selectedMoves.clear();
@@ -723,11 +839,18 @@ int main(int argc, char** argv){
         dragFrom.reset();
         if(undoStack.empty()) lastMove.reset();
         else lastMove = undoStack.back().m;
+        if(undoneMove){
+            const Piece restored = board.at(undoneMove->from);
+            if(!isNone(restored)){
+                beginMoveAnimation(undoneMove->to, undoneMove->from, undoneMove->from, restored);
+            }
+        }
         status = "move undone";
     };
 
     while(window.isOpen()){
         resourceTracker.tick(runtimeResources);
+        if(moveAnimation && !isMoveAnimating()) moveAnimation.reset();
 
         sf::Event e;
         while(window.pollEvent(e)){
@@ -779,24 +902,17 @@ int main(int argc, char** argv){
                     }
 
                     if(code == sf::Keyboard::F){
+                        moveAnimation.reset();
                         flipBoard = !flipBoard;
                         status = std::string("board flipped  /  ") + (flipBoard ? "black" : "white");
                     }
 
-                    // depth
-                    if(code == sf::Keyboard::Equal || code == sf::Keyboard::Add){
-                        adjustDepth(+1);
-                    }
-                    if(code == sf::Keyboard::Hyphen || code == sf::Keyboard::Subtract){
-                        adjustDepth(-1);
-                    }
-
-                    // time per move (let it go big if you want)
+                    // Time limit shortcuts.
                     if(code == sf::Keyboard::T){
-                        adjustTime(+250);
+                        adjustTime(+1);
                     }
                     if(code == sf::Keyboard::Y){
-                        adjustTime(-250);
+                        adjustTime(-1);
                     }
                 }
             }
@@ -829,20 +945,33 @@ int main(int argc, char** argv){
                     }
                     if(actions.undo.contains(mp) && !undoStack.empty()){ runUndo(); continue; }
                     if(actions.flip.contains(mp)){
+                        moveAnimation.reset();
                         flipBoard = !flipBoard;
                         status = std::string("board flipped  /  ") + (flipBoard ? "black" : "white");
                         continue;
                     }
                     if(actions.pause.contains(mp) && mode!=GameMode::PvP){ toggleAiPause(); continue; }
-                    const EngineStepperRects step = getEngineStepperRects();
-                    if(pointInRect(mp, step.depthMinus)){ adjustDepth(-1); continue; }
-                    if(pointInRect(mp, step.depthPlus)){  adjustDepth(+1); continue; }
-                    if(pointInRect(mp, step.timeMinus)){  adjustTime(-250); continue; }
-                    if(pointInRect(mp, step.timePlus)){   adjustTime(+250); continue; }
+                    const EngineControlRects controls = getEngineControlRects();
+                    if(pointInRect(mp, controls.manualMode)){
+                        aiAutoTime = false;
+                        status = "time mode  /  manual";
+                        continue;
+                    }
+                    if(pointInRect(mp, controls.autoMode)){
+                        aiAutoTime = true;
+                        status = "time mode  /  automatic";
+                        continue;
+                    }
+                    if(pointInRect(mp, controls.timeMinus)){ adjustTime(-1); continue; }
+                    if(pointInRect(mp, controls.timePlus)){  adjustTime(+1); continue; }
+                    if(aiAutoTime && pointInRect(mp, controls.profileMinus)){ cycleTimeProfile(-1); continue; }
+                    if(aiAutoTime && pointInRect(mp, controls.profilePlus)){  cycleTimeProfile(+1); continue; }
+                    if(aiAutoTime && pointInRect(mp, controls.capMinus)){ adjustAutoCap(-1); continue; }
+                    if(aiAutoTime && pointInRect(mp, controls.capPlus)){  adjustAutoCap(+1); continue; }
                 }
 
                 // Only allow human input if it's human side AND we aren't mid-AI-search (prevents weirdness in PvAI)
-                if(isHumanSide(board.stm) && !aiThinking.load() && !gameStatus.finished()){
+                if(isHumanSide(board.stm) && !aiThinking.load() && !isMoveAnimating() && !gameStatus.finished()){
                     if(e.type == sf::Event::MouseButtonPressed){
                         if(e.mouseButton.button == sf::Mouse::Left){
                             sf::Vector2f mp(float(e.mouseButton.x), float(e.mouseButton.y));
@@ -902,7 +1031,8 @@ int main(int argc, char** argv){
         }
 
         // AI turn (NON-BLOCKING)
-        if(mode!=GameMode::Menu && !isHumanSide(board.stm) && !aiPaused.load() && !gameStatus.finished()){
+        if(mode!=GameMode::Menu && !isHumanSide(board.stm) && !aiPaused.load() &&
+           !isMoveAnimating() && !gameStatus.finished()){
             bool shouldMove = true;
             if(mode==GameMode::AIvAI){
                 shouldMove = (aiClock.getElapsedTime().asMilliseconds() >= aiDelayMs);
@@ -1253,11 +1383,30 @@ int main(int argc, char** argv){
             window.draw(spr);
         };
 
+        const bool animationActive = isMoveAnimating();
         for(int i=0;i<64;i++){
             if(dragging && dragFrom && i==*dragFrom) continue;
+            if(animationActive && moveAnimation && i==moveAnimation->hideSquare) continue;
             Piece p = board.at(i);
             if(isNone(p)) continue;
             drawPiece(p, squareToPixel(indexToSq(i), tile, boardOrigin, flipBoard));
+        }
+
+        if(animationActive && moveAnimation){
+            const float rawProgress = std::clamp(
+                float(moveAnimationClock.getElapsedTime().asMilliseconds()) /
+                    float(MoveAnimationDurationMs),
+                0.f,
+                1.f);
+            const float easedProgress = 1.f - std::pow(1.f - rawProgress, 3.f);
+            const sf::Vector2f fromPixel = squareToPixel(
+                indexToSq(moveAnimation->from), tile, boardOrigin, flipBoard);
+            const sf::Vector2f toPixel = squareToPixel(
+                indexToSq(moveAnimation->to), tile, boardOrigin, flipBoard);
+            const sf::Vector2f animatedPixel(
+                fromPixel.x + (toPixel.x - fromPixel.x) * easedProgress,
+                fromPixel.y + (toPixel.y - fromPixel.y) * easedProgress);
+            drawPiece(moveAnimation->piece, animatedPixel);
         }
 
         if(dragging && dragFrom){
@@ -1339,6 +1488,9 @@ int main(int argc, char** argv){
             double qPct = (totalNodes > 0) ? (100.0 * double(s.qnodes) / double(totalNodes)) : 0.0;
             double pawns = double(s.bestScore) / 100.0;
             const double cpuCoresUsed = runtimeResources.cpuPercent / 100.0;
+            const unsigned logicalCores = std::max(1u, std::thread::hardware_concurrency());
+            const double machineCpuPercent = std::clamp(
+                runtimeResources.cpuPercent / double(logicalCores), 0.0, 100.0);
 
             auto compactCount = [](u64 v)->std::string{
                 std::ostringstream oss;
@@ -1375,7 +1527,8 @@ int main(int argc, char** argv){
 
             drawDivider(panelPos.y + 174.f);
             drawText(cardTextX, engineCardY, 13, textMuted, "engine");
-            const TimeBudget liveBudget = pickGuiTimeBudget(board, aiTimeMs);
+            const GuiTimeSuggestion liveSuggestion = suggestGuiTimeLimit(
+                board, aiTimeMs, aiAutoMaxMs, aiTimeProfile);
 
             std::ostringstream evalText;
             if(std::abs(s.bestScore) > MATE/2){
@@ -1390,16 +1543,13 @@ int main(int argc, char** argv){
             sf::Color engineStateColor = textMuted;
             if(aiThinking.load()){
                 const int elapsedMs = thinkClock.getElapsedTime().asMilliseconds();
-                const int remainingMs = liveBudget.hardMs - elapsedMs;
-                if(remainingMs > 0){
-                    std::ostringstream remaining;
-                    remaining << "thinking  " << std::fixed << std::setprecision(1)
-                              << (double(remainingMs) / 1000.0) << "s";
-                    engineState = remaining.str();
-                } else {
-                    engineState = "finishing search";
-                }
-                engineStateColor = warning;
+                const int remainingMs = aiActiveSoftLimitMs.load() - elapsedMs;
+                std::ostringstream remaining;
+                remaining << "thinking  " << (remainingMs >= 0 ? "+" : "-")
+                          << std::fixed << std::setprecision(1)
+                          << (double(std::abs(remainingMs)) / 1000.0) << "s";
+                engineState = remaining.str();
+                engineStateColor = remainingMs >= 0 ? warning : danger;
             } else if(aiPaused.load()){
                 engineState = "paused";
                 engineStateColor = accent;
@@ -1444,7 +1594,7 @@ int main(int argc, char** argv){
                 window.draw(mid);
             }
 
-            const EngineStepperRects step = getEngineStepperRects();
+            const EngineControlRects controls = getEngineControlRects();
             sf::Vector2i mousePixel = sf::Mouse::getPosition(window);
             sf::Vector2f mousePos(float(mousePixel.x), float(mousePixel.y));
             const bool mouseDown = sf::Mouse::isButtonPressed(sf::Mouse::Left);
@@ -1456,22 +1606,28 @@ int main(int argc, char** argv){
             const bool boardInteractive = pointInRect(mousePos, boardRect) &&
                                           isHumanSide(board.stm) &&
                                           !aiThinking.load() &&
+                                          !isMoveAnimating() &&
                                           !gameStatus.finished();
             const bool actionInteractive =
                 pointInRect(mousePos, actions.reset) ||
                 (undoEnabled && pointInRect(mousePos, actions.undo)) ||
                 pointInRect(mousePos, actions.flip) ||
                 (pauseEnabled && pointInRect(mousePos, actions.pause));
-            const bool stepperInteractive =
-                pointInRect(mousePos, step.depthMinus) ||
-                pointInRect(mousePos, step.depthPlus) ||
-                pointInRect(mousePos, step.timeMinus) ||
-                pointInRect(mousePos, step.timePlus);
-            setInteractiveCursor(boardInteractive || actionInteractive || stepperInteractive);
+            const bool engineControlInteractive =
+                pointInRect(mousePos, controls.manualMode) ||
+                pointInRect(mousePos, controls.autoMode) ||
+                pointInRect(mousePos, controls.timeMinus) ||
+                pointInRect(mousePos, controls.timePlus) ||
+                (aiAutoTime && (pointInRect(mousePos, controls.profileMinus) ||
+                                pointInRect(mousePos, controls.profilePlus) ||
+                                pointInRect(mousePos, controls.capMinus) ||
+                                pointInRect(mousePos, controls.capPlus)));
+            setInteractiveCursor(boardInteractive || actionInteractive || engineControlInteractive);
 
             auto drawStepper = [&](const sf::FloatRect& minusRect,
                                    const sf::FloatRect& plusRect,
-                                   const std::string& value){
+                                   const std::string& value,
+                                   bool enabled = true){
                 const sf::FloatRect groupRect(
                     minusRect.left,
                     minusRect.top,
@@ -1487,40 +1643,41 @@ int main(int argc, char** argv){
 
                 sf::RectangleShape groupShadow(sf::Vector2f(groupRect.width, groupRect.height));
                 groupShadow.setPosition(snap(sf::Vector2f(groupRect.left, groupRect.top + 2.f)));
-                groupShadow.setFillColor(shadow);
+                groupShadow.setFillColor(enabled ? shadow : sf::Color::Transparent);
                 window.draw(groupShadow);
 
                 sf::RectangleShape group(sf::Vector2f(groupRect.width, groupRect.height));
                 group.setPosition(snap(sf::Vector2f(groupRect.left, groupRect.top)));
-                group.setFillColor(control);
+                group.setFillColor(enabled ? control : surface);
                 group.setOutlineThickness(1.f);
                 group.setOutlineColor(border);
                 window.draw(group);
 
                 sf::RectangleShape valueBackground(sf::Vector2f(valueRect.width, valueRect.height));
                 valueBackground.setPosition(snap(sf::Vector2f(valueRect.left, valueRect.top)));
-                valueBackground.setFillColor(surface);
+                valueBackground.setFillColor(enabled ? surface : canvas);
                 window.draw(valueBackground);
 
                 sf::Text valueText;
                 valueText.setFont(font);
                 valueText.setCharacterSize(13);
-                valueText.setFillColor(text);
+                valueText.setFillColor(enabled ? text : textMuted);
                 valueText.setString(value);
                 setCenteredTextPosition(valueText, valueRect, sf::Vector2f(0.f, -1.f));
                 window.draw(valueText);
 
                 auto drawIconSegment = [&](const sf::FloatRect& rect, bool plus){
-                    const bool hover = pointInRect(mousePos, rect);
+                    const bool hover = enabled && pointInRect(mousePos, rect);
                     const bool pressed = hover && mouseDown;
 
                     sf::RectangleShape segment(sf::Vector2f(rect.width, rect.height));
                     segment.setPosition(snap(sf::Vector2f(rect.left, rect.top)));
-                    segment.setFillColor(pressed ? controlPressed : (hover ? controlHover : control));
+                    segment.setFillColor(!enabled ? surface :
+                                         (pressed ? controlPressed : (hover ? controlHover : control)));
                     window.draw(segment);
 
                     const float iconOffset = pressed ? 1.f : 0.f;
-                    const sf::Color iconColor = hover ? accent : textSoft;
+                    const sf::Color iconColor = !enabled ? textMuted : (hover ? accent : textSoft);
                     const float centerX = std::round(rect.left + rect.width * 0.5f);
                     const float centerY = std::round(rect.top + rect.height * 0.5f + iconOffset);
                     sf::RectangleShape horizontal(sf::Vector2f(10.f, 2.f));
@@ -1599,19 +1756,34 @@ int main(int argc, char** argv){
                              aiPaused.load(), pauseEnabled);
 
             {
-                std::ostringstream timeLabel;
-                timeLabel << std::fixed << std::setprecision(1)
-                          << (double(aiTimeMs) / 1000.0) << " s";
-                drawText(cardTextX, step.depthMinus.top + 8.f, 14, textMuted, "depth");
-                drawText(cardTextX, step.timeMinus.top + 8.f, 14, textMuted, "move time");
-                drawStepper(step.depthMinus, step.depthPlus, std::to_string(aiMaxDepth));
-                drawStepper(step.timeMinus, step.timePlus, timeLabel.str());
-                drawText(cardTextX, engineCardY + 162.f, 12, textMuted,
+                drawText(cardTextX, controls.manualMode.top + 7.f, 14, textMuted, "mode");
+                drawActionButton(controls.manualMode, "manual", !aiAutoTime);
+                drawActionButton(controls.autoMode, "auto", aiAutoTime);
+
+                drawText(cardTextX, controls.timeMinus.top + 7.f, 14, textMuted, "time limit");
+                drawStepper(controls.timeMinus, controls.timePlus, formatDuration(aiTimeMs));
+
+                drawText(cardTextX, controls.profileMinus.top + 7.f, 14,
+                         aiAutoTime ? textMuted : coordinate, "profile");
+                drawStepper(controls.profileMinus, controls.profilePlus,
+                            guiTimeProfileName(aiTimeProfile), aiAutoTime);
+
+                drawText(cardTextX, controls.capMinus.top + 7.f, 14,
+                         aiAutoTime ? textMuted : coordinate, "maximum auto");
+                drawStepper(controls.capMinus, controls.capPlus,
+                            formatDuration(aiAutoMaxMs), aiAutoTime);
+
+                drawText(cardTextX, engineCardY + 236.f, 12, aiAutoTime ? accent : textMuted,
+                         std::string(aiAutoTime ? "suggested " : "suggestion ") +
+                         formatDuration(liveSuggestion.limitMs) + "  /  ceiling " +
+                         formatDuration(liveSuggestion.profileCapMs));
+                drawText(cardTextX, engineCardY + 255.f, 12, textMuted,
                          "book on  /  tt " + std::to_string(ttSizeMB) + " mb  /  threads " +
-                         std::to_string(aiThreads));
+                         std::to_string(aiThreads) + "  /  sfx " +
+                         (chessSounds.available() ? "on" : "off"));
             }
 
-            float statsY = engineCardY + 190.f;
+            float statsY = engineCardY + 278.f;
             drawText(cardTextX, statsY, 12, textMuted, "search");
             statsY += 23.f;
             {
@@ -1632,8 +1804,8 @@ int main(int argc, char** argv){
             {
                 const double rssMb = double(runtimeResources.rssBytes) / (1024.0 * 1024.0);
                 std::ostringstream oss;
-                oss << "cpu " << std::fixed << std::setprecision(1) << runtimeResources.cpuPercent
-                    << "% (~" << std::setprecision(1) << cpuCoresUsed << "c)"
+                oss << "cpu " << std::fixed << std::setprecision(1) << machineCpuPercent
+                    << "% total  /  " << std::setprecision(1) << cpuCoresUsed << " cores"
                     << "  /  ram " << std::setprecision(1) << rssMb << " mb"
                     << "  /  workers " << s.workersUsed;
                 statsY += WRAPAT(cardTextX, statsY, cardW, oss.str(), 13, textMuted);

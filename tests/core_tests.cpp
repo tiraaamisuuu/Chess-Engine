@@ -565,6 +565,31 @@ void testClockTimeManagement(const Zobrist& zobrist){
            "normal clock budget should remain positive and ordered");
     expect(normalClock.hardMs <= 59'975,
            "normal clock hard limit should retain the configured move overhead");
+
+    const TimeBudget manualGui = pickGuiTimeBudget(board, 10'000);
+    expect(manualGui.softMs == 10'000 && manualGui.hardMs > manualGui.softMs,
+           "manual GUI time should use the selected limit before a bounded overrun");
+
+    const GuiTimeSuggestion eco = suggestGuiTimeLimit(board, 10'000, 300'000, GuiTimeProfile::Eco);
+    const GuiTimeSuggestion balanced = suggestGuiTimeLimit(board, 10'000, 300'000, GuiTimeProfile::Balanced);
+    const GuiTimeSuggestion performance = suggestGuiTimeLimit(board, 10'000, 300'000, GuiTimeProfile::Performance);
+    const GuiTimeSuggestion performancePlus = suggestGuiTimeLimit(board, 10'000, 300'000, GuiTimeProfile::PerformancePlus);
+    expect(eco.limitMs < balanced.limitMs && balanced.limitMs < performance.limitMs &&
+               performance.limitMs < performancePlus.limitMs,
+           "GUI automatic profiles should increase suggested thinking time monotonically");
+    expect(eco.profileCapMs < balanced.profileCapMs && balanced.profileCapMs < performance.profileCapMs &&
+               performance.profileCapMs < performancePlus.profileCapMs,
+           "GUI automatic profiles should increase their effective cap monotonically");
+    expect(performancePlus.profileCapMs == 300'000,
+           "performance+ should be able to use the full five-minute automatic cap");
+    expect(eco.profileCapMs == 30'000 && balanced.profileCapMs == 75'000 &&
+               performance.profileCapMs == 150'000,
+           "automatic profiles should use 10%, 25%, and 50% of the five-minute ceiling");
+    expect(guiTimeProfileWeightPercent(GuiTimeProfile::Eco) == 55 &&
+               guiTimeProfileWeightPercent(GuiTimeProfile::Balanced) == 85 &&
+               guiTimeProfileWeightPercent(GuiTimeProfile::Performance) == 130 &&
+               guiTimeProfileWeightPercent(GuiTimeProfile::PerformancePlus) == 180,
+           "automatic profile complexity weights should remain progressively more aggressive");
 }
 
 void testParallelSearchSafety(const Zobrist& zobrist){

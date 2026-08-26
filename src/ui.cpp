@@ -1,5 +1,78 @@
 #include "ui.hpp"
 
+namespace {
+constexpr unsigned SoundSampleRate = 44100;
+
+std::vector<sf::Int16> synthesiseCue(float durationSeconds,
+                                     const std::function<float(float)>& oscillator){
+    const size_t count = static_cast<size_t>(durationSeconds * SoundSampleRate);
+    std::vector<sf::Int16> samples(count);
+    for(size_t index = 0; index < count; index++){
+        const float t = static_cast<float>(index) / static_cast<float>(SoundSampleRate);
+        const float fadeIn = std::min(1.f, t / 0.004f);
+        const float fadeOut = std::min(1.f, (durationSeconds - t) / 0.018f);
+        const float envelope = fadeIn * std::max(0.f, fadeOut) * std::exp(-t * 13.f);
+        const float value = std::clamp(oscillator(t) * envelope, -1.f, 1.f);
+        samples[index] = static_cast<sf::Int16>(value * 24000.f);
+    }
+    return samples;
+}
+
+float sine(float frequency, float t){
+    constexpr float Tau = 6.28318530718f;
+    return std::sin(Tau * frequency * t);
+}
+}
+
+ChessSoundSet::ChessSoundSet(){
+    const auto moveSamples = synthesiseCue(0.095f, [](float t){
+        return 0.58f * sine(690.f, t) + 0.28f * sine(410.f, t);
+    });
+    const auto captureSamples = synthesiseCue(0.14f, [](float t){
+        const float transient = (t < 0.018f) ? sine(1480.f - 52000.f * t, t) : 0.f;
+        return 0.52f * sine(250.f, t) + 0.30f * sine(420.f, t) + 0.28f * transient;
+    });
+    const auto checkSamples = synthesiseCue(0.22f, [](float t){
+        const float secondTone = t > 0.055f ? sine(1040.f, t - 0.055f) : 0.f;
+        return 0.46f * sine(780.f, t) + 0.40f * secondTone;
+    });
+    const auto gameOverSamples = synthesiseCue(0.38f, [](float t){
+        return 0.30f * sine(392.f, t) + 0.30f * sine(494.f, t) + 0.30f * sine(587.f, t);
+    });
+
+    ready = moveBuffer.loadFromSamples(moveSamples.data(), moveSamples.size(), 1, SoundSampleRate) &&
+            captureBuffer.loadFromSamples(captureSamples.data(), captureSamples.size(), 1, SoundSampleRate) &&
+            checkBuffer.loadFromSamples(checkSamples.data(), checkSamples.size(), 1, SoundSampleRate) &&
+            gameOverBuffer.loadFromSamples(gameOverSamples.data(), gameOverSamples.size(), 1, SoundSampleRate);
+    if(!ready) return;
+
+    moveSound.setBuffer(moveBuffer);
+    captureSound.setBuffer(captureBuffer);
+    checkSound.setBuffer(checkBuffer);
+    gameOverSound.setBuffer(gameOverBuffer);
+    moveSound.setVolume(46.f);
+    captureSound.setVolume(50.f);
+    checkSound.setVolume(43.f);
+    gameOverSound.setVolume(42.f);
+}
+
+void ChessSoundSet::playMove(bool capture, bool check, bool gameOver){
+    if(!ready) return;
+    if(gameOver){
+        gameOverSound.stop();
+        gameOverSound.play();
+    } else if(check){
+        checkSound.stop();
+        checkSound.play();
+    } else if(capture){
+        captureSound.stop();
+        captureSound.play();
+    } else {
+        moveSound.stop();
+        moveSound.play();
+    }
+}
+
 float drawWrappedText(sf::RenderTarget& target,
                       const sf::Font& font,
                       const std::string& text,

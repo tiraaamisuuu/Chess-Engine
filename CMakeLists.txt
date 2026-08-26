@@ -53,24 +53,28 @@ target_link_libraries(chess-engine-tools PRIVATE chess_core Threads::Threads)
 chess_apply_performance_options(chess-engine-tools)
 
 if(CHESS_BUILD_GUI)
-  find_package(SFML 2.6 COMPONENTS graphics window system REQUIRED)
+  find_package(SFML 2.6 COMPONENTS graphics window system audio REQUIRED)
 
   add_executable(gui
     src/main.cpp
     src/ui.cpp
   )
+  if(WIN32)
+    target_sources(gui PRIVATE resources/windows/forklift.rc)
+  endif()
   target_link_libraries(gui PRIVATE chess_uci)
   chess_apply_performance_options(gui)
 
   if(TARGET sfml-graphics)
-    target_link_libraries(gui PRIVATE sfml-graphics sfml-window sfml-system)
+    target_link_libraries(gui PRIVATE sfml-graphics sfml-window sfml-system sfml-audio)
   elseif(TARGET SFML::Graphics)
-    target_link_libraries(gui PRIVATE SFML::Graphics SFML::Window SFML::System)
+    target_link_libraries(gui PRIVATE SFML::Graphics SFML::Window SFML::System SFML::Audio)
   else()
     message(FATAL_ERROR "SFML targets not found. Install SFML 2.6.x or configure with -DCHESS_BUILD_GUI=OFF.")
   endif()
 
   if(WIN32)
+    get_filename_component(CHESS_SFML_BIN_DIR "${SFML_DIR}/../../../bin" ABSOLUTE)
     target_compile_definitions(gui PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
     target_link_libraries(gui PRIVATE Psapi)
   endif()
@@ -88,6 +92,13 @@ if(CHESS_BUILD_GUI)
               $<TARGET_FILE_DIR:gui>
       COMMAND_EXPAND_LISTS
     )
+    if(EXISTS "${CHESS_SFML_BIN_DIR}/openal32.dll")
+      add_custom_command(TARGET gui POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CHESS_SFML_BIN_DIR}/openal32.dll"
+                $<TARGET_FILE_DIR:gui>
+      )
+    endif()
   endif()
 endif()
 
@@ -136,6 +147,9 @@ if(TARGET gui)
   if(WIN32)
     install(TARGETS gui RUNTIME DESTINATION bin)
     install(FILES $<TARGET_RUNTIME_DLLS:gui> DESTINATION bin)
+    if(EXISTS "${CHESS_SFML_BIN_DIR}/openal32.dll")
+      install(FILES "${CHESS_SFML_BIN_DIR}/openal32.dll" DESTINATION bin)
+    endif()
   else()
     install(TARGETS gui RUNTIME DESTINATION bin)
   endif()

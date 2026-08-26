@@ -7,6 +7,56 @@ struct TimeBudget {
     int hardMs = 1000;
 };
 
+enum class GuiTimeProfile {
+    Eco,
+    Balanced,
+    Performance,
+    PerformancePlus
+};
+
+struct GuiTimeSuggestion {
+    int limitMs = 1000;
+    int profileCapMs = 1000;
+    int complexityPercent = 100;
+    int weightPercent = 100;
+};
+
+inline const char* guiTimeProfileName(GuiTimeProfile profile){
+    switch(profile){
+        case GuiTimeProfile::Eco: return "eco";
+        case GuiTimeProfile::Balanced: return "balanced";
+        case GuiTimeProfile::Performance: return "performance";
+        case GuiTimeProfile::PerformancePlus: return "performance+";
+    }
+    return "balanced";
+}
+
+inline int guiTimeProfileWeightPercent(GuiTimeProfile profile){
+    switch(profile){
+        case GuiTimeProfile::Eco: return 55;
+        case GuiTimeProfile::Balanced: return 85;
+        case GuiTimeProfile::Performance: return 130;
+        case GuiTimeProfile::PerformancePlus: return 180;
+    }
+    return 85;
+}
+
+inline int guiTimeProfileCapPercent(GuiTimeProfile profile){
+    switch(profile){
+        case GuiTimeProfile::Eco: return 10;
+        case GuiTimeProfile::Balanced: return 25;
+        case GuiTimeProfile::Performance: return 50;
+        case GuiTimeProfile::PerformancePlus: return 100;
+    }
+    return 25;
+}
+
+inline int guiTimeProfileCapMs(GuiTimeProfile profile, int autoMaxMs){
+    const int maximum = std::clamp(autoMaxMs, 1000, 300000);
+    const long long scaled = static_cast<long long>(maximum) * guiTimeProfileCapPercent(profile) / 100;
+    return std::clamp(static_cast<int>(scaled), 1000, maximum);
+}
+
 inline int countNonKingPieces(const Board& board){
     int pieces = 0;
     for(const Piece& p : board.b){
@@ -74,17 +124,28 @@ inline TimeBudget pickClockTimeBudget(const Board& board,
     return TimeBudget{soft, hard};
 }
 
-inline TimeBudget pickGuiTimeBudget(const Board& board, int requestedMs){
+inline GuiTimeSuggestion suggestGuiTimeLimit(const Board& board,
+                                             int requestedMs,
+                                             int autoMaxMs,
+                                             GuiTimeProfile profile){
     Board probe = board;
     std::vector<Move> legal;
     probe.genLegalMoves(legal);
     const int legalMoves = static_cast<int>(legal.size());
     const int complexityScale = positionComplexityScale(board, legalMoves);
 
-    const int base = std::clamp(requestedMs, 100, 180000);
-    int soft = (base * complexityScale) / 100;
-    soft = std::clamp(soft, std::max(100, base / 3), std::min(180000, base + base / 2));
-    if(legalMoves <= 1) soft = std::min(soft, std::max(60, base / 5));
-    const int hard = std::clamp(soft + std::max(250, soft / 4), soft, 180000);
+    const int base = std::clamp(requestedMs, 100, 300000);
+    const int weight = guiTimeProfileWeightPercent(profile);
+    const int profileCap = guiTimeProfileCapMs(profile, autoMaxMs);
+    const long long weighted = static_cast<long long>(base) * complexityScale * weight / 10000;
+    int suggestion = std::clamp(static_cast<int>(weighted), 100, profileCap);
+    if(legalMoves <= 1) suggestion = std::min(suggestion, std::max(100, base / 5));
+    return GuiTimeSuggestion{suggestion, profileCap, complexityScale, weight};
+}
+
+inline TimeBudget pickGuiTimeBudget(const Board&, int requestedMs, int hardCapMs = 300000){
+    const int cap = std::clamp(hardCapMs, 100, 300000);
+    const int soft = std::clamp(requestedMs, 100, cap);
+    const int hard = std::clamp(soft + std::max(250, soft / 3), soft, cap);
     return TimeBudget{soft, hard};
 }

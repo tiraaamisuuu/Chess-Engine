@@ -1,6 +1,7 @@
 #pragma once
 
 #include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
 #include <SFML/Window.hpp>
 
 #include "chess_core.hpp"
@@ -91,6 +92,25 @@ struct PieceAtlas {
 
     bool loadAll(const std::string& dir);
     const sf::Texture* get(const Piece& p) const;
+};
+
+class ChessSoundSet {
+public:
+    ChessSoundSet();
+
+    void playMove(bool capture, bool check, bool gameOver);
+    [[nodiscard]] bool available() const { return ready; }
+
+private:
+    sf::SoundBuffer moveBuffer;
+    sf::SoundBuffer captureBuffer;
+    sf::SoundBuffer checkBuffer;
+    sf::SoundBuffer gameOverBuffer;
+    sf::Sound moveSound;
+    sf::Sound captureSound;
+    sf::Sound checkSound;
+    sf::Sound gameOverSound;
+    bool ready = false;
 };
 
 enum class GameMode { Menu, PvP, PvAI, AIvAI };

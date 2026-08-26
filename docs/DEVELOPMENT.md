@@ -118,6 +118,15 @@ The local web GUI supports PvP, PvC, CvC, independent engine profiles, external
 UCI engines, live analysis/PV, PGN/FEN/JSON export, board flipping, undo,
 promotion, and visible radial/status countdowns while an engine is thinking.
 
+The SFML desktop app provides manual time limits and an optional position-aware
+automatic mode. Its `eco`, `balanced`, `performance`, and `performance+`
+profiles progressively increase the complexity weight and their share of the
+user-selected automatic ceiling, which is capped at five minutes per move. The
+displayed suggestion is the exact soft search limit; any bounded overrun is
+shown as negative time. The app also includes eased piece motion, original
+procedurally generated move/capture/check/end cues, corrected whole-machine CPU
+telemetry, and a native Forklift Windows icon.
+
 Strength tooling builds committed refs in isolation, uses paired reversed-color
 openings through Cute Chess, records binary/opening/configuration checksums, and
 emits machine-readable manifests/results. A Stockfish limited-strength ladder
