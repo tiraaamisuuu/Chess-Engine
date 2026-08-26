@@ -246,6 +246,18 @@ int main(int argc, char** argv){
     window.setVerticalSyncEnabled(true);
     window.setFramerateLimit(60);
 
+    sf::Cursor arrowCursor;
+    sf::Cursor handCursor;
+    const bool hasArrowCursor = arrowCursor.loadFromSystem(sf::Cursor::Arrow);
+    const bool hasHandCursor = handCursor.loadFromSystem(sf::Cursor::Hand);
+    const bool hasInteractiveCursors = hasArrowCursor && hasHandCursor;
+    bool handCursorVisible = false;
+    auto setInteractiveCursor = [&](bool interactive){
+        if(!hasInteractiveCursors || handCursorVisible == interactive) return;
+        window.setMouseCursor(interactive ? handCursor : arrowCursor);
+        handCursorVisible = interactive;
+    };
+
     const float tile = 96.f;
     const sf::Vector2f boardOrigin(40.f, 72.f);
 
@@ -432,42 +444,6 @@ int main(int argc, char** argv){
         }
         return true;
     };
-    auto askOpenMovesFile = [&]()->bool{
-#ifdef __APPLE__
-        const std::string cmd =
-            "osascript -e \"button returned of (display dialog \\\"Moves saved to moves.txt. Open now?\\\" "
-            "buttons {\\\"Don't Open\\\",\\\"Open\\\"} default button \\\"Open\\\")\"";
-        FILE* p = popen(cmd.c_str(), "r");
-        if(p){
-            char buf[256];
-            std::string out;
-            while(fgets(buf, sizeof(buf), p)) out += buf;
-            int rc = pclose(p);
-            if(rc == 0){
-                return trim(out) == "Open";
-            }
-        }
-#endif
-        std::cout << "Moves saved to moves.txt. Open now? [y/N]: " << std::flush;
-        std::string ans;
-        std::getline(std::cin, ans);
-        if(ans.empty()) return false;
-        char c = ans[0];
-        return c=='y' || c=='Y';
-    };
-    auto openMovesFile = [&](const std::filesystem::path& outPath){
-#ifdef __APPLE__
-        std::string cmd = "open " + shellQuote(outPath.string());
-        std::system(cmd.c_str());
-#elif defined(__linux__)
-        std::string cmd = "xdg-open " + shellQuote(outPath.string()) + " >/dev/null 2>&1 &";
-        std::system(cmd.c_str());
-#elif defined(_WIN32)
-        std::string cmd = "cmd /C start \"\" " + windowsCmdQuote(outPath.string());
-        std::system(cmd.c_str());
-#endif
-    };
-
     GameMode mode = GameMode::Menu;
     GameMode pending = GameMode::PvP;
     Color humanColor = Color::White;   
@@ -536,9 +512,9 @@ int main(int argc, char** argv){
     };
     auto getGameActionRects = [&]()->GameActionRects{
         const float x = panelPos.x + 20.f;
-        const float y = panelPos.y + 118.f;
+        const float y = panelPos.y + 116.f;
         const float w = 88.f;
-        const float h = 32.f;
+        const float h = 34.f;
         const float gap = 8.f;
         return GameActionRects{
             sf::FloatRect(x, y, w, h),
@@ -634,12 +610,13 @@ int main(int argc, char** argv){
         sf::FloatRect timePlus;
     };
     auto getEngineStepperRects = [&]()->EngineStepperRects{
-        const float btnW = 30.f;
-        const float btnH = 26.f;
-        const float plusX  = panelPos.x + panelSize.x - 50.f;
-        const float minusX = plusX - 38.f;
-        const float depthY = engineCardY + 92.f;
-        const float timeY  = engineCardY + 126.f;
+        const float btnW = 34.f;
+        const float btnH = 30.f;
+        const float groupW = 116.f;
+        const float minusX = panelPos.x + panelSize.x - 20.f - groupW;
+        const float plusX  = minusX + groupW - btnW;
+        const float depthY = engineCardY + 89.f;
+        const float timeY  = engineCardY + 125.f;
         return EngineStepperRects{
             sf::FloatRect(minusX, depthY, btnW, btnH),
             sf::FloatRect(plusX,  depthY, btnW, btnH),
@@ -850,13 +827,13 @@ int main(int argc, char** argv){
                         resetGame();
                         continue;
                     }
-                    if(actions.undo.contains(mp)){ runUndo(); continue; }
+                    if(actions.undo.contains(mp) && !undoStack.empty()){ runUndo(); continue; }
                     if(actions.flip.contains(mp)){
                         flipBoard = !flipBoard;
                         status = std::string("board flipped  /  ") + (flipBoard ? "black" : "white");
                         continue;
                     }
-                    if(actions.pause.contains(mp)){ toggleAiPause(); continue; }
+                    if(actions.pause.contains(mp) && mode!=GameMode::PvP){ toggleAiPause(); continue; }
                     const EngineStepperRects step = getEngineStepperRects();
                     if(pointInRect(mp, step.depthMinus)){ adjustDepth(-1); continue; }
                     if(pointInRect(mp, step.depthPlus)){  adjustDepth(+1); continue; }
@@ -976,16 +953,14 @@ int main(int argc, char** argv){
                 auto drawCenteredText = [&](const sf::FloatRect& rect,
                                             unsigned size,
                                             sf::Color col,
-                                            const std::string& str){
+                                            const std::string& str,
+                                            sf::Vector2f offset = sf::Vector2f(0.f, 0.f)){
                     sf::Text t;
                     t.setFont(font);
                     t.setCharacterSize(size);
                     t.setFillColor(col);
                     t.setString(str);
-                    const sf::FloatRect bounds = t.getLocalBounds();
-                    const float x = rect.left + (rect.width - bounds.width) * 0.5f;
-                    const float y = rect.top + (rect.height - font.getLineSpacing(size)) * 0.5f + 1.f;
-                    setCrispTextPosition(t, sf::Vector2f(x, y));
+                    setCenteredTextPosition(t, rect, offset);
                     window.draw(t);
                 };
 
@@ -1018,6 +993,10 @@ int main(int argc, char** argv){
                 sf::Vector2i mousePixel = sf::Mouse::getPosition(window);
                 sf::Vector2f mousePos(float(mousePixel.x), float(mousePixel.y));
                 const auto menuRects = getMenuCardRects();
+                const sf::FloatRect startRect = getMenuStartRect();
+                bool menuInteractive = startRect.contains(mousePos);
+                for(const auto& rect : menuRects) menuInteractive = menuInteractive || rect.contains(mousePos);
+                setInteractiveCursor(menuInteractive);
 
                 auto drawModeCard = [&](size_t index,
                                         int key,
@@ -1026,6 +1005,13 @@ int main(int argc, char** argv){
                     const bool selected = isModeSelected(key);
                     const sf::FloatRect cardRect = menuRects[index];
                     const bool hover = cardRect.contains(mousePos);
+
+                    if(selected || hover){
+                        sf::RectangleShape cardShadow(sf::Vector2f(cardRect.width, cardRect.height));
+                        cardShadow.setPosition(snap(sf::Vector2f(cardRect.left, cardRect.top + 3.f)));
+                        cardShadow.setFillColor(shadow);
+                        window.draw(cardShadow);
+                    }
 
                     sf::RectangleShape card(sf::Vector2f(cardRect.width, cardRect.height));
                     card.setPosition(snap(sf::Vector2f(cardRect.left, cardRect.top)));
@@ -1090,15 +1076,22 @@ int main(int argc, char** argv){
                 drawText(924.f, 474.f, 14, textSoft, "enter to start");
                 drawText(924.f, 500.f, 14, textSoft, "esc to quit");
 
-                const sf::FloatRect startRect = getMenuStartRect();
                 const bool startHover = startRect.contains(mousePos);
+                const bool startPressed = startHover && sf::Mouse::isButtonPressed(sf::Mouse::Left);
+                const float startOffset = startPressed ? 2.f : 0.f;
+
+                sf::RectangleShape startShadow(sf::Vector2f(startRect.width, startRect.height));
+                startShadow.setPosition(snap(sf::Vector2f(startRect.left, startRect.top + 4.f)));
+                startShadow.setFillColor(shadow);
+                window.draw(startShadow);
+
                 sf::RectangleShape startBtn(sf::Vector2f(startRect.width, startRect.height));
-                startBtn.setPosition(snap(sf::Vector2f(startRect.left, startRect.top)));
-                startBtn.setFillColor(startHover ? accent : text);
+                startBtn.setPosition(snap(sf::Vector2f(startRect.left, startRect.top + startOffset)));
+                startBtn.setFillColor(startPressed ? textSoft : (startHover ? accent : text));
                 startBtn.setOutlineThickness(1.f);
                 startBtn.setOutlineColor(startHover ? accent : text);
                 window.draw(startBtn);
-                drawCenteredText(startRect, 18, canvas, "start game");
+                drawCenteredText(startRect, 18, canvas, "start game", sf::Vector2f(0.f, startOffset));
 
                 sf::RectangleShape bottomRule(sf::Vector2f(1176.f, 1.f));
                 bottomRule.setPosition(snap(sf::Vector2f(72.f, 790.f)));
@@ -1136,12 +1129,26 @@ int main(int argc, char** argv){
             window.draw(context);
         }
 
-        sf::RectangleShape boardShell(sf::Vector2f(8.f*tile + boardPadL + boardPadR, 8.f*tile + boardPadT + boardPadB));
-        boardShell.setPosition(snap(sf::Vector2f(boardOrigin.x - boardPadL, boardOrigin.y - boardPadT)));
+        const sf::Vector2f boardShellSize(8.f*tile + boardPadL + boardPadR,
+                                          8.f*tile + boardPadT + boardPadB);
+        const sf::Vector2f boardShellPos(boardOrigin.x - boardPadL,
+                                         boardOrigin.y - boardPadT);
+        sf::RectangleShape boardShadow(boardShellSize);
+        boardShadow.setPosition(snap(sf::Vector2f(boardShellPos.x + 3.f, boardShellPos.y + 4.f)));
+        boardShadow.setFillColor(shadow);
+        window.draw(boardShadow);
+
+        sf::RectangleShape boardShell(boardShellSize);
+        boardShell.setPosition(snap(boardShellPos));
         boardShell.setFillColor(surface);
         boardShell.setOutlineThickness(1.f);
         boardShell.setOutlineColor(border);
         window.draw(boardShell);
+
+        sf::RectangleShape boardHighlight(sf::Vector2f(boardShellSize.x - 2.f, 1.f));
+        boardHighlight.setPosition(snap(sf::Vector2f(boardShellPos.x + 1.f, boardShellPos.y + 1.f)));
+        boardHighlight.setFillColor(sf::Color(borderStrong.r, borderStrong.g, borderStrong.b, 95));
+        window.draw(boardHighlight);
 
         for(int r=0;r<8;r++){
             for(int f=0;f<8;f++){
@@ -1200,26 +1207,37 @@ int main(int argc, char** argv){
         }
 
         if(hasFont){
-            const float fileLabelY = flipBoard ? (boardOrigin.y - 7.f) : (boardOrigin.y + 8.f*tile + 10.f);
-            const float rankLabelX = boardOrigin.x - 12.f;
-            for(int f=0; f<8; f++){
+            for(int visualFile=0; visualFile<8; visualFile++){
                 sf::Text t;
                 t.setFont(font);
-                t.setCharacterSize(12);
-                t.setFillColor(textMuted);
-                t.setString(std::string(1, char('a'+f)));
-                setCrispTextPosition(t, sf::Vector2f(boardOrigin.x + (flipBoard?(7-f):f)*tile + 6.f, fileLabelY));
+                t.setCharacterSize(13);
+                t.setFillColor(coordinate);
+                const int file = flipBoard ? (7 - visualFile) : visualFile;
+                t.setString(std::string(1, char('a' + file)));
+                const sf::FloatRect gutter(
+                    boardOrigin.x + visualFile * tile,
+                    boardOrigin.y + 8.f * tile,
+                    tile,
+                    boardPadB
+                );
+                setCenteredTextPosition(t, gutter, sf::Vector2f(0.f, -1.f));
                 window.draw(t);
             }
-            for(int r=0; r<8; r++){
+
+            for(int visualRank=0; visualRank<8; visualRank++){
                 sf::Text t;
                 t.setFont(font);
-                t.setCharacterSize(12);
-                t.setFillColor(textMuted);
-                t.setString(std::to_string(r+1));
-                int rr = flipBoard ? (7-r) : r;
-                auto pos = squareToPixel(Square{0,rr}, tile, boardOrigin, flipBoard);
-                setCrispTextPosition(t, sf::Vector2f(rankLabelX, pos.y + 6.f));
+                t.setCharacterSize(13);
+                t.setFillColor(coordinate);
+                const int rank = flipBoard ? (visualRank + 1) : (8 - visualRank);
+                t.setString(std::to_string(rank));
+                const sf::FloatRect gutter(
+                    boardOrigin.x - boardPadL,
+                    boardOrigin.y + visualRank * tile,
+                    boardPadL,
+                    tile
+                );
+                setCenteredTextPosition(t, gutter, sf::Vector2f(0.f, -1.f));
                 window.draw(t);
             }
         }
@@ -1250,12 +1268,22 @@ int main(int argc, char** argv){
         }
 
         // panel
+        sf::RectangleShape panelShadow(panelSize);
+        panelShadow.setPosition(snap(sf::Vector2f(panelPos.x + 3.f, panelPos.y + 4.f)));
+        panelShadow.setFillColor(shadow);
+        window.draw(panelShadow);
+
         sf::RectangleShape panelBg(panelSize);
         panelBg.setPosition(panelPos);
         panelBg.setFillColor(surface);
         panelBg.setOutlineThickness(1.f);
         panelBg.setOutlineColor(border);
         window.draw(panelBg);
+
+        sf::RectangleShape panelHighlight(sf::Vector2f(panelSize.x - 2.f, 1.f));
+        panelHighlight.setPosition(snap(sf::Vector2f(panelPos.x + 1.f, panelPos.y + 1.f)));
+        panelHighlight.setFillColor(sf::Color(borderStrong.r, borderStrong.g, borderStrong.b, 95));
+        window.draw(panelHighlight);
 
         if(hasFont){
             auto drawText = [&](float x, float y, unsigned size, sf::Color col, const std::string& str, sf::Uint32 style = sf::Text::Regular){
@@ -1362,11 +1390,15 @@ int main(int argc, char** argv){
             sf::Color engineStateColor = textMuted;
             if(aiThinking.load()){
                 const int elapsedMs = thinkClock.getElapsedTime().asMilliseconds();
-                const int remainingMs = std::max(0, liveBudget.softMs - elapsedMs);
-                std::ostringstream remaining;
-                remaining << "thinking  " << std::fixed << std::setprecision(1)
-                          << (double(remainingMs) / 1000.0) << "s";
-                engineState = remaining.str();
+                const int remainingMs = liveBudget.hardMs - elapsedMs;
+                if(remainingMs > 0){
+                    std::ostringstream remaining;
+                    remaining << "thinking  " << std::fixed << std::setprecision(1)
+                              << (double(remainingMs) / 1000.0) << "s";
+                    engineState = remaining.str();
+                } else {
+                    engineState = "finishing search";
+                }
                 engineStateColor = warning;
             } else if(aiPaused.load()){
                 engineState = "paused";
@@ -1415,60 +1447,165 @@ int main(int argc, char** argv){
             const EngineStepperRects step = getEngineStepperRects();
             sf::Vector2i mousePixel = sf::Mouse::getPosition(window);
             sf::Vector2f mousePos(float(mousePixel.x), float(mousePixel.y));
-            auto drawStepperButton = [&](const sf::FloatRect& r, const std::string& label){
-                const bool hover = pointInRect(mousePos, r);
-                sf::RectangleShape btn(sf::Vector2f(r.width, r.height));
-                btn.setPosition(snap(sf::Vector2f(r.left, r.top)));
-                btn.setFillColor(hover ? surfaceRaised : surface);
-                btn.setOutlineThickness(1.f);
-                btn.setOutlineColor(hover ? borderStrong : border);
-                window.draw(btn);
-                drawText(r.left + 9.f, r.top + 3.f, 17, hover ? text : textSoft, label);
+            const bool mouseDown = sf::Mouse::isButtonPressed(sf::Mouse::Left);
+            const GameActionRects actions = getGameActionRects();
+            const bool undoEnabled = !undoStack.empty();
+            const bool pauseEnabled = mode != GameMode::PvP;
+
+            const sf::FloatRect boardRect(boardOrigin.x, boardOrigin.y, 8.f*tile, 8.f*tile);
+            const bool boardInteractive = pointInRect(mousePos, boardRect) &&
+                                          isHumanSide(board.stm) &&
+                                          !aiThinking.load() &&
+                                          !gameStatus.finished();
+            const bool actionInteractive =
+                pointInRect(mousePos, actions.reset) ||
+                (undoEnabled && pointInRect(mousePos, actions.undo)) ||
+                pointInRect(mousePos, actions.flip) ||
+                (pauseEnabled && pointInRect(mousePos, actions.pause));
+            const bool stepperInteractive =
+                pointInRect(mousePos, step.depthMinus) ||
+                pointInRect(mousePos, step.depthPlus) ||
+                pointInRect(mousePos, step.timeMinus) ||
+                pointInRect(mousePos, step.timePlus);
+            setInteractiveCursor(boardInteractive || actionInteractive || stepperInteractive);
+
+            auto drawStepper = [&](const sf::FloatRect& minusRect,
+                                   const sf::FloatRect& plusRect,
+                                   const std::string& value){
+                const sf::FloatRect groupRect(
+                    minusRect.left,
+                    minusRect.top,
+                    plusRect.left + plusRect.width - minusRect.left,
+                    minusRect.height
+                );
+                const sf::FloatRect valueRect(
+                    minusRect.left + minusRect.width,
+                    minusRect.top,
+                    plusRect.left - (minusRect.left + minusRect.width),
+                    minusRect.height
+                );
+
+                sf::RectangleShape groupShadow(sf::Vector2f(groupRect.width, groupRect.height));
+                groupShadow.setPosition(snap(sf::Vector2f(groupRect.left, groupRect.top + 2.f)));
+                groupShadow.setFillColor(shadow);
+                window.draw(groupShadow);
+
+                sf::RectangleShape group(sf::Vector2f(groupRect.width, groupRect.height));
+                group.setPosition(snap(sf::Vector2f(groupRect.left, groupRect.top)));
+                group.setFillColor(control);
+                group.setOutlineThickness(1.f);
+                group.setOutlineColor(border);
+                window.draw(group);
+
+                sf::RectangleShape valueBackground(sf::Vector2f(valueRect.width, valueRect.height));
+                valueBackground.setPosition(snap(sf::Vector2f(valueRect.left, valueRect.top)));
+                valueBackground.setFillColor(surface);
+                window.draw(valueBackground);
+
+                sf::Text valueText;
+                valueText.setFont(font);
+                valueText.setCharacterSize(13);
+                valueText.setFillColor(text);
+                valueText.setString(value);
+                setCenteredTextPosition(valueText, valueRect, sf::Vector2f(0.f, -1.f));
+                window.draw(valueText);
+
+                auto drawIconSegment = [&](const sf::FloatRect& rect, bool plus){
+                    const bool hover = pointInRect(mousePos, rect);
+                    const bool pressed = hover && mouseDown;
+
+                    sf::RectangleShape segment(sf::Vector2f(rect.width, rect.height));
+                    segment.setPosition(snap(sf::Vector2f(rect.left, rect.top)));
+                    segment.setFillColor(pressed ? controlPressed : (hover ? controlHover : control));
+                    window.draw(segment);
+
+                    const float iconOffset = pressed ? 1.f : 0.f;
+                    const sf::Color iconColor = hover ? accent : textSoft;
+                    const float centerX = std::round(rect.left + rect.width * 0.5f);
+                    const float centerY = std::round(rect.top + rect.height * 0.5f + iconOffset);
+                    sf::RectangleShape horizontal(sf::Vector2f(10.f, 2.f));
+                    horizontal.setPosition(snap(sf::Vector2f(centerX - 5.f, centerY - 1.f)));
+                    horizontal.setFillColor(iconColor);
+                    window.draw(horizontal);
+                    if(plus){
+                        sf::RectangleShape vertical(sf::Vector2f(2.f, 10.f));
+                        vertical.setPosition(snap(sf::Vector2f(centerX - 1.f, centerY - 5.f)));
+                        vertical.setFillColor(iconColor);
+                        window.draw(vertical);
+                    }
+                };
+
+                drawIconSegment(minusRect, false);
+                drawIconSegment(plusRect, true);
+
+                for(float dividerX : {valueRect.left, valueRect.left + valueRect.width}){
+                    sf::RectangleShape divider(sf::Vector2f(1.f, groupRect.height));
+                    divider.setPosition(snap(sf::Vector2f(dividerX, groupRect.top)));
+                    divider.setFillColor(border);
+                    window.draw(divider);
+                }
             };
 
             auto drawActionButton = [&](const sf::FloatRect& r,
                                         const std::string& label,
-                                        bool active = false){
-                const bool hover = pointInRect(mousePos, r);
+                                        bool active = false,
+                                        bool enabled = true){
+                const bool hover = enabled && pointInRect(mousePos, r);
+                const bool pressed = hover && mouseDown;
+                const float pressOffset = pressed ? 2.f : 0.f;
+
+                sf::RectangleShape buttonShadow(sf::Vector2f(r.width, r.height));
+                buttonShadow.setPosition(snap(sf::Vector2f(r.left, r.top + 2.f)));
+                buttonShadow.setFillColor(shadow);
+                window.draw(buttonShadow);
+
                 sf::RectangleShape btn(sf::Vector2f(r.width, r.height));
-                btn.setPosition(snap(sf::Vector2f(r.left, r.top)));
-                btn.setFillColor(hover ? surfaceRaised : surface);
+                btn.setPosition(snap(sf::Vector2f(r.left, r.top + pressOffset)));
+                if(!enabled){
+                    btn.setFillColor(surface);
+                } else if(pressed){
+                    btn.setFillColor(controlPressed);
+                } else if(hover){
+                    btn.setFillColor(controlHover);
+                } else if(active){
+                    btn.setFillColor(sf::Color(accent.r, accent.g, accent.b, 18));
+                } else {
+                    btn.setFillColor(control);
+                }
                 btn.setOutlineThickness(1.f);
-                btn.setOutlineColor(active ? accent : (hover ? borderStrong : border));
+                btn.setOutlineColor(!enabled ? border : (active ? accent : (hover ? borderStrong : border)));
                 window.draw(btn);
+
+                if(enabled && !pressed){
+                    sf::RectangleShape topHighlight(sf::Vector2f(r.width - 2.f, 1.f));
+                    topHighlight.setPosition(snap(sf::Vector2f(r.left + 1.f, r.top + 1.f)));
+                    topHighlight.setFillColor(sf::Color(borderStrong.r, borderStrong.g, borderStrong.b, 90));
+                    window.draw(topHighlight);
+                }
 
                 sf::Text labelText;
                 labelText.setFont(font);
                 labelText.setCharacterSize(13);
-                labelText.setFillColor(active ? accent : (hover ? text : textSoft));
+                labelText.setFillColor(!enabled ? textMuted : (active ? accent : (hover ? text : textSoft)));
                 labelText.setString(label);
-                const sf::FloatRect labelBounds = labelText.getLocalBounds();
-                setCrispTextPosition(labelText, sf::Vector2f(
-                    r.left + (r.width - labelBounds.width) * 0.5f,
-                    r.top + 8.f));
+                setCenteredTextPosition(labelText, r, sf::Vector2f(0.f, pressOffset - 1.f));
                 window.draw(labelText);
             };
 
-            const GameActionRects actions = getGameActionRects();
             drawActionButton(actions.reset, "reset");
-            drawActionButton(actions.undo, "undo");
+            drawActionButton(actions.undo, "undo", false, undoEnabled);
             drawActionButton(actions.flip, "flip");
-            drawActionButton(actions.pause, aiPaused.load() ? "resume" : "pause", aiPaused.load());
+            drawActionButton(actions.pause, aiPaused.load() ? "resume" : "pause",
+                             aiPaused.load(), pauseEnabled);
 
             {
                 std::ostringstream timeLabel;
                 timeLabel << std::fixed << std::setprecision(1)
                           << (double(aiTimeMs) / 1000.0) << " s";
-                drawText(cardTextX, engineCardY + 96.f, 14, textMuted, "depth");
-                drawText(cardTextX + 82.f, engineCardY + 96.f, 14, text,
-                         std::to_string(aiMaxDepth));
-                drawText(cardTextX, engineCardY + 130.f, 14, textMuted, "move time");
-                drawText(cardTextX + 82.f, engineCardY + 130.f, 14, text,
-                         timeLabel.str());
-                drawStepperButton(step.depthMinus, "-");
-                drawStepperButton(step.depthPlus, "+");
-                drawStepperButton(step.timeMinus, "-");
-                drawStepperButton(step.timePlus, "+");
+                drawText(cardTextX, step.depthMinus.top + 8.f, 14, textMuted, "depth");
+                drawText(cardTextX, step.timeMinus.top + 8.f, 14, textMuted, "move time");
+                drawStepper(step.depthMinus, step.depthPlus, std::to_string(aiMaxDepth));
+                drawStepper(step.timeMinus, step.timePlus, timeLabel.str());
                 drawText(cardTextX, engineCardY + 162.f, 12, textMuted,
                          "book on  /  tt " + std::to_string(ttSizeMB) + " mb  /  threads " +
                          std::to_string(aiThreads));
@@ -1549,11 +1686,7 @@ int main(int argc, char** argv){
     stopAiThread();
 
     const std::filesystem::path movesPath = std::filesystem::current_path() / "moves.txt";
-    if(writeMovesFile(movesPath)){
-        if(askOpenMovesFile()){
-            openMovesFile(movesPath);
-        }
-    } else {
+    if(!writeMovesFile(movesPath)){
         std::cerr << "Failed to write moves file: " << movesPath << "\n";
     }
 

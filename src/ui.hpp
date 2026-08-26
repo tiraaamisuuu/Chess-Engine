@@ -9,14 +9,19 @@ namespace ForkliftTheme {
 inline const sf::Color canvas{9, 10, 10};
 inline const sf::Color surface{13, 14, 14};
 inline const sf::Color surfaceRaised{18, 19, 19};
+inline const sf::Color control{20, 22, 21};
+inline const sf::Color controlHover{27, 30, 28};
+inline const sf::Color controlPressed{12, 13, 13};
 inline const sf::Color border{42, 44, 43};
 inline const sf::Color borderStrong{72, 76, 73};
 inline const sf::Color text{235, 235, 231};
 inline const sf::Color textSoft{177, 180, 175};
 inline const sf::Color textMuted{105, 109, 106};
+inline const sf::Color coordinate{145, 149, 144};
 inline const sf::Color accent{164, 211, 122};
 inline const sf::Color warning{218, 184, 119};
 inline const sf::Color danger{214, 116, 116};
+inline const sf::Color shadow{0, 0, 0, 145};
 inline const sf::Color boardLight{199, 199, 190};
 inline const sf::Color boardDark{73, 78, 73};
 inline const sf::Color lastMoveLight{177, 173, 112};
@@ -32,6 +37,16 @@ inline sf::Vector2f snap(sf::Vector2f p){
 inline void setCrispTextPosition(sf::Text& text, sf::Vector2f position){
     const sf::FloatRect bounds = text.getLocalBounds();
     text.setPosition(snap(sf::Vector2f(position.x - bounds.left, position.y - bounds.top)));
+}
+
+inline void setCenteredTextPosition(sf::Text& text,
+                                    const sf::FloatRect& rect,
+                                    sf::Vector2f offset = sf::Vector2f(0.f, 0.f)){
+    const sf::FloatRect bounds = text.getLocalBounds();
+    text.setPosition(snap(sf::Vector2f(
+        rect.left + (rect.width - bounds.width) * 0.5f - bounds.left + offset.x,
+        rect.top + (rect.height - bounds.height) * 0.5f - bounds.top + offset.y
+    )));
 }
 
 // Visual board: rank 7 at the top unless flipped.
