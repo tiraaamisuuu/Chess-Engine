@@ -1,4 +1,4 @@
-# Chess Engine
+# Forklift
 
 Forklift is a high-performance C++17 chess engine combining modern alpha-beta
 search with classical and custom trainable NNUE evaluation. The project includes
@@ -12,7 +12,7 @@ Recommended: a clean screenshot of the web interface during an interesting
 middlegame, with the board, evaluation, PV and engine identity visible.
 Suggested size: 1600 × 900 (16:9), WebP or PNG.
 Save as: docs/assets/engine-room-hero.webp
-Enable with: ![Chess Engine interface](docs/assets/engine-room-hero.webp)
+Enable with: ![Forklift interface](docs/assets/engine-room-hero.webp)
 -->
 
 ## Highlights
@@ -130,6 +130,11 @@ Enable with: ![NNUE training and promotion pipeline](docs/assets/nnue-pipeline.s
 
 ## Quick start
 
+For Windows, download
+[`Forklift-1.1.0-Windows-AMD64-GUI.zip`](https://github.com/tiraaamisuuu/Forklift/releases/download/v1.1.0/Forklift-1.1.0-Windows-AMD64-GUI.zip),
+extract it, and run `bin/Forklift.exe`. The archive includes the required SFML
+and OpenAL runtime files.
+
 Launch the local web interface:
 
 ```powershell
@@ -146,7 +151,7 @@ Build the Forklift desktop app with SFML 2.6 available:
 cmake -S . -B build-gui -DCHESS_BUILD_GUI=ON -DBUILD_TESTING=ON `
   -DSFML_DIR=C:\path\to\SFML\lib\cmake\SFML
 cmake --build build-gui --config Release --parallel
-.\build-gui\Release\gui.exe
+.\build-gui\Release\Forklift.exe
 ```
 
 The desktop app includes smooth piece motion, original sound cues, live search

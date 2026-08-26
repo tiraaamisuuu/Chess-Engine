@@ -140,12 +140,12 @@ int main(int argc, char** argv){
         if(a == "--help" || a == "-h"){
             std::cout
                 << "Usage:\n"
-                << "  gui                        # launch GUI\n"
-                << "  gui --perft <depth> [--fen \"...\"]\n"
-                << "  gui --divide <depth> [--fen \"...\"]\n"
-                << "  gui --perft-tests [--max-depth <n>]\n"
-                << "  gui --uci\n"
-                << "  gui --bench [--bench-depth <n>] [--bench-time <ms>] [--bench-tt <mb>] [--threads <n>]\n";
+                << "  Forklift                        # launch GUI\n"
+                << "  Forklift --perft <depth> [--fen \"...\"]\n"
+                << "  Forklift --divide <depth> [--fen \"...\"]\n"
+                << "  Forklift --perft-tests [--max-depth <n>]\n"
+                << "  Forklift --uci\n"
+                << "  Forklift --bench [--bench-depth <n>] [--bench-time <ms>] [--bench-tt <mb>] [--threads <n>]\n";
             return 0;
         } else if(a == "--perft"){
             const char* v = needValue("--perft");

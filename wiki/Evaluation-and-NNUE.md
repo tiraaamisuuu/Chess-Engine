@@ -55,11 +55,11 @@ The current small training model did not pass the playing-strength gate, so clas
 
 ## Current research baseline
 
-![NNUE v1 offline and playing metrics](https://raw.githubusercontent.com/tiraaamisuuu/Chess-Engine/main/docs/assets/nnue-research-baseline.svg)
+![NNUE v1 offline and playing metrics](https://raw.githubusercontent.com/tiraaamisuuu/Forklift/main/docs/assets/nnue-research-baseline.svg)
 
 The percentages are deliberately kept distinct and the figure names the two
 different checkpoints. Feature coverage describes the shared corpus, validation
 sign accuracy belongs to the WDL candidate, and match play determines whether a
 checkpoint improved the complete engine. Their mismatch motivates the future
 fixed-budget NNUE study recorded in the
-[research notebook](https://github.com/tiraaamisuuu/Chess-Engine/tree/main/research).
+[research notebook](https://github.com/tiraaamisuuu/Forklift/tree/main/research).

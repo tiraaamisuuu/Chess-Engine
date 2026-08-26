@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(ChessEngine VERSION 1.0.0 LANGUAGES CXX)
+project(Forklift VERSION 1.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -59,6 +59,7 @@ if(CHESS_BUILD_GUI)
     src/main.cpp
     src/ui.cpp
   )
+  set_target_properties(gui PROPERTIES OUTPUT_NAME "Forklift")
   if(WIN32)
     target_sources(gui PRIVATE resources/windows/forklift.rc)
   endif()
@@ -154,7 +155,7 @@ if(TARGET gui)
     install(TARGETS gui RUNTIME DESTINATION bin)
   endif()
   install(DIRECTORY assets DESTINATION bin)
-  install(DIRECTORY assets DESTINATION share/chess-engine)
+  install(DIRECTORY assets DESTINATION share/forklift)
 endif()
 install(DIRECTORY web assets DESTINATION .
   PATTERN "__pycache__" EXCLUDE
@@ -164,8 +165,8 @@ install(FILES scripts/run_web_gui.ps1 DESTINATION scripts)
 install(FILES README.md DESTINATION .)
 install(DIRECTORY docs DESTINATION .)
 
-set(CPACK_PACKAGE_NAME "ChessEngine")
+set(CPACK_PACKAGE_NAME "Forklift")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-set(CPACK_PACKAGE_FILE_NAME "ChessEngine-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_PACKAGE_FILE_NAME "Forklift-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 set(CPACK_GENERATOR "ZIP")
 include(CPack)

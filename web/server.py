@@ -231,7 +231,14 @@ def external_engine_profile(entry: dict[str, Any]) -> EngineProfile | None:
 
 
 def find_built_engine(build: Path) -> Path | None:
-    preferred = ("chess-engine-uci", "chess-engine-uci.exe", "gui", "gui.exe")
+    preferred = (
+        "chess-engine-uci",
+        "chess-engine-uci.exe",
+        "Forklift",
+        "Forklift.exe",
+        "gui",
+        "gui.exe",
+    )
     candidates = [path for name in preferred for path in build.rglob(name) if path.is_file()]
     return candidates[0].resolve() if candidates else None
 
@@ -483,7 +490,7 @@ class GameService:
     def _download_stockfish(asset: StockfishAsset, destination: Path) -> None:
         digest = hashlib.sha256()
         total = 0
-        request = Request(asset.url, headers={"User-Agent": "Chess-Engine-Local-GUI/1.0"})
+        request = Request(asset.url, headers={"User-Agent": "Forklift-Local-GUI/1.1"})
         try:
             with urlopen(request, timeout=45) as response, destination.open("wb") as output:
                 announced = response.headers.get("Content-Length")
@@ -1093,7 +1100,7 @@ class GameService:
 
 class WebHandler(BaseHTTPRequestHandler):
     service: GameService
-    server_version = "ChessEngineWeb/2.0"
+    server_version = "ForkliftWeb/2.0"
 
     def log_message(self, format_string: str, *args: object) -> None:
         print(f"[web] {self.address_string()} {format_string % args}")

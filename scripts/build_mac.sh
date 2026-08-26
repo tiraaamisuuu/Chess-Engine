@@ -9,4 +9,4 @@ cmake -S . -B build-macos \
   -DCMAKE_PREFIX_PATH="$SFML_PREFIX"
 cmake --build build-macos --parallel
 
-echo "Built build-macos/gui and build-macos/chess-engine-uci"
+echo "Built build-macos/Forklift and build-macos/chess-engine-uci"

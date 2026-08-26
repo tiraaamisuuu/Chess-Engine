@@ -50,4 +50,4 @@ After training, weights are quantized into the engine’s versioned network form
 
 Candidate networks are tested with paired openings and colour reversal. Match summaries, PGNs, engine logs, and reproducibility metadata are written to an artifact directory. Only a statistically credible improvement is promoted to the runtime default.
 
-For command examples and the exact current status, see the repository’s [NNUE documentation](https://github.com/tiraaamisuuu/Chess-Engine/blob/main/docs/NNUE.md).
+For command examples and the exact current status, see the repository’s [NNUE documentation](https://github.com/tiraaamisuuu/Forklift/blob/main/docs/NNUE.md).

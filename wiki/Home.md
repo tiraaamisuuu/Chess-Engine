@@ -1,6 +1,6 @@
-# Chess Engine Wiki
+# Forklift Wiki
 
-This Wiki is the technical manual for the Chess Engine project: a C++17 UCI
+This Wiki is the technical manual for Forklift: a C++17 UCI
 engine with modern alpha-beta search, classical evaluation, an optional custom
 HalfKP NNUE evaluator, a CUDA training pipeline, and reproducible strength
 testing.
@@ -50,15 +50,15 @@ properly powered match.
   accuracy review and 2750 single-game performance rating; this is anecdotal,
   not an established engine rating
 
-![Forklift v1 release match results](https://raw.githubusercontent.com/tiraaamisuuu/Chess-Engine/main/docs/assets/release-strength.svg)
+![Forklift v1 release match results](https://raw.githubusercontent.com/tiraaamisuuu/Forklift/main/docs/assets/release-strength.svg)
 
-![Forklift Stockfish calibration curve](https://raw.githubusercontent.com/tiraaamisuuu/Chess-Engine/main/docs/assets/stockfish-calibration.svg)
+![Forklift Stockfish calibration curve](https://raw.githubusercontent.com/tiraaamisuuu/Forklift/main/docs/assets/stockfish-calibration.svg)
 
 Raw commands, hardware, commit IDs, checksums, match logs and negative results
 remain in the repository's
-[`docs/results/`](https://github.com/tiraaamisuuu/Chess-Engine/tree/main/docs/results)
+[`docs/results/`](https://github.com/tiraaamisuuu/Forklift/tree/main/docs/results)
 directory. The Wiki explains the system; the result files are the evidence.
 
 Compact research registries, hypotheses and reproducible plotting code live in
 the repository's
-[research notebook](https://github.com/tiraaamisuuu/Chess-Engine/tree/main/research).
+[research notebook](https://github.com/tiraaamisuuu/Forklift/tree/main/research).

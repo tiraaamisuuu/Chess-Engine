@@ -50,7 +50,7 @@ zero and shows that overrun as negative time.
   piece movement, resource telemetry, and a bounded 10.0-to-13.333-second
   search overrun.
 - GitHub Actions run
-  [32970142988](https://github.com/tiraaamisuuu/Chess-Engine/actions/runs/32970142988)
+  [32970142988](https://github.com/tiraaamisuuu/Forklift/actions/runs/32970142988)
   passed Ubuntu, macOS, Windows, sanitizers, and web GUI jobs.
 
 This is a usability and time-control milestone, not a playing-strength claim.

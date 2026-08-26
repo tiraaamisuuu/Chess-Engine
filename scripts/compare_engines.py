@@ -128,7 +128,14 @@ def default_sfml_prefix() -> Path | None:
 
 
 def find_engine(build: Path) -> Path:
-    names = {"chess-engine-uci", "chess-engine-uci.exe", "gui", "gui.exe"}
+    names = {
+        "chess-engine-uci",
+        "chess-engine-uci.exe",
+        "Forklift",
+        "Forklift.exe",
+        "gui",
+        "gui.exe",
+    }
     candidates = [path for path in build.rglob("*") if path.is_file() and path.name in names]
     candidates.sort(key=lambda path: (path.name.startswith("gui"), len(path.parts)))
     if not candidates:

@@ -14,4 +14,4 @@ if errorlevel 1 exit /b 1
 cmake --build build-windows --config Release
 if errorlevel 1 exit /b 1
 
-echo Built: build-windows\Release\gui.exe
+echo Built: build-windows\Release\Forklift.exe

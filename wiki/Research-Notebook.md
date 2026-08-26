@@ -6,7 +6,7 @@ roadmap priority and no method is being claimed as novel yet.
 
 ## Current signal
 
-![NNUE v1 offline and playing metrics](https://raw.githubusercontent.com/tiraaamisuuu/Chess-Engine/main/docs/assets/nnue-research-baseline.svg)
+![NNUE v1 offline and playing metrics](https://raw.githubusercontent.com/tiraaamisuuu/Forklift/main/docs/assets/nnue-research-baseline.svg)
 
 The five-million-position corpus reached 92.50% HalfKP feature coverage, but
 its original centipawn candidate scored only 32.5% against classical evaluation
@@ -39,5 +39,5 @@ until a literature review is completed.
 - Never substitute validation accuracy, NPS or one reviewed game for Elo.
 - Keep large raw artifacts outside Git and compact registries inside it.
 
-The versioned [research notebook](https://github.com/tiraaamisuuu/Chess-Engine/tree/main/research)
+The versioned [research notebook](https://github.com/tiraaamisuuu/Forklift/tree/main/research)
 contains the full questions, data policy, CSV baselines and figure generator.
