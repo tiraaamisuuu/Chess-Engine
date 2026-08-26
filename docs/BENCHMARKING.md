@@ -146,6 +146,19 @@ are skipped. An incomplete rung attempt is retained unchanged and retried in a
 new numbered attempt directory, so evidence is not silently overwritten.
 Individual games inside an interrupted attempt are not spliced into the retry.
 
+On Windows, the production pilot and its live dashboard can be started together:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_rating_calibration.ps1
+```
+
+The default contract is 200 paired games at each of 2200, 2400, 2600, 2800,
+3000, and 3190, using `10+0.1`, one thread per engine, 256 MiB hash, and six
+simultaneous games on the 12-core development host. Results are stored under
+`E:\Dev\Forklift-Research\matches`; the dashboard is served on port 8766 and
+keeps the computer awake without requiring the displays to remain on. Running
+the launcher again resumes the same ladder rather than overwriting evidence.
+
 Use `--quick` only to verify the ladder workflow; it selects four games per
 rung at `2+0.02`. For a rating claim, use substantially larger samples and
 repeat the ladder at a second time control. Even then, describe the result as a

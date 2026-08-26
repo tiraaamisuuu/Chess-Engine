@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Forklift / calibration</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080909;
+      --fg: #eeeeeb;
+      --muted: #777b78;
+      --faint: #3c403d;
+      --line: #242725;
+      --active: #a2d77f;
+      --warn: #dfb86d;
+      --bad: #c87979;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 13px;
+    }
+    main { width: min(880px, calc(100% - 40px)); margin: auto; padding: 44px 0 54px; }
+    header, .spread, footer { display: flex; justify-content: space-between; gap: 20px; }
+    header { color: var(--muted); align-items: center; }
+    .wordmark { color: var(--fg); }
+    .slash, .active { color: var(--active); }
+    .status { display: inline-flex; align-items: center; gap: 8px; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--active); }
+    .dot.stopped { background: var(--bad); }
+    .hero { padding: clamp(82px, 14vh, 145px) 0 58px; }
+    .kicker, .caption, .detail, footer { color: var(--muted); }
+    .count {
+      margin: 18px 0 8px;
+      font-size: clamp(45px, 8vw, 76px);
+      line-height: 1;
+      letter-spacing: -0.065em;
+      font-variant-numeric: tabular-nums;
+    }
+    .target { color: var(--faint); }
+    .eta { margin-top: 22px; color: var(--muted); }
+    .eta strong { color: var(--fg); font-size: 18px; font-weight: 400; }
+    .track, .meter { height: 1px; background: var(--line); overflow: hidden; }
+    .track { margin-top: 38px; }
+    .bar, .meter span { display: block; height: 100%; width: 0; background: var(--fg); transition: width 400ms ease; }
+    .progress-caption { margin-top: 10px; font-size: 11px; }
+    section.panel { border-top: 1px solid var(--line); padding: 23px 0 27px; }
+    .estimate-value { margin-top: 12px; font-size: 28px; font-variant-numeric: tabular-nums; }
+    .estimate-note { margin-top: 9px; color: var(--muted); font-size: 11px; }
+    table { width: 100%; margin-top: 19px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { padding: 11px 8px; border-bottom: 1px solid #171918; text-align: right; font-weight: 400; }
+    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+    th { color: var(--muted); font-size: 11px; }
+    tr.current td { color: var(--fg); }
+    tr.queued td { color: var(--faint); }
+    .state { color: var(--muted); }
+    tr.current .state { color: var(--active); }
+    .resource-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 44px; margin-top: 23px; }
+    .metric { margin: 8px 0 11px; font-size: 24px; font-variant-numeric: tabular-nums; }
+    .detail { min-height: 17px; margin-top: 8px; font-size: 11px; }
+    .log { margin-top: 18px; color: var(--muted); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+    .error { color: var(--bad); }
+    footer { margin-top: 18px; font-size: 11px; }
+    @media (max-width: 620px) {
+      main { width: calc(100% - 28px); padding-top: 28px; }
+      header, footer { align-items: flex-start; flex-direction: column; gap: 8px; }
+      .hero { padding: 76px 0 48px; }
+      .target { display: block; margin-top: 10px; font-size: .52em; letter-spacing: -.03em; }
+      .resource-grid { grid-template-columns: 1fr; gap: 28px; }
+      th:nth-child(5), td:nth-child(5), th:nth-child(6), td:nth-child(6) { display: none; }
+      th, td { padding-left: 4px; padding-right: 4px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .bar, .meter span { transition: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="wordmark">forklift<span class="slash">/</span>calibration</div>
+      <div class="status"><span class="dot" id="status-dot"></span><span id="status">connecting</span></div>
+    </header>
+
+    <section class="hero" aria-live="polite">
+      <div class="kicker" id="kicker">paired games completed</div>
+      <div class="count"><span id="completed">—</span><span class="target" id="total"> / —</span></div>
+      <div class="eta">estimated time remaining&nbsp;&nbsp;<strong id="eta">calculating</strong></div>
+      <div class="track" role="progressbar" aria-label="Calibration progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="bar" id="bar"></span></div>
+      <div class="spread progress-caption"><span id="percent">—</span><span id="current">waiting for first rung</span></div>
+    </section>
+
+    <section class="panel" aria-label="Current rating estimate">
+      <div class="caption">local Stockfish pool estimate</div>
+      <div class="estimate-value" id="estimate">collecting data</div>
+      <div class="estimate-note">Not FIDE, Chess.com or universal Elo. The estimate becomes meaningful only after the score crosses 50% between completed rungs.</div>
+    </section>
+
+    <section class="panel" aria-label="Calibration ladder">
+      <div>ladder</div>
+      <table>
+        <thead><tr><th>Stockfish</th><th>state</th><th>games</th><th>W–D–L</th><th>score</th><th>anchored</th></tr></thead>
+        <tbody id="rungs"></tbody>
+      </table>
+    </section>
+
+    <section class="panel" aria-label="System resources">
+      <div>system</div>
+      <div class="resource-grid">
+        <div>
+          <div class="caption">cpu</div><div class="metric" id="cpu">—</div>
+          <div class="meter"><span id="cpu-meter"></span></div>
+          <div class="detail" id="cpu-detail">waiting for match contract</div>
+        </div>
+        <div>
+          <div class="caption">memory</div><div class="metric" id="ram">—</div>
+          <div class="meter"><span id="ram-meter"></span></div>
+          <div class="detail" id="ram-detail">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Recent activity">
+      <div>recent activity</div>
+      <div class="log" id="recent">waiting for the runner</div>
+      <div class="log error" id="errors"></div>
+    </section>
+
+    <footer><span id="updated">waiting for update</span><span id="contract">refreshes every 2 seconds</span></footer>
+  </main>
+  <script>
+    const el = id => document.getElementById(id);
+    const number = value => Number(value || 0).toLocaleString("en-GB");
+    const pct = value => value == null ? "—" : `${Number(value).toFixed(1)}%`;
+    const width = value => `${Math.max(0, Math.min(100, Number(value || 0)))}%`;
+    const text = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
+    const bytes = value => {
+      if (value == null) return "—";
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let amount = Number(value), index = 0;
+      while (amount >= 1024 && index < units.length - 1) { amount /= 1024; index += 1; }
+      return `${amount.toFixed(1)} ${units[index]}`;
+    };
+
+    function renderRungs(rows) {
+      el("rungs").innerHTML = rows.map(row => {
+        const stateClass = row.state === "active" ? "current" : row.state;
+        const state = row.state === "active" ? "running" : row.state;
+        const anchored = row.anchoredPoint == null ? "—" : Math.round(row.anchoredPoint);
+        return `<tr class="${stateClass}"><td>${number(row.elo)}</td><td class="state">${state}</td><td>${number(row.games)} / ${number(row.totalGames)}</td><td>${number(row.wins)}–${number(row.draws)}–${number(row.losses)}</td><td>${pct(row.scorePercent)}</td><td>${anchored}</td></tr>`;
+      }).join("");
+    }
+
+    function resource(id, value) {
+      el(id).textContent = value == null ? "—" : `${Number(value).toFixed(0)}%`;
+      el(`${id}-meter`).style.width = width(value);
+    }
+
+    async function refresh() {
+      try {
+        const response = await fetch("/api/status", {cache: "no-store"});
+        if (!response.ok) throw new Error("status unavailable");
+        const data = await response.json();
+        const resources = data.resources || {};
+        const stopped = !data.running && data.state !== "complete" && data.state !== "starting";
+        el("status-dot").classList.toggle("stopped", stopped);
+        el("status").textContent = data.state;
+        el("completed").textContent = number(data.completedGames);
+        el("total").textContent = ` / ${number(data.totalGames)}`;
+        el("eta").textContent = data.eta;
+        el("percent").textContent = `${Number(data.percent).toFixed(1)}% complete`;
+        el("current").textContent = data.currentRung ? `testing Stockfish ${data.currentRung}` : `${number(data.completedRungs)} of ${number(data.totalRungs)} rungs complete`;
+        el("bar").style.width = width(data.percent);
+        el("bar").parentElement.setAttribute("aria-valuenow", String(data.percent));
+        el("estimate").textContent = data.estimate?.display || "collecting data";
+        renderRungs(data.rungs || []);
+        resource("cpu", resources.cpuPercent);
+        resource("ram", resources.ramPercent);
+        el("ram-detail").textContent = `${bytes(resources.ramUsed)} / ${bytes(resources.ramTotal)}`;
+        el("recent").innerHTML = (data.recent || []).map(line => `<div>${text(line)}</div>`).join("") || "waiting for the runner";
+        el("errors").innerHTML = (data.errors || []).map(line => `<div>${text(line)}</div>`).join("");
+        const cfg = data.configuration || {};
+        const workers = Number(cfg.concurrency) * 2 * Number(cfg.threads);
+        el("cpu-detail").textContent = Number.isFinite(workers) && workers > 0
+          ? `${number(cfg.concurrency)} simultaneous games · ${number(workers)} search workers`
+          : "waiting for match contract";
+        el("contract").textContent = `${cfg.timeControl || "—"} · ${cfg.concurrency || "—"} concurrent games · refreshes every 2 seconds`;
+        el("updated").textContent = `updated ${new Date(data.updatedAt).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"})}`;
+      } catch (error) {
+        el("status-dot").classList.add("stopped");
+        el("status").textContent = "disconnected";
+      }
+    }
+    refresh();
+    setInterval(refresh, 2000);
+  </script>
+</body>
+</html>

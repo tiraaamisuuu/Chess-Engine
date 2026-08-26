@@ -15,6 +15,14 @@ import compare_engines
 
 
 ROOT = Path(__file__).resolve().parents[1]
+LAUNCHER_CONTROL_FILES = {
+    "calibration.pid",
+    "calibration.stdout.log",
+    "calibration.stderr.log",
+    "dashboard.pid",
+    "dashboard.stdout.log",
+    "dashboard.stderr.log",
+}
 
 
 def arguments() -> argparse.Namespace:
@@ -160,6 +168,13 @@ def next_attempt(rung_dir: Path) -> Path:
         except ValueError:
             continue
     return rung_dir / f"attempt-{max(numbers, default=0) + 1:03d}"
+
+
+def unexpected_new_run_entries(run_dir: Path) -> list[Path]:
+    return sorted(
+        (path for path in run_dir.iterdir() if path.name not in LAUNCHER_CONTROL_FILES),
+        key=lambda path: path.name,
+    )
 
 
 def run_and_tee(command: list[str], log_path: Path) -> int:
@@ -412,8 +427,12 @@ def main() -> int:
             )
         print(f"Resuming ladder: {run_dir}")
     else:
-        if any(run_dir.iterdir()):
-            raise RuntimeError(f"New ladder directory must be empty: {run_dir}")
+        unexpected = unexpected_new_run_entries(run_dir)
+        if unexpected:
+            names = ", ".join(path.name for path in unexpected)
+            raise RuntimeError(
+                f"New ladder directory contains unexpected entries: {names}"
+            )
         manifest = {
             "schemaVersion": 1,
             "createdAt": datetime.now().astimezone().isoformat(timespec="seconds"),

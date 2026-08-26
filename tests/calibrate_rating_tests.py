@@ -80,6 +80,19 @@ class CalibrateRatingTests(unittest.TestCase):
             self.assertTrue(found[1]["completed"])
             self.assertEqual(calibrate_rating.next_attempt(rung_dir).name, "attempt-004")
 
+    def test_launcher_control_files_do_not_block_new_ladder(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary)
+            for name in calibrate_rating.LAUNCHER_CONTROL_FILES:
+                (run_dir / name).write_text("", encoding="utf-8")
+
+            self.assertEqual(calibrate_rating.unexpected_new_run_entries(run_dir), [])
+            unexpected = run_dir / "old-result.json"
+            unexpected.write_text("{}", encoding="utf-8")
+            self.assertEqual(
+                calibrate_rating.unexpected_new_run_entries(run_dir), [unexpected]
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
