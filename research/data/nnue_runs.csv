@@ -1,0 +1,2 @@
+experiment_id,date,architecture,teacher,teacher_nodes,train_positions,validation_positions,total_inputs,seen_inputs,input_coverage_pct,low_frequency_inputs,validation_objective,validation_brier,validation_mae_cp,validation_rmse_cp,sign_accuracy_pct,inference_nps,match_experiment_id,decision,source
+five-million-halfkp-v1-wdl,2026-08-21,HalfKP-v1-256,Stockfish 18,20000,5000000,616632,40960,37890,92.50,21184,WDL,0.010603,200.78,433.21,84.12,48020,nnue-wdl-result0-vs-classical-screen,reject,docs/results/2026-08-21-five-million-nnue.md

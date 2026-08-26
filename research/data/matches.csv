@@ -1,0 +1,5 @@
+experiment_id,date,candidate,baseline,games,wins,losses,draws,score_pct,relative_elo,elo_uncertainty,time_control,threads,hash_mb,seed,evidence_level,decision,source
+v1-vs-v0.4.0,2026-08-21,Forklift v1,v0.4.0,400,299,18,83,85.1,303.0,37.1,10+0.1,1,256,83,confirmatory,promote,docs/results/2026-08-21-v1-release-gate.md
+nnue-halfkp-v1-vs-classical,2026-08-21,HalfKP-v1 NNUE,Classical,400,102,242,56,32.5,-127.0,33.4,10+0.1,1,256,,confirmatory,reject,docs/results/2026-08-21-five-million-nnue.md
+nnue-wdl-result0-vs-classical-screen,2026-08-21,HalfKP-v1 WDL NNUE,Classical,40,15,20,5,43.8,-43.7,104.4,10+0.1,1,256,,exploratory,screen_only,docs/results/2026-08-21-five-million-nnue.md
+nnue-hybrid50-vs-classical,2026-08-21,50% NNUE hybrid,Classical,200,76,82,42,48.5,-10.4,43.0,10+0.1,1,256,47,confirmatory,reject,docs/results/2026-08-21-five-million-nnue.md

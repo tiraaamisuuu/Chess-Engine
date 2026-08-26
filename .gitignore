@@ -26,6 +26,8 @@ __pycache__/
 
 # Local NNUE datasets, checkpoints, and generated networks
 data/
+!research/data/
+!research/data/*.csv
 networks/
 *.pt
 *.nnue
