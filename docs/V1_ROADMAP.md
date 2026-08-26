@@ -1,4 +1,4 @@
-# Chess Engine v1 Roadmap
+# Forklift v1 Roadmap
 
 v1 is an evidence-driven rebuild now integrated into `main`. Correctness,
 reproducible testing, and measurable playing strength take priority over
@@ -53,6 +53,8 @@ available for controlled experiments. Neither has yet earned promotion.
 - **Complete:** the subsequent Forklift desktop overhaul adds smooth movement,
   original sound cues, native icon packaging, corrected resource telemetry,
   and adaptive time profiles while preserving the tested engine core.
+- **Complete:** `v1.1.0` publishes the overhaul under the permanent Forklift
+  name with explicit headless archives and a tested bundled Windows GUI ZIP.
 
 ## Current priority: post-v1 strength work
 

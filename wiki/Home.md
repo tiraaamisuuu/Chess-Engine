@@ -34,7 +34,7 @@ properly powered match.
 
 ## Current status
 
-- Canonical branch: `main`; `v1.0.0` is the published release baseline
+- Canonical branch: `main`; `v1.1.0` is the latest published release
 - Supported playing-strength default: one thread, classical evaluation
 - Native client: minimalist Forklift desktop app with adaptive time profiles,
   smooth movement, original sound cues, and live telemetry

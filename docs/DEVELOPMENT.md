@@ -7,8 +7,8 @@ after the v1 release.
 ## Repository state
 
 - Canonical development and release branch: `main`
-- `v1.0.0` is tagged and published; subsequent mainline commits contain the
-  completed Forklift desktop overhaul.
+- `v1.1.0` is tagged and published with the completed Forklift desktop
+  overhaul and an independently verified bundled Windows GUI archive.
 - Classical evaluation remains the default.
 - NNUE is optional and fully wired. The completed five-million-position
   baseline and follow-up WDL/hybrid candidates did not earn promotion.
