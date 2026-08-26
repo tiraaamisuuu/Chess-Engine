@@ -43,12 +43,14 @@ Enable with: ![Engine architecture](docs/assets/engine-architecture.svg)
 
 ## Performance
 
-All figures below are relative development measurements, not absolute Elo
-claims. Full hardware, commands, commits and uncertainty are preserved in
+All figures below are documented development measurements. The Stockfish
+ladder is a qualified local-pool calibration rather than a universal or human
+Elo claim. Full hardware, commands, commits and uncertainty are preserved in
 [`docs/results/`](docs/results/).
 
 | Measurement | Result | Interpretation |
 |---|---:|---|
+| Stockfish 18 calibration, 1,200 paired `10+0.1` games | approximately 2321.5 | Interpolated 50% crossing in this hardware-, opening- and time-control-specific limited-strength pool |
 | v1 vs `v0.4.0`, 400 paired `10+0.1` games | `299–18–83` | 85.1%, +303.0 +/- 37.1 Elo, 100% LOS; release strength gate passed |
 | Depth-10 search work | 270,343 → 186,618 nodes | Qsearch SEE pruning plus continuation history; changed tree |
 | Incremental null move | 5,108 → 4,951 ms | 3.1% median reduction with identical tree |
@@ -62,21 +64,25 @@ were rejected after neutral or negative measurements.
 
 ![Forklift v1 release match results](docs/assets/release-strength.svg)
 
-### Strength estimate and informal game review
+### Calibrated strength and informal game review
 
-Forklift does not yet have a defensible absolute Elo rating. Until it completes
-a calibrated Stockfish ladder or a rated engine-pool campaign, the working
-estimate is **roughly 2400–2700 Elo at generous desktop move times**. This is an
-engineering estimate, not an official rating, and hardware, time control and
-opponent pool can move the number substantially.
+Forklift completed a 1,200-game Stockfish 18 limited-strength ladder at
+`10+0.1`. It scored 56.5% against the 2200 rung and 45.8% against 2400, placing
+the interpolated 50% crossing at approximately **2321.5** in this exact local
+pool. All six rungs completed with zero crashes, time forfeits, illegal moves,
+or disconnects. This is the project's strongest reproducible strength estimate,
+but it is not an official FIDE or Chess.com rating and should travel with its
+hardware, opening suite, time control, sample size, and uncertainty.
+
+![Forklift Stockfish calibration curve](docs/assets/stockfish-calibration.svg)
 
 One manually relayed game against Chess.com's Magnus Carlsen bot received a
 Chess.com game review of **90.6% accuracy**, a **2750 single-game performance
 rating**, and **zero misses or blunders** for Forklift. The bot side received
 96.4% and 3000. This is encouraging anecdotal evidence from one game—not a
-repeatable benchmark or proof that Forklift is 2750 Elo. The measured result
-that can currently be reproduced is the +303.0 +/- 37.1 relative Elo match
-against `v0.4.0` above.
+repeatable benchmark or proof that Forklift is 2750 Elo. The measured results
+that can currently be reproduced are the approximately 2321.5 local Stockfish
+crossing and the +303.0 +/- 37.1 relative Elo release match above.
 
 <!-- PERFORMANCE VISUAL
 Recommended later, once another release-grade match exists: a simple line or

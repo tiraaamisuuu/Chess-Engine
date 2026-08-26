@@ -1,0 +1,7 @@
+experiment_id,date,commit,stockfish_version,stockfish_uci_elo,games,wins,losses,draws,score_pct,relative_elo,elo_uncertainty,anchored_point,time_control,threads,hash_mb,concurrency,seed,failures,source
+absolute-calibration-main-2200,2026-08-26,beb0571c5cf740c7f14dfd779540ca7c28a5243b,18,2200,200,104,78,18,56.5,45.4,46.5,2245.4,10+0.1,1,256,6,1701,0,docs/results/2026-08-26-stockfish-calibration.md
+absolute-calibration-main-2400,2026-08-26,beb0571c5cf740c7f14dfd779540ca7c28a5243b,18,2400,200,83,100,17,45.8,-29.6,46.4,2370.4,10+0.1,1,256,6,1701,0,docs/results/2026-08-26-stockfish-calibration.md
+absolute-calibration-main-2600,2026-08-26,beb0571c5cf740c7f14dfd779540ca7c28a5243b,18,2600,200,55,124,21,32.8,-125.0,48.5,2475.0,10+0.1,1,256,6,1701,0,docs/results/2026-08-26-stockfish-calibration.md
+absolute-calibration-main-2800,2026-08-26,beb0571c5cf740c7f14dfd779540ca7c28a5243b,18,2800,200,12,173,15,9.8,-386.6,75.2,2413.4,10+0.1,1,256,6,1701,0,docs/results/2026-08-26-stockfish-calibration.md
+absolute-calibration-main-3000,2026-08-26,beb0571c5cf740c7f14dfd779540ca7c28a5243b,18,3000,200,1,188,11,3.3,-589.5,114.9,2410.5,10+0.1,1,256,6,1701,0,docs/results/2026-08-26-stockfish-calibration.md
+absolute-calibration-main-3190,2026-08-26,beb0571c5cf740c7f14dfd779540ca7c28a5243b,18,3190,200,1,195,4,1.5,-726.9,270.0,2463.1,10+0.1,1,256,6,1701,0,docs/results/2026-08-26-stockfish-calibration.md

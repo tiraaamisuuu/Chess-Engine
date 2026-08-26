@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 from html import escape
+import math
 from pathlib import Path
 
 
@@ -59,6 +60,48 @@ def validate_nnue_runs(records: list[dict[str, str]]) -> None:
             raise RuntimeError(f"inconsistent feature coverage: {record['experiment_id']}")
 
 
+def validate_calibration(records: list[dict[str, str]]) -> None:
+    if len(records) < 2:
+        raise RuntimeError("calibration requires at least two rungs")
+    previous_rung = -1
+    for record in records:
+        rung = int(record["stockfish_uci_elo"])
+        games = int(record["games"])
+        wins = int(record["wins"])
+        losses = int(record["losses"])
+        draws = int(record["draws"])
+        if rung <= previous_rung:
+            raise RuntimeError("calibration rungs must be strictly increasing")
+        if wins + losses + draws != games:
+            raise RuntimeError(f"inconsistent calibration WDL: {rung}")
+        calculated_score = 100.0 * (wins + 0.5 * draws) / games
+        if abs(calculated_score - float(record["score_pct"])) > 0.051:
+            raise RuntimeError(f"inconsistent calibration score: {rung}")
+        anchored = rung + float(record["relative_elo"])
+        if abs(anchored - float(record["anchored_point"])) > 0.051:
+            raise RuntimeError(f"inconsistent anchored point: {rung}")
+        previous_rung = rung
+
+
+def calibration_crossing(records: list[dict[str, str]]) -> float:
+    for lower, upper in zip(records, records[1:]):
+        lower_score = float(lower["score_pct"])
+        upper_score = float(upper["score_pct"])
+        if (lower_score - 50.0) * (upper_score - 50.0) <= 0:
+            lower_rung = float(lower["stockfish_uci_elo"])
+            upper_rung = float(upper["stockfish_uci_elo"])
+            return lower_rung + (
+                (50.0 - lower_score)
+                * (upper_rung - lower_rung)
+                / (upper_score - lower_score)
+            )
+    raise RuntimeError("calibration results do not bracket a 50% crossing")
+
+
+def elo_to_score(relative_elo: float) -> float:
+    return 100.0 / (1.0 + math.pow(10.0, -relative_elo / 400.0))
+
+
 def svg_document(title: str, description: str, body: str, height: int) -> str:
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="{height}" viewBox="0 0 1200 {height}" role="img" aria-labelledby="title desc">
   <title id="title">{escape(title)}</title>
@@ -78,6 +121,10 @@ def svg_document(title: str, description: str, body: str, height: int) -> str:
     .accent {{ fill: #9dce7a; }}
     .warning {{ fill: #d7ae68; }}
     .threshold {{ stroke: #d7ae68; stroke-width: 2; stroke-dasharray: 6 5; }}
+    .grid {{ stroke: #242725; stroke-width: 1; }}
+    .curve {{ fill: none; stroke: #9dce7a; stroke-width: 3; }}
+    .ci {{ stroke: #a4a9a5; stroke-width: 2; }}
+    .point {{ fill: #9dce7a; stroke: #0a0b0b; stroke-width: 3; }}
   </style>
   <rect class="bg" width="1200" height="{height}" rx="8"/>
   <rect class="frame" x="0.5" y="0.5" width="1199" height="{height - 1}" rx="8"/>
@@ -180,7 +227,6 @@ def nnue_baseline(
             '  <text class="small" x="965" y="126">match promotion boundary · 50%</text>',
         ]
     )
-
     body = "\n".join(
         [
             '  <text class="title" x="70" y="67">NNUE v1 · offline quality did not prove playing strength</text>',
@@ -199,6 +245,137 @@ def nnue_baseline(
     )
 
 
+def stockfish_calibration_curve(records: list[dict[str, str]]) -> str:
+    chart_left, chart_right = 105.0, 1130.0
+    chart_top, chart_bottom = 150.0, 455.0
+    rungs = [float(record["stockfish_uci_elo"]) for record in records]
+    minimum, maximum = min(rungs) - 50.0, max(rungs) + 50.0
+
+    def x(value: float) -> float:
+        return chart_left + (value - minimum) * (chart_right - chart_left) / (maximum - minimum)
+
+    def y(value: float) -> float:
+        return chart_bottom - value * (chart_bottom - chart_top) / 100.0
+
+    marks: list[str] = []
+    for tick in (0, 25, 50, 75, 100):
+        tick_y = y(float(tick))
+        css_class = "threshold" if tick == 50 else "grid"
+        marks.extend(
+            [
+                f'  <line class="{css_class}" x1="{chart_left}" y1="{tick_y:.2f}" x2="{chart_right}" y2="{tick_y:.2f}"/>',
+                f'  <text class="small" x="88" y="{tick_y + 5:.2f}" text-anchor="end">{tick}%</text>',
+            ]
+        )
+
+    points: list[tuple[float, float]] = []
+    for record in records:
+        rung = float(record["stockfish_uci_elo"])
+        score = float(record["score_pct"])
+        relative = float(record["relative_elo"])
+        uncertainty = float(record["elo_uncertainty"])
+        point_x, point_y = x(rung), y(score)
+        low_y = y(elo_to_score(relative - uncertainty))
+        high_y = y(elo_to_score(relative + uncertainty))
+        points.append((point_x, point_y))
+        marks.extend(
+            [
+                f'  <line class="ci" x1="{point_x:.2f}" y1="{high_y:.2f}" x2="{point_x:.2f}" y2="{low_y:.2f}"/>',
+                f'  <line class="ci" x1="{point_x - 7:.2f}" y1="{high_y:.2f}" x2="{point_x + 7:.2f}" y2="{high_y:.2f}"/>',
+                f'  <line class="ci" x1="{point_x - 7:.2f}" y1="{low_y:.2f}" x2="{point_x + 7:.2f}" y2="{low_y:.2f}"/>',
+                f'  <text class="small" x="{point_x:.2f}" y="480" text-anchor="middle">{int(rung)}</text>',
+            ]
+        )
+
+    path = " ".join(
+        ("M" if index == 0 else "L") + f" {point_x:.2f} {point_y:.2f}"
+        for index, (point_x, point_y) in enumerate(points)
+    )
+    marks.append(f'  <path class="curve" d="{path}"/>')
+    for record, (point_x, point_y) in zip(records, points):
+        score = float(record["score_pct"])
+        label_y = point_y - 14
+        marks.extend(
+            [
+                f'  <circle class="point" cx="{point_x:.2f}" cy="{point_y:.2f}" r="7"/>',
+                f'  <text class="label" x="{point_x:.2f}" y="{label_y:.2f}" text-anchor="middle">{score:.1f}%</text>',
+            ]
+        )
+
+    crossing = calibration_crossing(records)
+    crossing_x = x(crossing)
+    marks.extend(
+        [
+            f'  <line class="threshold" x1="{crossing_x:.2f}" y1="{y(50):.2f}" x2="{crossing_x:.2f}" y2="{chart_bottom}"/>',
+            f'  <text class="small" x="{(chart_left + chart_right) / 2:.2f}" y="515" text-anchor="middle">Stockfish 18 configured UCI_Elo</text>',
+        ]
+    )
+    body = "\n".join(
+        [
+            '  <text class="title" x="70" y="67">Forklift · Stockfish limited-strength calibration</text>',
+            '  <text class="sub" x="70" y="99">1,200 games · 200 per rung · 10+0.1 · one thread per engine · paired openings</text>',
+            f'  <text class="value" x="1130" y="67" text-anchor="end">≈ {crossing:.1f}</text>',
+            '  <text class="sub" x="1130" y="99" text-anchor="end">local 50% crossing</text>',
+            *marks,
+            '  <text class="small" x="70" y="556">Whiskers transform Cute Chess relative-Elo uncertainty into score bounds.</text>',
+            f'  <text class="small" x="1130" y="556" text-anchor="end">local pool estimate · ≈ {crossing:.1f}</text>',
+            '  <text class="small" x="70" y="584">This is a hardware-, opening- and time-control-specific Stockfish anchor—not FIDE, Chess.com or universal Elo.</text>',
+        ]
+    )
+    return svg_document(
+        "Forklift Stockfish calibration curve",
+        "Forklift scored 56.5 percent against Stockfish UCI Elo 2200 and 45.8 percent against 2400, placing the interpolated 50 percent crossing near 2321.5 in this local test pool.",
+        body,
+        620,
+    )
+
+
+def stockfish_calibration_wdl(records: list[dict[str, str]]) -> str:
+    bar_x, bar_width, bar_height = 210.0, 690.0, 30.0
+    rows_svg: list[str] = []
+    for index, record in enumerate(records):
+        rung = int(record["stockfish_uci_elo"])
+        games = int(record["games"])
+        wins = int(record["wins"])
+        draws = int(record["draws"])
+        losses = int(record["losses"])
+        score = float(record["score_pct"])
+        row_y = 145.0 + index * 66.0
+        cursor = bar_x
+        for css_class, value in (("win", wins), ("draw", draws), ("loss", losses)):
+            width = bar_width * value / games
+            rows_svg.append(
+                f'  <rect class="{css_class}" x="{cursor:.2f}" y="{row_y:.2f}" width="{width:.2f}" height="{bar_height}"/>'
+            )
+            cursor += width
+        rows_svg.extend(
+            [
+                f'  <text class="label" x="180" y="{row_y + 21:.2f}" text-anchor="end">{rung}</text>',
+                f'  <text class="small" x="930" y="{row_y + 13:.2f}">W {wins} · D {draws} · L {losses}</text>',
+                f'  <text class="small" x="930" y="{row_y + 32:.2f}">{score:.1f}% score</text>',
+            ]
+        )
+
+    body = "\n".join(
+        [
+            '  <text class="title" x="70" y="67">Calibration outcomes by Stockfish rung</text>',
+            '  <text class="sub" x="70" y="99">Forklift perspective · every row contains 200 games</text>',
+            '  <rect class="win" x="781" y="58" width="14" height="14"/><text class="small" x="805" y="70">wins</text>',
+            '  <rect class="draw" x="866" y="58" width="14" height="14"/><text class="small" x="890" y="70">draws</text>',
+            '  <rect class="loss" x="963" y="58" width="14" height="14"/><text class="small" x="987" y="70">losses</text>',
+            *rows_svg,
+            '  <text class="small" x="70" y="563">No crashes, time forfeits, illegal moves or disconnects across all 1,200 games.</text>',
+            '  <text class="small" x="1130" y="563" text-anchor="end">commit · beb0571</text>',
+        ]
+    )
+    return svg_document(
+        "Forklift calibration outcomes by Stockfish rung",
+        "Six stacked horizontal bars show Forklift wins, draws and losses in 200 games against each Stockfish limited-strength rung from 2200 through 3190.",
+        body,
+        600,
+    )
+
+
 def main() -> int:
     args = arguments()
     output_dir = args.output_dir.resolve()
@@ -206,8 +383,10 @@ def main() -> int:
 
     matches = rows(DATA_DIR / "matches.csv")
     nnue_runs = rows(DATA_DIR / "nnue_runs.csv")
+    calibration = rows(DATA_DIR / "stockfish_calibration.csv")
     validate_matches(matches)
     validate_nnue_runs(nnue_runs)
+    validate_calibration(calibration)
     release = find(matches, "v1-vs-v0.4.0")
     nnue_match = find(matches, "nnue-halfkp-v1-vs-classical")
     wdl_screen = find(matches, "nnue-wdl-result0-vs-classical-screen")
@@ -218,6 +397,8 @@ def main() -> int:
         "nnue-research-baseline.svg": nnue_baseline(
             nnue_run, nnue_match, wdl_screen
         ),
+        "stockfish-calibration.svg": stockfish_calibration_curve(calibration),
+        "stockfish-calibration-wdl.svg": stockfish_calibration_wdl(calibration),
     }
     stale: list[Path] = []
     for name, content in outputs.items():

@@ -43,13 +43,16 @@ properly powered match.
 - Teacher budget: 20k nodes selected after 127,784 same-position comparisons
 - Completed training scale: five million positions plus 616,632 game-disjoint
   validation positions
-- Provisional strength estimate: roughly 2400–2700 Elo at generous desktop
-  move times, pending a calibrated engine ladder
+- Measured local-pool strength: approximately 2321.5 from a 1,200-game
+  Stockfish 18 limited-strength ladder at `10+0.1`; this is not FIDE,
+  Chess.com, or universal Elo
 - Informal external result: one manually relayed game received a 90.6% Chess.com
   accuracy review and 2750 single-game performance rating; this is anecdotal,
   not an established engine rating
 
 ![Forklift v1 release match results](https://raw.githubusercontent.com/tiraaamisuuu/Chess-Engine/main/docs/assets/release-strength.svg)
+
+![Forklift Stockfish calibration curve](https://raw.githubusercontent.com/tiraaamisuuu/Chess-Engine/main/docs/assets/stockfish-calibration.svg)
 
 Raw commands, hardware, commit IDs, checksums, match logs and negative results
 remain in the repository's

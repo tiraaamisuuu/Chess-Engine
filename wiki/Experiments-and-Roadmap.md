@@ -8,6 +8,7 @@ The following results are recorded in the repository’s experiment reports:
 
 | Change | Result | Decision |
 |---|---:|---|
+| Stockfish 18 limited-strength calibration | 1,200 games; approximately 2321.5 local crossing | Baseline established; confirm near the crossing at a second time control |
 | v1 versus `v0.4.0` | 299 wins, 18 losses, 83 draws | Released; +303 +/- 37 Elo in this test pool |
 | Mobility evaluation | 11.8% fewer nodes | Kept |
 | Stack-based move lists | 11.5% faster | Kept |
@@ -28,12 +29,13 @@ These figures are not mixed into one synthetic score. Node reductions, throughpu
 
 The immediate work is post-v1 strength validation:
 
-1. confirm continuation history and qsearch SEE pruning at a slower time
+1. repeat the calibrated boundary near 2200–2400 at a slower time control;
+2. confirm continuation history and qsearch SEE pruning at a slower time
    control;
-2. profile root-parallel contention and prove equal-time strength before
+3. profile root-parallel contention and prove equal-time strength before
    changing the one-thread default;
-3. target rare HalfKP inputs and test a stronger representation; and
-4. automate candidate-versus-champion promotion while preserving every result.
+4. target rare HalfKP inputs and test a stronger representation; and
+5. automate candidate-versus-champion promotion while preserving every result.
 
 The teacher budget is now resolved: 127,784 same-position 5k-vs-20k searches
 had 97.499% score-sign agreement, leaving 3,196 disagreements. The project

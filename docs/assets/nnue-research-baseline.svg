@@ -16,6 +16,10 @@
     .accent { fill: #9dce7a; }
     .warning { fill: #d7ae68; }
     .threshold { stroke: #d7ae68; stroke-width: 2; stroke-dasharray: 6 5; }
+    .grid { stroke: #242725; stroke-width: 1; }
+    .curve { fill: none; stroke: #9dce7a; stroke-width: 3; }
+    .ci { stroke: #a4a9a5; stroke-width: 2; }
+    .point { fill: #9dce7a; stroke: #0a0b0b; stroke-width: 3; }
   </style>
   <rect class="bg" width="1200" height="590" rx="8"/>
   <rect class="frame" x="0.5" y="0.5" width="1199" height="589" rx="8"/>

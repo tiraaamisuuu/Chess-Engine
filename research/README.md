@@ -25,6 +25,11 @@ The working paper direction is:
 This is only a direction. Novelty must be established by a proper literature
 review before any publication claim.
 
+The first absolute-strength campaign now provides an additional baseline:
+1,200 games against six Stockfish 18 limited-strength rungs produced a local
+50% crossing near 2321.5 with no technical failures. A repeat at a second time
+control is required before treating the estimate as portable.
+
 ## Repository contents
 
 - [`RESEARCH_QUESTIONS.md`](RESEARCH_QUESTIONS.md) records hypotheses and
@@ -32,6 +37,8 @@ review before any publication claim.
 - [`DATA_POLICY.md`](DATA_POLICY.md) defines what is collected and where it
   lives.
 - [`data/matches.csv`](data/matches.csv) is the compact match-result registry.
+- [`data/stockfish_calibration.csv`](data/stockfish_calibration.csv) records the
+  rung-level absolute-strength calibration.
 - [`data/nnue_runs.csv`](data/nnue_runs.csv) records comparable NNUE data,
   validation and inference measurements.
 - `scripts/generate_research_figures.py` regenerates the checked-in SVG figures.
