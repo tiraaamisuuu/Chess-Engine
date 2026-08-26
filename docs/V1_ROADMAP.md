@@ -4,6 +4,9 @@ v1 is an evidence-driven rebuild now integrated into `main`. Correctness,
 reproducible testing, and measurable playing strength take priority over
 accumulating heuristics.
 
+This file records the completed v1 programme and immediate follow-up. The
+open-ended path beyond it lives in the [Ultimate Roadmap](ULTIMATE_ROADMAP.md).
+
 ## Completed foundations
 
 - Independent UCI, developer-tool, test, web, and optional SFML targets
@@ -85,3 +88,9 @@ available for controlled experiments. Neither has yet earned promotion.
 - A properly sized paired test establishes strength over the release baseline.
 - Classical evaluation stays default unless an NNUE separately proves stronger.
 - Documentation and result artifacts are reproducible and accurately qualified.
+
+## Beyond v1
+
+Absolute-strength calibration, a stronger NNUE, proven parallel search,
+distributed testing, large-scale self-play and the separate policy/value
+research line are staged in the [Ultimate Roadmap](ULTIMATE_ROADMAP.md).

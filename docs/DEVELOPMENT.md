@@ -244,6 +244,11 @@ material, and teacher magnitude, and checksummed cross-machine merging.
 
 ## Prioritized roadmap
 
+This section is the immediate engineering queue. The longer programme—from
+absolute-strength calibration through distributed testing and a separate
+policy/value research line—is maintained in
+[`docs/ULTIMATE_ROADMAP.md`](ULTIMATE_ROADMAP.md).
+
 ### Priority 1: maintain the v1 release baseline
 
 1. **Complete:** the five-million-position, 20k-node production dataset,

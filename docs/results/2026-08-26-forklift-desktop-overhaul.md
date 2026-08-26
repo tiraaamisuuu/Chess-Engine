@@ -55,3 +55,16 @@ zero and shows that overrun as negative time.
 
 This is a usability and time-control milestone, not a playing-strength claim.
 The classical evaluator and one search thread remain the supported defaults.
+
+## Informal external game review
+
+After the overhaul, the user manually relayed one game between Forklift and
+Chess.com's Magnus Carlsen bot. Chess.com's review assigned Forklift 90.6%
+accuracy, a 2750 single-game performance rating, zero misses and zero blunders;
+the bot side received 96.4% and 3000.
+
+This is encouraging but anecdotal. It is one manually relayed game against a
+bot under conditions that are not captured as a reproducible engine match. It
+does not establish a 2750 absolute Elo rating. Pending a calibrated ladder, the
+project uses 2400–2700 only as a provisional working estimate at generous
+desktop move times.

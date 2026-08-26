@@ -25,6 +25,8 @@ properly powered match.
   perft, benchmarks, paired matches, Elo qualification, and SPRT
 - [Experiments and Roadmap](Experiments-and-Roadmap.md) — accepted/rejected
   work, current strongest configuration, and the staged improvement plan
+- [Ultimate Roadmap](Ultimate-Roadmap.md) — the open-ended route through
+  stronger search, production NNUE, distributed testing and neural self-play
 - [Development Workflow](Development-Workflow.md) — repository layout,
   experiment discipline, release gates, and contribution workflow
 
@@ -39,6 +41,11 @@ properly powered match.
 - Teacher budget: 20k nodes selected after 127,784 same-position comparisons
 - Completed training scale: five million positions plus 616,632 game-disjoint
   validation positions
+- Provisional strength estimate: roughly 2400–2700 Elo at generous desktop
+  move times, pending a calibrated engine ladder
+- Informal external result: one manually relayed game received a 90.6% Chess.com
+  accuracy review and 2750 single-game performance rating; this is anecdotal,
+  not an established engine rating
 
 Raw commands, hardware, commit IDs, checksums, match logs and negative results
 remain in the repository's

@@ -60,6 +60,22 @@ Continuation history scored `37–31–32` and remains provisional pending a
 slower, longer match. Pawn correction history and a selection-scan move picker
 were rejected after neutral or negative measurements.
 
+### Strength estimate and informal game review
+
+Forklift does not yet have a defensible absolute Elo rating. Until it completes
+a calibrated Stockfish ladder or a rated engine-pool campaign, the working
+estimate is **roughly 2400–2700 Elo at generous desktop move times**. This is an
+engineering estimate, not an official rating, and hardware, time control and
+opponent pool can move the number substantially.
+
+One manually relayed game against Chess.com's Magnus Carlsen bot received a
+Chess.com game review of **90.6% accuracy**, a **2750 single-game performance
+rating**, and **zero misses or blunders** for Forklift. The bot side received
+96.4% and 3000. This is encouraging anecdotal evidence from one game—not a
+repeatable benchmark or proof that Forklift is 2750 Elo. The measured result
+that can currently be reproduced is the +303.0 +/- 37.1 relative Elo match
+against `v0.4.0` above.
+
 <!-- PERFORMANCE VISUAL
 Recommended later, once another release-grade match exists: a simple line or
 step chart of measured candidate score across tagged engine revisions. Include
@@ -140,6 +156,8 @@ The principal executables are `chess-engine-uci`, `chess-engine-tools`, and
   calibration and SPRT
 - [Development status](docs/DEVELOPMENT.md) — current configuration and release
   gates
+- [Ultimate roadmap](docs/ULTIMATE_ROADMAP.md) — the unbounded path from the
+  current engine to a continuously improving research platform
 - [Raw experimental results](docs/results/) — permanent reproducibility record
 
 The Wiki source is versioned in this repository and mirrored to the project's
@@ -147,25 +165,18 @@ GitHub Wiki, so documentation changes remain reviewable with the code.
 
 ## Roadmap
 
-**Current**
+The immediate sequence is: calibrate Forklift's absolute strength, confirm the
+retained search gains at slower time controls, automate candidate-versus-
+champion testing, build a stronger NNUE v2, then prove multi-thread strength.
 
-- `main` is the canonical development and release branch
-- `v1.0.0` is tagged and published; later mainline work includes the completed
-  Forklift desktop overhaul
-- Keep classical evaluation and one search thread as the proven defaults
+Beyond that, the project expands into distributed SPRT testing and tuning,
+large-scale self-play, tablebases, SIMD/architecture-specific optimization,
+and a separate policy/value plus MCTS research engine. The champion will never
+be replaced merely because a new technique is fashionable: every candidate
+must be correct, reproducible and stronger at a named resource limit.
 
-**Next**
-
-- Confirm retained search gains at a slower time control
-- Profile root-parallel scaling and duplicated work
-- Target rare HalfKP inputs and prototype a stronger NNUE representation
-- Add engine self-play and targeted rare-position data only as controlled inputs
-- Automate candidate-vs-champion promotion and rejection
-
-**Longer term**
-
-- Continue isolated search, parallelism and time-management experiments
-- Build a repeatable `generate → train → test → promote` improvement loop
+The complete, deliberately open-ended plan is in the
+**[Ultimate Roadmap](docs/ULTIMATE_ROADMAP.md)**.
 
 The project follows one rule throughout: **implement → test → measure → keep or
 reject → document**.
