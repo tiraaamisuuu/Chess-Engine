@@ -4,6 +4,7 @@ param(
     [int]$GamesPerRung = 200,
     [string]$TimeControl = '10+0.1',
     [int]$Concurrency = 6,
+    [int]$Seed = 1701,
     [int]$Port = 8766
 )
 
@@ -23,6 +24,9 @@ if ($GamesPerRung -lt 2 -or $GamesPerRung % 2 -ne 0) {
 }
 if ($Concurrency -lt 1) {
     throw 'Concurrency must be positive.'
+}
+if ($Seed -lt 0) {
+    throw 'Seed must be non-negative.'
 }
 
 New-Item -ItemType Directory -Force -Path $resolvedRunDir | Out-Null
@@ -65,7 +69,7 @@ if (-not (Test-RecordedProcess $calibrationPidPath)) {
         '--hash', '256',
         '--concurrency', $Concurrency,
         '--build-jobs', '12',
-        '--seed', '1701',
+        '--seed', $Seed,
         '--run-dir', $resolvedRunDir
     )
     $calibration = Start-Process -FilePath $pythonLauncher `
@@ -86,4 +90,5 @@ if (-not (Test-RecordedProcess $calibrationPidPath)) {
     GamesPerRung = $GamesPerRung
     TimeControl = $TimeControl
     Concurrency = $Concurrency
+    Seed = $Seed
 }
