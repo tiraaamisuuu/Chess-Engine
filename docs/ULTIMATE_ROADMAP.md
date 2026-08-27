@@ -47,8 +47,9 @@ Before optimizing against a guessed rating, establish a durable baseline.
   crashes and relative Elo.
 - Feed compact result summaries into the versioned research notebook while
   keeping large raw evidence in `E:\Dev\Forklift-Research`.
-- Replace the current 2400–2700 working estimate only when this campaign
-  produces repeatable evidence.
+- Preserve the measured 2321.5 `10+0.1` crossing and the level result against
+  the 2400 rung at `30+0.3` as separate local-pool anchors; close the slower
+  bracket above 2400 before claiming its crossing.
 
 **Exit gate:** a rerunnable rating estimate with uncertainty at two time
 controls, plus a frozen post-v1 champion binary.

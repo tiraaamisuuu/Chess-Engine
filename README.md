@@ -50,6 +50,7 @@ Elo claim. Full hardware, commands, commits and uncertainty are preserved in
 
 | Measurement | Result | Interpretation |
 |---|---:|---|
+| Stockfish 18 calibration, 2,400 paired `30+0.3` games | level with the 2400 rung | `272-59-269` at the boundary; +1.7 +/- 26.4 relative Elo and 2401.7 anchored, but the formal crossing remains just above the tested range |
 | Stockfish 18 calibration, 1,200 paired `10+0.1` games | approximately 2321.5 | Interpolated 50% crossing in this hardware-, opening- and time-control-specific limited-strength pool |
 | v1 vs `v0.4.0`, 400 paired `10+0.1` games | `299–18–83` | 85.1%, +303.0 +/- 37.1 Elo, 100% LOS; release strength gate passed |
 | Depth-10 search work | 270,343 → 186,618 nodes | Qsearch SEE pruning plus continuation history; changed tree |
@@ -66,11 +67,20 @@ were rejected after neutral or negative measurements.
 
 ### Calibrated strength and informal game review
 
+The slower confirmation campaign completed 2,400 games at `30+0.3`. Forklift
+scored above 50% at every configured rung and finished `272-59-269` against
+Stockfish 2400: 50.2%, or +1.7 +/- 26.4 relative Elo. That directly anchors the
+top match at 2401.7 in this pool, but it does not formally bracket the crossing;
+a higher rung is still required. The conservative conclusion is that Forklift
+was approximately level with the Stockfish 2400 setting under these conditions.
+
+![Forklift slow-control Stockfish calibration curve](docs/assets/stockfish-calibration-slow.svg)
+
 Forklift completed a 1,200-game Stockfish 18 limited-strength ladder at
 `10+0.1`. It scored 56.5% against the 2200 rung and 45.8% against 2400, placing
 the interpolated 50% crossing at approximately **2321.5** in this exact local
 pool. All six rungs completed with zero crashes, time forfeits, illegal moves,
-or disconnects. This is the project's strongest reproducible strength estimate,
+or disconnects. This is the project's first reproducible strength estimate,
 but it is not an official FIDE or Chess.com rating and should travel with its
 hardware, opening suite, time control, sample size, and uncertainty.
 
@@ -81,8 +91,9 @@ Chess.com game review of **90.6% accuracy**, a **2750 single-game performance
 rating**, and **zero misses or blunders** for Forklift. The bot side received
 96.4% and 3000. This is encouraging anecdotal evidence from one game—not a
 repeatable benchmark or proof that Forklift is 2750 Elo. The measured results
-that can currently be reproduced are the approximately 2321.5 local Stockfish
-crossing and the +303.0 +/- 37.1 relative Elo release match above.
+that can currently be reproduced are the approximately 2321.5 fast-control
+crossing, the level result against the 2400 rung at the slower control, and the
++303.0 +/- 37.1 relative Elo release match above.
 
 <!-- PERFORMANCE VISUAL
 Recommended later, once another release-grade match exists: a simple line or
@@ -188,9 +199,10 @@ GitHub Wiki, so documentation changes remain reviewable with the code.
 
 ## Roadmap
 
-The immediate sequence is: calibrate Forklift's absolute strength, confirm the
-retained search gains at slower time controls, automate candidate-versus-
-champion testing, build a stronger NNUE v2, then prove multi-thread strength.
+The immediate sequence is: close the slow-control calibration bracket above
+2400, confirm the retained search gains at slower time controls, automate
+candidate-versus-champion testing, build a stronger NNUE v2, then prove
+multi-thread strength.
 
 Beyond that, the project expands into distributed SPRT testing and tuning,
 large-scale self-play, tablebases, SIMD/architecture-specific optimization,

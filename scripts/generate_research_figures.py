@@ -38,6 +38,19 @@ def find(records: list[dict[str, str]], experiment_id: str) -> dict[str, str]:
     raise RuntimeError(f"missing research record: {experiment_id}")
 
 
+def calibration_campaign(
+    records: list[dict[str, str]], experiment_prefix: str
+) -> list[dict[str, str]]:
+    campaign = [
+        record
+        for record in records
+        if record["experiment_id"].startswith(experiment_prefix)
+    ]
+    if not campaign:
+        raise RuntimeError(f"missing calibration campaign: {experiment_prefix}")
+    return campaign
+
+
 def validate_matches(records: list[dict[str, str]]) -> None:
     for record in records:
         games = int(record["games"])
@@ -245,7 +258,16 @@ def nnue_baseline(
     )
 
 
-def stockfish_calibration_curve(records: list[dict[str, str]]) -> str:
+def stockfish_calibration_curve(
+    records: list[dict[str, str]],
+    *,
+    subtitle: str,
+    headline_value: str,
+    headline_label: str,
+    footer_estimate: str,
+    description: str,
+    crossing: float | None,
+) -> str:
     chart_left, chart_right = 105.0, 1130.0
     chart_top, chart_bottom = 150.0, 455.0
     rungs = [float(record["stockfish_uci_elo"]) for record in records]
@@ -302,35 +324,41 @@ def stockfish_calibration_curve(records: list[dict[str, str]]) -> str:
             ]
         )
 
-    crossing = calibration_crossing(records)
-    crossing_x = x(crossing)
-    marks.extend(
-        [
-            f'  <line class="threshold" x1="{crossing_x:.2f}" y1="{y(50):.2f}" x2="{crossing_x:.2f}" y2="{chart_bottom}"/>',
-            f'  <text class="small" x="{(chart_left + chart_right) / 2:.2f}" y="515" text-anchor="middle">Stockfish 18 configured UCI_Elo</text>',
-        ]
+    if crossing is not None:
+        crossing_x = x(crossing)
+        marks.append(
+            f'  <line class="threshold" x1="{crossing_x:.2f}" y1="{y(50):.2f}" x2="{crossing_x:.2f}" y2="{chart_bottom}"/>'
+        )
+    marks.append(
+        f'  <text class="small" x="{(chart_left + chart_right) / 2:.2f}" y="515" text-anchor="middle">Stockfish 18 configured UCI_Elo</text>'
     )
     body = "\n".join(
         [
             '  <text class="title" x="70" y="67">Forklift · Stockfish limited-strength calibration</text>',
-            '  <text class="sub" x="70" y="99">1,200 games · 200 per rung · 10+0.1 · one thread per engine · paired openings</text>',
-            f'  <text class="value" x="1130" y="67" text-anchor="end">≈ {crossing:.1f}</text>',
-            '  <text class="sub" x="1130" y="99" text-anchor="end">local 50% crossing</text>',
+            f'  <text class="sub" x="70" y="99">{escape(subtitle)}</text>',
+            f'  <text class="value" x="1130" y="67" text-anchor="end">{escape(headline_value)}</text>',
+            f'  <text class="sub" x="1130" y="99" text-anchor="end">{escape(headline_label)}</text>',
             *marks,
             '  <text class="small" x="70" y="556">Whiskers transform Cute Chess relative-Elo uncertainty into score bounds.</text>',
-            f'  <text class="small" x="1130" y="556" text-anchor="end">local pool estimate · ≈ {crossing:.1f}</text>',
+            f'  <text class="small" x="1130" y="556" text-anchor="end">{escape(footer_estimate)}</text>',
             '  <text class="small" x="70" y="584">This is a hardware-, opening- and time-control-specific Stockfish anchor—not FIDE, Chess.com or universal Elo.</text>',
         ]
     )
     return svg_document(
         "Forklift Stockfish calibration curve",
-        "Forklift scored 56.5 percent against Stockfish UCI Elo 2200 and 45.8 percent against 2400, placing the interpolated 50 percent crossing near 2321.5 in this local test pool.",
+        description,
         body,
         620,
     )
 
 
-def stockfish_calibration_wdl(records: list[dict[str, str]]) -> str:
+def stockfish_calibration_wdl(
+    records: list[dict[str, str]],
+    *,
+    subtitle: str,
+    footer: str,
+    description: str,
+) -> str:
     bar_x, bar_width, bar_height = 210.0, 690.0, 30.0
     rows_svg: list[str] = []
     for index, record in enumerate(records):
@@ -356,23 +384,24 @@ def stockfish_calibration_wdl(records: list[dict[str, str]]) -> str:
             ]
         )
 
+    footer_y = 145.0 + len(records) * 66.0 + 22.0
     body = "\n".join(
         [
             '  <text class="title" x="70" y="67">Calibration outcomes by Stockfish rung</text>',
-            '  <text class="sub" x="70" y="99">Forklift perspective · every row contains 200 games</text>',
+            f'  <text class="sub" x="70" y="99">{escape(subtitle)}</text>',
             '  <rect class="win" x="781" y="58" width="14" height="14"/><text class="small" x="805" y="70">wins</text>',
             '  <rect class="draw" x="866" y="58" width="14" height="14"/><text class="small" x="890" y="70">draws</text>',
             '  <rect class="loss" x="963" y="58" width="14" height="14"/><text class="small" x="987" y="70">losses</text>',
             *rows_svg,
-            '  <text class="small" x="70" y="563">No crashes, time forfeits, illegal moves or disconnects across all 1,200 games.</text>',
-            '  <text class="small" x="1130" y="563" text-anchor="end">commit · beb0571</text>',
+            f'  <text class="small" x="70" y="{footer_y:.0f}">No crashes, time forfeits, illegal moves or disconnects.</text>',
+            f'  <text class="small" x="1130" y="{footer_y:.0f}" text-anchor="end">{escape(footer)}</text>',
         ]
     )
     return svg_document(
         "Forklift calibration outcomes by Stockfish rung",
-        "Six stacked horizontal bars show Forklift wins, draws and losses in 200 games against each Stockfish limited-strength rung from 2200 through 3190.",
+        description,
         body,
-        600,
+        int(footer_y + 37),
     )
 
 
@@ -386,7 +415,10 @@ def main() -> int:
     calibration = rows(DATA_DIR / "stockfish_calibration.csv")
     validate_matches(matches)
     validate_nnue_runs(nnue_runs)
-    validate_calibration(calibration)
+    fast_calibration = calibration_campaign(calibration, "absolute-calibration-main-")
+    slow_calibration = calibration_campaign(calibration, "absolute-calibration-slow-")
+    validate_calibration(fast_calibration)
+    validate_calibration(slow_calibration)
     release = find(matches, "v1-vs-v0.4.0")
     nnue_match = find(matches, "nnue-halfkp-v1-vs-classical")
     wdl_screen = find(matches, "nnue-wdl-result0-vs-classical-screen")
@@ -397,8 +429,36 @@ def main() -> int:
         "nnue-research-baseline.svg": nnue_baseline(
             nnue_run, nnue_match, wdl_screen
         ),
-        "stockfish-calibration.svg": stockfish_calibration_curve(calibration),
-        "stockfish-calibration-wdl.svg": stockfish_calibration_wdl(calibration),
+        "stockfish-calibration.svg": stockfish_calibration_curve(
+            fast_calibration,
+            subtitle="1,200 games · 200 per rung · 10+0.1 · one thread per engine · paired openings",
+            headline_value=f"≈ {calibration_crossing(fast_calibration):.1f}",
+            headline_label="local 50% crossing",
+            footer_estimate=f"local pool estimate · ≈ {calibration_crossing(fast_calibration):.1f}",
+            description="Forklift scored 56.5 percent against Stockfish UCI Elo 2200 and 45.8 percent against 2400, placing the interpolated 50 percent crossing near 2321.5 in this local test pool.",
+            crossing=calibration_crossing(fast_calibration),
+        ),
+        "stockfish-calibration-wdl.svg": stockfish_calibration_wdl(
+            fast_calibration,
+            subtitle="Forklift perspective · 1,200 games · 200 per rung · 10+0.1",
+            footer="commit · beb0571",
+            description="Six stacked horizontal bars show Forklift wins, draws and losses in 200 games against each Stockfish limited-strength rung from 2200 through 3190.",
+        ),
+        "stockfish-calibration-slow.svg": stockfish_calibration_curve(
+            slow_calibration,
+            subtitle="2,400 games · 600 per rung · 30+0.3 · one thread per engine · paired openings",
+            headline_value="2401.7 ± 26.4",
+            headline_label="top-rung anchor · formal bracket still open",
+            footer_estimate="tested boundary · above 2400",
+            description="Forklift scored 50.2 percent over 600 games against Stockfish UCI Elo 2400 at 30+0.3, an anchored result of 2401.7 plus or minus 26.4 Elo; every tested rung remained above 50 percent, so the formal crossing was not bracketed.",
+            crossing=None,
+        ),
+        "stockfish-calibration-slow-wdl.svg": stockfish_calibration_wdl(
+            slow_calibration,
+            subtitle="Forklift perspective · 2,400 games · 600 per rung · 30+0.3",
+            footer="candidate · 071b4b6",
+            description="Four stacked horizontal bars show Forklift wins, draws and losses in 600 games against each Stockfish limited-strength rung from 2250 through 2400 at 30+0.3.",
+        ),
     }
     stale: list[Path] = []
     for name, content in outputs.items():

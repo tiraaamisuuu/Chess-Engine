@@ -24,7 +24,7 @@
   <rect class="bg" width="1200" height="600" rx="8"/>
   <rect class="frame" x="0.5" y="0.5" width="1199" height="599" rx="8"/>
   <text class="title" x="70" y="67">Calibration outcomes by Stockfish rung</text>
-  <text class="sub" x="70" y="99">Forklift perspective · every row contains 200 games</text>
+  <text class="sub" x="70" y="99">Forklift perspective · 1,200 games · 200 per rung · 10+0.1</text>
   <rect class="win" x="781" y="58" width="14" height="14"/><text class="small" x="805" y="70">wins</text>
   <rect class="draw" x="866" y="58" width="14" height="14"/><text class="small" x="890" y="70">draws</text>
   <rect class="loss" x="963" y="58" width="14" height="14"/><text class="small" x="987" y="70">losses</text>
@@ -64,6 +64,6 @@
   <text class="label" x="180" y="496.00" text-anchor="end">3190</text>
   <text class="small" x="930" y="488.00">W 1 · D 4 · L 195</text>
   <text class="small" x="930" y="507.00">1.5% score</text>
-  <text class="small" x="70" y="563">No crashes, time forfeits, illegal moves or disconnects across all 1,200 games.</text>
+  <text class="small" x="70" y="563">No crashes, time forfeits, illegal moves or disconnects.</text>
   <text class="small" x="1130" y="563" text-anchor="end">commit · beb0571</text>
 </svg>

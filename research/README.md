@@ -25,10 +25,13 @@ The working paper direction is:
 This is only a direction. Novelty must be established by a proper literature
 review before any publication claim.
 
-The first absolute-strength campaign now provides an additional baseline:
-1,200 games against six Stockfish 18 limited-strength rungs produced a local
-50% crossing near 2321.5 with no technical failures. A repeat at a second time
-control is required before treating the estimate as portable.
+The first absolute-strength campaign produced a local 50% crossing near 2321.5
+over 1,200 games at `10+0.1`. A second campaign completed 2,400 games at
+`30+0.3`; Forklift was level with the top Stockfish 2400 rung (`272-59-269`,
++1.7 +/- 26.4 relative Elo) with no technical failures. Because every observed
+score remained fractionally above 50%, the slower ladder is formally
+unbracketed and needs one higher rung. The time-control difference is itself a
+research signal and must not be collapsed into a universal Elo claim.
 
 ## Repository contents
 

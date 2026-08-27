@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">Forklift Stockfish calibration curve</title>
+  <desc id="desc">Forklift scored 50.2 percent over 600 games against Stockfish UCI Elo 2400 at 30+0.3, an anchored result of 2401.7 plus or minus 26.4 Elo; every tested rung remained above 50 percent, so the formal crossing was not bracketed.</desc>
+  <style>
+    .bg { fill: #0a0b0b; }
+    .frame { fill: none; stroke: #303332; stroke-width: 1; }
+    .title { fill: #f3f4f1; font: 500 30px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .sub { fill: #959a96; font: 400 16px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .label { fill: #f3f4f1; font: 500 17px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .small { fill: #a4a9a5; font: 400 14px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .value { fill: #f3f4f1; font: 500 25px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .win { fill: #9dce7a; }
+    .draw { fill: #6d736f; }
+    .loss { fill: #c77878; }
+    .neutral { fill: #c8ccc7; }
+    .accent { fill: #9dce7a; }
+    .warning { fill: #d7ae68; }
+    .threshold { stroke: #d7ae68; stroke-width: 2; stroke-dasharray: 6 5; }
+    .grid { stroke: #242725; stroke-width: 1; }
+    .curve { fill: none; stroke: #9dce7a; stroke-width: 3; }
+    .ci { stroke: #a4a9a5; stroke-width: 2; }
+    .point { fill: #9dce7a; stroke: #0a0b0b; stroke-width: 3; }
+  </style>
+  <rect class="bg" width="1200" height="620" rx="8"/>
+  <rect class="frame" x="0.5" y="0.5" width="1199" height="619" rx="8"/>
+  <text class="title" x="70" y="67">Forklift · Stockfish limited-strength calibration</text>
+  <text class="sub" x="70" y="99">2,400 games · 600 per rung · 30+0.3 · one thread per engine · paired openings</text>
+  <text class="value" x="1130" y="67" text-anchor="end">2401.7 ± 26.4</text>
+  <text class="sub" x="1130" y="99" text-anchor="end">top-rung anchor · formal bracket still open</text>
+  <line class="grid" x1="105.0" y1="455.00" x2="1130.0" y2="455.00"/>
+  <text class="small" x="88" y="460.00" text-anchor="end">0%</text>
+  <line class="grid" x1="105.0" y1="378.75" x2="1130.0" y2="378.75"/>
+  <text class="small" x="88" y="383.75" text-anchor="end">25%</text>
+  <line class="threshold" x1="105.0" y1="302.50" x2="1130.0" y2="302.50"/>
+  <text class="small" x="88" y="307.50" text-anchor="end">50%</text>
+  <line class="grid" x1="105.0" y1="226.25" x2="1130.0" y2="226.25"/>
+  <text class="small" x="88" y="231.25" text-anchor="end">75%</text>
+  <line class="grid" x1="105.0" y1="150.00" x2="1130.0" y2="150.00"/>
+  <text class="small" x="88" y="155.00" text-anchor="end">100%</text>
+  <line class="ci" x1="310.00" y1="237.96" x2="310.00" y2="259.90"/>
+  <line class="ci" x1="303.00" y1="237.96" x2="317.00" y2="237.96"/>
+  <line class="ci" x1="303.00" y1="259.90" x2="317.00" y2="259.90"/>
+  <text class="small" x="310.00" y="480" text-anchor="middle">2250</text>
+  <line class="ci" x1="515.00" y1="247.58" x2="515.00" y2="270.00"/>
+  <line class="ci" x1="508.00" y1="247.58" x2="522.00" y2="247.58"/>
+  <line class="ci" x1="508.00" y1="270.00" x2="522.00" y2="270.00"/>
+  <text class="small" x="515.00" y="480" text-anchor="middle">2300</text>
+  <line class="ci" x1="720.00" y1="252.41" x2="720.00" y2="275.27"/>
+  <line class="ci" x1="713.00" y1="252.41" x2="727.00" y2="252.41"/>
+  <line class="ci" x1="713.00" y1="275.27" x2="727.00" y2="275.27"/>
+  <text class="small" x="720.00" y="480" text-anchor="middle">2350</text>
+  <line class="ci" x1="925.00" y1="290.19" x2="925.00" y2="313.32"/>
+  <line class="ci" x1="918.00" y1="290.19" x2="932.00" y2="290.19"/>
+  <line class="ci" x1="918.00" y1="313.32" x2="932.00" y2="313.32"/>
+  <text class="small" x="925.00" y="480" text-anchor="middle">2400</text>
+  <path class="curve" d="M 310.00 248.51 L 515.00 258.58 L 720.00 263.76 L 925.00 301.89"/>
+  <circle class="point" cx="310.00" cy="248.51" r="7"/>
+  <text class="label" x="310.00" y="234.51" text-anchor="middle">67.7%</text>
+  <circle class="point" cx="515.00" cy="258.58" r="7"/>
+  <text class="label" x="515.00" y="244.58" text-anchor="middle">64.4%</text>
+  <circle class="point" cx="720.00" cy="263.76" r="7"/>
+  <text class="label" x="720.00" y="249.76" text-anchor="middle">62.7%</text>
+  <circle class="point" cx="925.00" cy="301.89" r="7"/>
+  <text class="label" x="925.00" y="287.89" text-anchor="middle">50.2%</text>
+  <text class="small" x="617.50" y="515" text-anchor="middle">Stockfish 18 configured UCI_Elo</text>
+  <text class="small" x="70" y="556">Whiskers transform Cute Chess relative-Elo uncertainty into score bounds.</text>
+  <text class="small" x="1130" y="556" text-anchor="end">tested boundary · above 2400</text>
+  <text class="small" x="70" y="584">This is a hardware-, opening- and time-control-specific Stockfish anchor—not FIDE, Chess.com or universal Elo.</text>
+</svg>

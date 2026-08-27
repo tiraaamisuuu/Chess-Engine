@@ -5,3 +5,7 @@ absolute-calibration-main-2600,2026-08-26,beb0571c5cf740c7f14dfd779540ca7c28a524
 absolute-calibration-main-2800,2026-08-26,beb0571c5cf740c7f14dfd779540ca7c28a5243b,18,2800,200,12,173,15,9.8,-386.6,75.2,2413.4,10+0.1,1,256,6,1701,0,docs/results/2026-08-26-stockfish-calibration.md
 absolute-calibration-main-3000,2026-08-26,beb0571c5cf740c7f14dfd779540ca7c28a5243b,18,3000,200,1,188,11,3.3,-589.5,114.9,2410.5,10+0.1,1,256,6,1701,0,docs/results/2026-08-26-stockfish-calibration.md
 absolute-calibration-main-3190,2026-08-26,beb0571c5cf740c7f14dfd779540ca7c28a5243b,18,3190,200,1,195,4,1.5,-726.9,270.0,2463.1,10+0.1,1,256,6,1701,0,docs/results/2026-08-26-stockfish-calibration.md
+absolute-calibration-slow-2250,2026-08-27,071b4b624629ead2326b8ff03cace89b0520aa1f,18,2250,600,385,173,42,67.7,128.3,28.6,2378.3,30+0.3,1,256,6,2701,0,docs/results/2026-08-27-stockfish-slow-calibration.md
+absolute-calibration-slow-2300,2026-08-27,071b4b624629ead2326b8ff03cace89b0520aa1f,18,2300,600,365,192,43,64.4,103.1,27.9,2403.1,30+0.3,1,256,6,2701,0,docs/results/2026-08-27-stockfish-slow-calibration.md
+absolute-calibration-slow-2350,2026-08-27,071b4b624629ead2326b8ff03cace89b0520aa1f,18,2350,600,360,207,33,62.7,90.6,27.9,2440.6,30+0.3,1,256,6,2701,0,docs/results/2026-08-27-stockfish-slow-calibration.md
+absolute-calibration-slow-2400,2026-08-27,071b4b624629ead2326b8ff03cace89b0520aa1f,18,2400,600,272,269,59,50.2,1.7,26.4,2401.7,30+0.3,1,256,6,2701,0,docs/results/2026-08-27-stockfish-slow-calibration.md

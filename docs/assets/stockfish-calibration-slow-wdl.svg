@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="468" viewBox="0 0 1200 468" role="img" aria-labelledby="title desc">
+  <title id="title">Forklift calibration outcomes by Stockfish rung</title>
+  <desc id="desc">Four stacked horizontal bars show Forklift wins, draws and losses in 600 games against each Stockfish limited-strength rung from 2250 through 2400 at 30+0.3.</desc>
+  <style>
+    .bg { fill: #0a0b0b; }
+    .frame { fill: none; stroke: #303332; stroke-width: 1; }
+    .title { fill: #f3f4f1; font: 500 30px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .sub { fill: #959a96; font: 400 16px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .label { fill: #f3f4f1; font: 500 17px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .small { fill: #a4a9a5; font: 400 14px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .value { fill: #f3f4f1; font: 500 25px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .win { fill: #9dce7a; }
+    .draw { fill: #6d736f; }
+    .loss { fill: #c77878; }
+    .neutral { fill: #c8ccc7; }
+    .accent { fill: #9dce7a; }
+    .warning { fill: #d7ae68; }
+    .threshold { stroke: #d7ae68; stroke-width: 2; stroke-dasharray: 6 5; }
+    .grid { stroke: #242725; stroke-width: 1; }
+    .curve { fill: none; stroke: #9dce7a; stroke-width: 3; }
+    .ci { stroke: #a4a9a5; stroke-width: 2; }
+    .point { fill: #9dce7a; stroke: #0a0b0b; stroke-width: 3; }
+  </style>
+  <rect class="bg" width="1200" height="468" rx="8"/>
+  <rect class="frame" x="0.5" y="0.5" width="1199" height="467" rx="8"/>
+  <text class="title" x="70" y="67">Calibration outcomes by Stockfish rung</text>
+  <text class="sub" x="70" y="99">Forklift perspective · 2,400 games · 600 per rung · 30+0.3</text>
+  <rect class="win" x="781" y="58" width="14" height="14"/><text class="small" x="805" y="70">wins</text>
+  <rect class="draw" x="866" y="58" width="14" height="14"/><text class="small" x="890" y="70">draws</text>
+  <rect class="loss" x="963" y="58" width="14" height="14"/><text class="small" x="987" y="70">losses</text>
+  <rect class="win" x="210.00" y="145.00" width="442.75" height="30.0"/>
+  <rect class="draw" x="652.75" y="145.00" width="48.30" height="30.0"/>
+  <rect class="loss" x="701.05" y="145.00" width="198.95" height="30.0"/>
+  <text class="label" x="180" y="166.00" text-anchor="end">2250</text>
+  <text class="small" x="930" y="158.00">W 385 · D 42 · L 173</text>
+  <text class="small" x="930" y="177.00">67.7% score</text>
+  <rect class="win" x="210.00" y="211.00" width="419.75" height="30.0"/>
+  <rect class="draw" x="629.75" y="211.00" width="49.45" height="30.0"/>
+  <rect class="loss" x="679.20" y="211.00" width="220.80" height="30.0"/>
+  <text class="label" x="180" y="232.00" text-anchor="end">2300</text>
+  <text class="small" x="930" y="224.00">W 365 · D 43 · L 192</text>
+  <text class="small" x="930" y="243.00">64.4% score</text>
+  <rect class="win" x="210.00" y="277.00" width="414.00" height="30.0"/>
+  <rect class="draw" x="624.00" y="277.00" width="37.95" height="30.0"/>
+  <rect class="loss" x="661.95" y="277.00" width="238.05" height="30.0"/>
+  <text class="label" x="180" y="298.00" text-anchor="end">2350</text>
+  <text class="small" x="930" y="290.00">W 360 · D 33 · L 207</text>
+  <text class="small" x="930" y="309.00">62.7% score</text>
+  <rect class="win" x="210.00" y="343.00" width="312.80" height="30.0"/>
+  <rect class="draw" x="522.80" y="343.00" width="67.85" height="30.0"/>
+  <rect class="loss" x="590.65" y="343.00" width="309.35" height="30.0"/>
+  <text class="label" x="180" y="364.00" text-anchor="end">2400</text>
+  <text class="small" x="930" y="356.00">W 272 · D 59 · L 269</text>
+  <text class="small" x="930" y="375.00">50.2% score</text>
+  <text class="small" x="70" y="431">No crashes, time forfeits, illegal moves or disconnects.</text>
+  <text class="small" x="1130" y="431" text-anchor="end">candidate · 071b4b6</text>
+</svg>

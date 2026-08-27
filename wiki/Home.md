@@ -43,6 +43,8 @@ properly powered match.
 - Teacher budget: 20k nodes selected after 127,784 same-position comparisons
 - Completed training scale: five million positions plus 616,632 game-disjoint
   validation positions
+- Slow-control strength anchor: level with Stockfish 2400 over 600 games at
+  `30+0.3` (+1.7 +/- 26.4 relative Elo); formal crossing still unbracketed
 - Measured local-pool strength: approximately 2321.5 from a 1,200-game
   Stockfish 18 limited-strength ladder at `10+0.1`; this is not FIDE,
   Chess.com, or universal Elo
@@ -53,6 +55,8 @@ properly powered match.
 ![Forklift v1 release match results](https://raw.githubusercontent.com/tiraaamisuuu/Forklift/main/docs/assets/release-strength.svg)
 
 ![Forklift Stockfish calibration curve](https://raw.githubusercontent.com/tiraaamisuuu/Forklift/main/docs/assets/stockfish-calibration.svg)
+
+![Forklift slow-control calibration curve](https://raw.githubusercontent.com/tiraaamisuuu/Forklift/main/docs/assets/stockfish-calibration-slow.svg)
 
 Raw commands, hardware, commit IDs, checksums, match logs and negative results
 remain in the repository's

@@ -279,12 +279,16 @@ policy/value research line—is maintained in
 7. **Complete:** land the minimalist desktop overhaul with native Windows icon,
    sound, motion, adaptive time profiles, corrected telemetry, packaging, and
    cross-platform CI.
+8. **Complete:** run 2,400 paired `30+0.3` calibration games; Forklift was level
+   with the Stockfish 2400 rung (+1.7 +/- 26.4 relative Elo) with zero failures.
+   The formal crossing remains just above the configured range.
 
 The NNUE and release evidence is recorded in
 `docs/results/2026-08-21-five-million-nnue.md` and
 `docs/results/2026-08-21-v1-release-gate.md`. Classical evaluation remains the
 release configuration. The post-release desktop work is recorded in
-`docs/results/2026-08-26-forklift-desktop-overhaul.md`.
+`docs/results/2026-08-26-forklift-desktop-overhaul.md`, and the slow calibration
+is recorded in `docs/results/2026-08-27-stockfish-slow-calibration.md`.
 
 ### Priority 2: validate retained search gains
 
