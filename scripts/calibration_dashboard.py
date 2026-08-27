@@ -304,7 +304,9 @@ def rung_snapshot(run_dir: Path, rung: int, games_per_rung: int) -> dict[str, ob
     }
 
 
-def local_pool_estimate(rungs: list[dict[str, object]]) -> dict[str, object]:
+def local_pool_estimate(
+    rungs: list[dict[str, object]], *, run_complete: bool = False
+) -> dict[str, object]:
     completed = [
         item
         for item in rungs
@@ -337,14 +339,22 @@ def local_pool_estimate(rungs: list[dict[str, object]]) -> dict[str, object]:
         return {
             "status": "above_range",
             "estimate": None,
-            "display": f"above {anchor}; still testing",
+            "display": (
+                f"above {anchor}; add a higher rung"
+                if run_complete
+                else f"above {anchor}; still testing"
+            ),
         }
     if all(score < 50.0 for score in scores):
         anchor = int(completed[0]["elo"])
         return {
             "status": "below_range",
             "estimate": None,
-            "display": f"below {anchor}; still testing",
+            "display": (
+                f"below {anchor}; add a lower rung"
+                if run_complete
+                else f"below {anchor}; still testing"
+            ),
         }
     return {"status": "noisy", "estimate": None, "display": "more games required"}
 
@@ -409,7 +419,7 @@ def build_snapshot(run_dir: Path) -> dict[str, object]:
         "eta": duration(eta_seconds),
         "elapsed": duration(elapsed_seconds),
         "currentRung": active.get("elo") if active else None,
-        "estimate": local_pool_estimate(rung_rows),
+        "estimate": local_pool_estimate(rung_rows, run_complete=is_complete),
         "rungs": rung_rows,
         "resources": system_resources(),
         "configuration": {

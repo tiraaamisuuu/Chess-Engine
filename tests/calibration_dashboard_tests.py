@@ -41,6 +41,17 @@ class CalibrationDashboardTests(unittest.TestCase):
         self.assertEqual(estimate["status"], "bracketed")
         self.assertEqual(estimate["estimate"], 2500.0)
 
+    def test_completed_unbracketed_run_recommends_another_rung(self) -> None:
+        estimate = dashboard.local_pool_estimate(
+            [
+                {"elo": 2350, "state": "complete", "scorePercent": 62.7},
+                {"elo": 2400, "state": "complete", "scorePercent": 50.2},
+            ],
+            run_complete=True,
+        )
+        self.assertEqual(estimate["status"], "above_range")
+        self.assertEqual(estimate["display"], "above 2400; add a higher rung")
+
     def test_builds_snapshot_from_complete_and_live_rungs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             run_dir = Path(temporary)
