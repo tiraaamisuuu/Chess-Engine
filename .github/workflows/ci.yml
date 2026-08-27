@@ -68,7 +68,9 @@ jobs:
         run: |
           $archive = Join-Path $env:RUNNER_TEMP 'SFML-2.6.2.zip'
           $root = Join-Path $env:RUNNER_TEMP 'sfml'
-          Invoke-WebRequest -Uri $env:SFML_ARCHIVE_URL -OutFile $archive
+          curl.exe --fail --location --retry 4 --retry-all-errors --retry-delay 5 `
+            --output $archive $env:SFML_ARCHIVE_URL
+          if ($LASTEXITCODE -ne 0) { throw 'SFML download failed after retries.' }
           $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
           if ($actual -ne $env:SFML_ARCHIVE_SHA256) {
             throw "SFML checksum mismatch: $actual"
