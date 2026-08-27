@@ -175,8 +175,15 @@
         el("current").textContent = data.currentRung ? `testing Stockfish ${data.currentRung}` : `${number(data.completedRungs)} of ${number(data.totalRungs)} rungs complete`;
         el("bar").style.width = width(data.percent);
         el("bar").parentElement.setAttribute("aria-valuenow", String(data.percent));
-        el("estimate").textContent = data.estimate?.display || "collecting data";
-        renderRungs(data.rungs || []);
+        const rungs = data.rungs || [];
+        let estimate = data.estimate?.display || "collecting data";
+        if (data.state === "complete" && data.estimate?.status === "above_range" && rungs.length) {
+          estimate = `above ${rungs[rungs.length - 1].elo}; add a higher rung`;
+        } else if (data.state === "complete" && data.estimate?.status === "below_range" && rungs.length) {
+          estimate = `below ${rungs[0].elo}; add a lower rung`;
+        }
+        el("estimate").textContent = estimate;
+        renderRungs(rungs);
         resource("cpu", resources.cpuPercent);
         resource("ram", resources.ramPercent);
         el("ram-detail").textContent = `${bytes(resources.ramUsed)} / ${bytes(resources.ramTotal)}`;
