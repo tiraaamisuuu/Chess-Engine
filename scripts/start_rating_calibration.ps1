@@ -5,7 +5,8 @@ param(
     [string]$TimeControl = '10+0.1',
     [int]$Concurrency = 6,
     [int]$Seed = 1701,
-    [int]$Port = 8766
+    [int]$Port = 8766,
+    [string]$EngineRef = 'HEAD'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,10 +52,11 @@ if (-not (Test-RecordedProcess $dashboardPidPath)) {
     [System.IO.File]::WriteAllText($dashboardPidPath, [string]$dashboard.Id)
 }
 
+$commit = (& git -C $repoRoot rev-parse "$EngineRef^{commit}").Trim()
+if ($LASTEXITCODE -ne 0) { throw "Unable to resolve engine ref: $EngineRef" }
+
 $calibrationPidPath = Join-Path $resolvedRunDir 'calibration.pid'
 if (-not (Test-RecordedProcess $calibrationPidPath)) {
-    $commit = (& git -C $repoRoot rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve the current Git commit.' }
     $calibrationArguments = @(
         '-3', $calibrationScript,
         '--stockfish-exe', $stockfish,
@@ -91,4 +93,5 @@ if (-not (Test-RecordedProcess $calibrationPidPath)) {
     TimeControl = $TimeControl
     Concurrency = $Concurrency
     Seed = $Seed
+    EngineCommit = $commit
 }
