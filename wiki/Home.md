@@ -43,8 +43,8 @@ properly powered match.
 - Teacher budget: 20k nodes selected after 127,784 same-position comparisons
 - Completed training scale: five million positions plus 616,632 game-disjoint
   validation positions
-- Slow-control strength anchor: level with Stockfish 2400 over 600 games at
-  `30+0.3` (+1.7 +/- 26.4 relative Elo); formal crossing still unbracketed
+- Slow-control strength anchor: 52.4% against Stockfish 2450 over 600 games at
+  `30+0.3` (+16.8 +/- 26.2 relative Elo); formal crossing still unbracketed
 - Measured local-pool strength: approximately 2321.5 from a 1,200-game
   Stockfish 18 limited-strength ladder at `10+0.1`; this is not FIDE,
   Chess.com, or universal Elo

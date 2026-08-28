@@ -446,18 +446,18 @@ def main() -> int:
         ),
         "stockfish-calibration-slow.svg": stockfish_calibration_curve(
             slow_calibration,
-            subtitle="2,400 games · 600 per rung · 30+0.3 · one thread per engine · paired openings",
-            headline_value="2401.7 ± 26.4",
+            subtitle="3,000 games · 600 per rung · 30+0.3 · one thread per engine · paired openings",
+            headline_value="2466.8 ± 26.2",
             headline_label="top-rung anchor · formal bracket still open",
-            footer_estimate="tested boundary · above 2400",
-            description="Forklift scored 50.2 percent over 600 games against Stockfish UCI Elo 2400 at 30+0.3, an anchored result of 2401.7 plus or minus 26.4 Elo; every tested rung remained above 50 percent, so the formal crossing was not bracketed.",
+            footer_estimate="tested boundary · above 2450",
+            description="Forklift scored 52.4 percent over 600 games against Stockfish UCI Elo 2450 at 30+0.3, an anchored result of 2466.8 plus or minus 26.2 Elo; every tested rung remained above 50 percent, so the formal crossing was not bracketed.",
             crossing=None,
         ),
         "stockfish-calibration-slow-wdl.svg": stockfish_calibration_wdl(
             slow_calibration,
-            subtitle="Forklift perspective · 2,400 games · 600 per rung · 30+0.3",
+            subtitle="Forklift perspective · 3,000 games · 600 per rung · 30+0.3",
             footer="candidate · 071b4b6",
-            description="Four stacked horizontal bars show Forklift wins, draws and losses in 600 games against each Stockfish limited-strength rung from 2250 through 2400 at 30+0.3.",
+            description="Five stacked horizontal bars show Forklift wins, draws and losses in 600 games against each Stockfish limited-strength rung from 2250 through 2450 at 30+0.3.",
         ),
     }
     stale: list[Path] = []

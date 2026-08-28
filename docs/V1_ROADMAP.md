@@ -60,7 +60,8 @@ available for controlled experiments. Neither has yet earned promotion.
 
 - Preserve `main` as the single canonical branch.
 - Preserve classical evaluation and one thread as the proven defaults.
-- Close the `30+0.3` Stockfish calibration bracket with a rung above 2400.
+- Test the Stockfish 2500 rung to close the `30+0.3` calibration bracket above
+  the completed 2450 result.
 - Confirm retained search gains at a slower time control before further search
   expansion.
 

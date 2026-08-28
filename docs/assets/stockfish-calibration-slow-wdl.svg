@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="468" viewBox="0 0 1200 468" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="534" viewBox="0 0 1200 534" role="img" aria-labelledby="title desc">
   <title id="title">Forklift calibration outcomes by Stockfish rung</title>
-  <desc id="desc">Four stacked horizontal bars show Forklift wins, draws and losses in 600 games against each Stockfish limited-strength rung from 2250 through 2400 at 30+0.3.</desc>
+  <desc id="desc">Five stacked horizontal bars show Forklift wins, draws and losses in 600 games against each Stockfish limited-strength rung from 2250 through 2450 at 30+0.3.</desc>
   <style>
     .bg { fill: #0a0b0b; }
     .frame { fill: none; stroke: #303332; stroke-width: 1; }
@@ -21,10 +21,10 @@
     .ci { stroke: #a4a9a5; stroke-width: 2; }
     .point { fill: #9dce7a; stroke: #0a0b0b; stroke-width: 3; }
   </style>
-  <rect class="bg" width="1200" height="468" rx="8"/>
-  <rect class="frame" x="0.5" y="0.5" width="1199" height="467" rx="8"/>
+  <rect class="bg" width="1200" height="534" rx="8"/>
+  <rect class="frame" x="0.5" y="0.5" width="1199" height="533" rx="8"/>
   <text class="title" x="70" y="67">Calibration outcomes by Stockfish rung</text>
-  <text class="sub" x="70" y="99">Forklift perspective · 2,400 games · 600 per rung · 30+0.3</text>
+  <text class="sub" x="70" y="99">Forklift perspective · 3,000 games · 600 per rung · 30+0.3</text>
   <rect class="win" x="781" y="58" width="14" height="14"/><text class="small" x="805" y="70">wins</text>
   <rect class="draw" x="866" y="58" width="14" height="14"/><text class="small" x="890" y="70">draws</text>
   <rect class="loss" x="963" y="58" width="14" height="14"/><text class="small" x="987" y="70">losses</text>
@@ -52,6 +52,12 @@
   <text class="label" x="180" y="364.00" text-anchor="end">2400</text>
   <text class="small" x="930" y="356.00">W 272 · D 59 · L 269</text>
   <text class="small" x="930" y="375.00">50.2% score</text>
-  <text class="small" x="70" y="431">No crashes, time forfeits, illegal moves or disconnects.</text>
-  <text class="small" x="1130" y="431" text-anchor="end">candidate · 071b4b6</text>
+  <rect class="win" x="210.00" y="409.00" width="322.00" height="30.0"/>
+  <rect class="draw" x="532.00" y="409.00" width="79.35" height="30.0"/>
+  <rect class="loss" x="611.35" y="409.00" width="288.65" height="30.0"/>
+  <text class="label" x="180" y="430.00" text-anchor="end">2450</text>
+  <text class="small" x="930" y="422.00">W 280 · D 69 · L 251</text>
+  <text class="small" x="930" y="441.00">52.4% score</text>
+  <text class="small" x="70" y="497">No crashes, time forfeits, illegal moves or disconnects.</text>
+  <text class="small" x="1130" y="497" text-anchor="end">candidate · 071b4b6</text>
 </svg>

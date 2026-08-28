@@ -64,6 +64,10 @@ limited-strength behaviour, or both. The non-monotonic anchored values at the
 lower rungs are another reason to prefer the direct near-boundary result and to
 retain the full qualification.
 
+The subsequent [2450 extension](2026-08-27-stockfish-2450-extension.md)
+finished `280-69-251` for Forklift and moved the tested boundary above 2450;
+the formal crossing remains open pending the 2500 rung.
+
 ## Evidence checksums
 
 - `ladder-manifest.json`: `85e96889473462d41a442bf5d54fcf047eb0938ecc6276953740e922062f8c68`

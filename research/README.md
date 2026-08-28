@@ -26,12 +26,13 @@ This is only a direction. Novelty must be established by a proper literature
 review before any publication claim.
 
 The first absolute-strength campaign produced a local 50% crossing near 2321.5
-over 1,200 games at `10+0.1`. A second campaign completed 2,400 games at
-`30+0.3`; Forklift was level with the top Stockfish 2400 rung (`272-59-269`,
-+1.7 +/- 26.4 relative Elo) with no technical failures. Because every observed
-score remained fractionally above 50%, the slower ladder is formally
-unbracketed and needs one higher rung. The time-control difference is itself a
-research signal and must not be collapsed into a universal Elo claim.
+over 1,200 games at `10+0.1`. The slower campaign and its first extension have
+completed 3,000 games at `30+0.3`; Forklift scored 52.4% against the top
+Stockfish 2450 rung (`280-69-251`, +16.8 +/- 26.2 relative Elo) with no
+technical failures. Because every observed score remains above 50%, the slower
+ladder is formally unbracketed and needs a 2500 rung. The time-control
+difference is itself a research signal and must not be collapsed into a
+universal Elo claim.
 
 ## Repository contents
 
