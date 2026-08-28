@@ -10,8 +10,6 @@ permissions:
 
 env:
   FORKLIFT_VERSION: "1.1.0"
-  SFML_ARCHIVE_URL: https://www.sfml-dev.org/files/SFML-2.6.2-windows-vc17-64-bit.zip
-  SFML_ARCHIVE_SHA256: F5995724604D74D06EFE89544315D11AC2D3C2D348854C6BE55A7A11FB7ECAD8
 
 jobs:
   headless:
@@ -56,20 +54,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Download and verify SFML 2.6.2
         shell: pwsh
-        run: |
-          $archive = Join-Path $env:RUNNER_TEMP 'SFML-2.6.2.zip'
-          $root = Join-Path $env:RUNNER_TEMP 'sfml'
-          curl.exe --fail --location --retry 4 --retry-all-errors --retry-delay 5 `
-            --output $archive $env:SFML_ARCHIVE_URL
-          if ($LASTEXITCODE -ne 0) { throw 'SFML download failed after retries.' }
-          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
-          if ($actual -ne $env:SFML_ARCHIVE_SHA256) {
-            throw "SFML checksum mismatch: $actual"
-          }
-          Expand-Archive -LiteralPath $archive -DestinationPath $root
-          $sfml = Get-ChildItem -LiteralPath $root -Directory | Select-Object -First 1
-          if (-not $sfml) { throw 'The SFML archive did not contain a root directory.' }
-          "SFML_DIR=$($sfml.FullName)\lib\cmake\SFML" | Out-File -FilePath $env:GITHUB_ENV -Append
+        run: ./scripts/install_sfml_windows.ps1 -Root (Join-Path $env:RUNNER_TEMP 'sfml') -EnvironmentFile $env:GITHUB_ENV
       - name: Configure desktop build
         shell: pwsh
         run: cmake -S . -B build-gui -G "Visual Studio 17 2022" -A x64 -DCHESS_BUILD_GUI=ON -DBUILD_TESTING=ON "-DSFML_DIR=$env:SFML_DIR"
