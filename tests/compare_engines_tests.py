@@ -215,6 +215,13 @@ SPRT: llr 0.12 (4.1%), lbound -2.94444, ubound 2.94444
         self.assertTrue(result["completed"])
         self.assertEqual(result["sprt"]["decision"], "inconclusive")
 
+    def test_accepts_cutechess_sprt_suffix(self) -> None:
+        log = "SPRT: llr 2.97 (100.7%), lbound -2.94, ubound 2.94 - H1 was accepted\n"
+
+        result = compare_engines.parse_sprt_result(log, enabled=True)
+
+        self.assertEqual(result["decision"], "accepted_h1")
+
 
 if __name__ == "__main__":
     unittest.main()

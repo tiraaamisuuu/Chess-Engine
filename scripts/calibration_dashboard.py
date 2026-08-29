@@ -190,7 +190,8 @@ ELO_PATTERN = re.compile(
 SPRT_PATTERN = re.compile(
     r"^SPRT:\s+llr\s+([+\-]?(?:[0-9.eE]+|inf|nan))\s+\([^)]*\),"
     r"\s+lbound\s+([+\-]?(?:[0-9.eE]+|inf|nan)),"
-    r"\s+ubound\s+([+\-]?(?:[0-9.eE]+|inf|nan))\s*$",
+    r"\s+ubound\s+([+\-]?(?:[0-9.eE]+|inf|nan))"
+    r"(?:\s+-\s+H[01]\s+was\s+accepted)?\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 

@@ -551,7 +551,8 @@ def parse_sprt_result(log_text: str, enabled: bool) -> dict[str, object]:
     pattern = re.compile(
         r"^SPRT:\s+llr\s+([+\-]?(?:[0-9.eE]+|inf|nan))\s+\([^)]*\),"
         r"\s+lbound\s+([+\-]?(?:[0-9.eE]+|inf|nan)),"
-        r"\s+ubound\s+([+\-]?(?:[0-9.eE]+|inf|nan))\s*$",
+        r"\s+ubound\s+([+\-]?(?:[0-9.eE]+|inf|nan))"
+        r"(?:\s+-\s+H[01]\s+was\s+accepted)?\s*$",
         re.IGNORECASE | re.MULTILINE,
     )
     matches = list(pattern.finditer(log_text))
