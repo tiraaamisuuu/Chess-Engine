@@ -253,7 +253,9 @@ scripts/compare_engines.py \
 Keep the machine on AC power, close heavy background work, disable sleep, and
 use identical thread/hash values. Concurrency changes throughput, but each
 engine must still receive the same resources. Do not interpret a few dozen
-games as a strength conclusion.
+games as a strength conclusion. On Windows the runner requests that the system
+remain awake for the process lifetime; it does not prevent the displays from
+turning off.
 
 ## Compare NNUE networks
 

@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
+import ctypes
 import hashlib
 import io
 import json
@@ -27,6 +29,22 @@ OPENINGS_URL = (
     "UHO_4060_v4.epd.zip"
 )
 OPENINGS_SHA256 = "a97424c5b98b42f8c27ff450f0681ad11696148548c975752350e98417ead11d"
+
+
+@contextmanager
+def keep_system_awake() -> object:
+    """Keep Windows awake during a match without requiring the display."""
+    continuous = 0x80000000
+    system_required = 0x00000001
+    if os.name == "nt":
+        ctypes.windll.kernel32.SetThreadExecutionState(
+            continuous | system_required
+        )
+    try:
+        yield
+    finally:
+        if os.name == "nt":
+            ctypes.windll.kernel32.SetThreadExecutionState(continuous)
 
 
 def arguments() -> argparse.Namespace:
@@ -924,7 +942,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        raise SystemExit(main())
+        with keep_system_awake():
+            raise SystemExit(main())
     except (FileNotFoundError, RuntimeError, subprocess.CalledProcessError) as error:
         print(f"Error: {error}", file=sys.stderr)
         raise SystemExit(1)
