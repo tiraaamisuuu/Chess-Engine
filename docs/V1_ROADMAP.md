@@ -60,8 +60,9 @@ available for controlled experiments. Neither has yet earned promotion.
 
 - Preserve `main` as the single canonical branch.
 - Preserve classical evaluation and one thread as the proven defaults.
-- Test the Stockfish 2550 rung to close the `30+0.3` calibration bracket above
-  the level 2500 result.
+- **Complete:** the 4,200-game `30+0.3` Stockfish ladder brackets Forklift's
+  local 50% crossing at approximately 2503, with a conservative timeout
+  sensitivity estimate of 2500.
 - Confirm retained search gains at a slower time control before further search
   expansion.
 

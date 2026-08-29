@@ -8,7 +8,7 @@ The following results are recorded in the repository’s experiment reports:
 
 | Change | Result | Decision |
 |---|---:|---|
-| Slow Stockfish 18 calibration | 3,600 games at `30+0.3`; approximately level with the 2500 rung | Primary 50.4%; timeout-excluded sensitivity 50.0%; test 2550 to close the formal bracket |
+| Slow Stockfish 18 calibration | 4,200 games at `30+0.3`; approximately 2503 local crossing | Bracketed by 50.4% at 2500 and 43.3% at 2550; timeout-excluded sensitivity is 2500 |
 | Stockfish 18 limited-strength calibration | 1,200 games; approximately 2321.5 local crossing | Fast-control baseline retained; do not combine it with the slower campaign |
 | v1 versus `v0.4.0` | 299 wins, 18 losses, 83 draws | Released; +303 +/- 37 Elo in this test pool |
 | Mobility evaluation | 11.8% fewer nodes | Kept |
@@ -30,7 +30,7 @@ These figures are not mixed into one synthetic score. Node reductions, throughpu
 
 The immediate work is post-v1 strength validation:
 
-1. test the 2550 rung to close the slower calibration bracket above the level 2500 result;
+1. freeze the calibrated post-v1 build as the current champion;
 2. confirm continuation history and qsearch SEE pruning at a slower time
    control;
 3. profile root-parallel contention and prove equal-time strength before

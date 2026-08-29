@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="666" viewBox="0 0 1200 666" role="img" aria-labelledby="title desc">
   <title id="title">Forklift calibration outcomes by Stockfish rung</title>
-  <desc id="desc">Six stacked horizontal bars show Forklift wins, draws and losses in 600 games against each Stockfish limited-strength rung from 2250 through 2500 at 30+0.3; the 2500 result includes six Stockfish-side timeout results.</desc>
+  <desc id="desc">Seven stacked horizontal bars show Forklift wins, draws and losses in 600 games against each Stockfish limited-strength rung from 2250 through 2550 at 30+0.3; the 2500 result includes six Stockfish-side timeout results.</desc>
   <style>
     .bg { fill: #0a0b0b; }
     .frame { fill: none; stroke: #303332; stroke-width: 1; }
@@ -21,10 +21,10 @@
     .ci { stroke: #a4a9a5; stroke-width: 2; }
     .point { fill: #9dce7a; stroke: #0a0b0b; stroke-width: 3; }
   </style>
-  <rect class="bg" width="1200" height="600" rx="8"/>
-  <rect class="frame" x="0.5" y="0.5" width="1199" height="599" rx="8"/>
+  <rect class="bg" width="1200" height="666" rx="8"/>
+  <rect class="frame" x="0.5" y="0.5" width="1199" height="665" rx="8"/>
   <text class="title" x="70" y="67">Calibration outcomes by Stockfish rung</text>
-  <text class="sub" x="70" y="99">Forklift perspective · 3,600 games · 600 per rung · 30+0.3</text>
+  <text class="sub" x="70" y="99">Forklift perspective · 4,200 games · 600 per rung · 30+0.3</text>
   <rect class="win" x="781" y="58" width="14" height="14"/><text class="small" x="805" y="70">wins</text>
   <rect class="draw" x="866" y="58" width="14" height="14"/><text class="small" x="890" y="70">draws</text>
   <rect class="loss" x="963" y="58" width="14" height="14"/><text class="small" x="987" y="70">losses</text>
@@ -64,6 +64,12 @@
   <text class="label" x="180" y="496.00" text-anchor="end">2500</text>
   <text class="small" x="930" y="488.00">W 274 · D 57 · L 269</text>
   <text class="small" x="930" y="507.00">50.4% score</text>
-  <text class="small" x="70" y="563">Six Stockfish-side timeout results at 2500; no crashes, illegal moves or disconnects.</text>
-  <text class="small" x="1130" y="563" text-anchor="end">candidate · 071b4b6</text>
+  <rect class="win" x="210.00" y="541.00" width="271.40" height="30.0"/>
+  <rect class="draw" x="481.40" y="541.00" width="55.20" height="30.0"/>
+  <rect class="loss" x="536.60" y="541.00" width="363.40" height="30.0"/>
+  <text class="label" x="180" y="562.00" text-anchor="end">2550</text>
+  <text class="small" x="930" y="554.00">W 236 · D 48 · L 316</text>
+  <text class="small" x="930" y="573.00">43.3% score</text>
+  <text class="small" x="70" y="629">Six Stockfish-side timeout results at 2500; every other rung had zero technical failures.</text>
+  <text class="small" x="1130" y="629" text-anchor="end">candidate · 071b4b6</text>
 </svg>

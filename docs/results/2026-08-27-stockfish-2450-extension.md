@@ -56,6 +56,8 @@ presented as a universal rating.
 
 The subsequent [2500 extension](2026-08-28-stockfish-2500-extension.md) was
 approximately level and moved the next strict-bracketing measurement to 2550.
+The later [2550 extension](2026-08-29-stockfish-2550-extension.md) scored 43.3%
+and closed the bracket at an interpolated crossing of approximately 2503.
 
 ## Evidence checksums
 

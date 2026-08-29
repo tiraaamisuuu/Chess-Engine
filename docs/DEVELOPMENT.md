@@ -279,10 +279,10 @@ policy/value research line—is maintained in
 7. **Complete:** land the minimalist desktop overhaul with native Windows icon,
    sound, motion, adaptive time profiles, corrected telemetry, packaging, and
    cross-platform CI.
-8. **Complete:** run 3,600 paired `30+0.3` calibration games through the 2500
-   rung; Forklift scored 50.4% at 2500 (+2.9 +/- 26.5 relative Elo). Six
-   Stockfish-side timeout results favoured Forklift; excluding them leaves an
-   exactly level `269-56-269`. The formal crossing remains open; test 2550 next.
+8. **Complete:** run 4,200 paired `30+0.3` calibration games through the 2550
+   rung. Scores of 50.4% at 2500 and 43.3% at 2550 bracket the local crossing
+   at approximately 2503. Excluding six Stockfish-side timeout results at
+   2500 gives a conservative sensitivity estimate of exactly 2500.
 
 The NNUE and release evidence is recorded in
 `docs/results/2026-08-21-five-million-nnue.md` and
@@ -291,8 +291,10 @@ release configuration. The post-release desktop work is recorded in
 `docs/results/2026-08-26-forklift-desktop-overhaul.md`, and the slow calibration
 and extension are recorded in
 `docs/results/2026-08-27-stockfish-slow-calibration.md` and
-`docs/results/2026-08-27-stockfish-2450-extension.md`, with the 2500 result in
-`docs/results/2026-08-28-stockfish-2500-extension.md`.
+`docs/results/2026-08-27-stockfish-2450-extension.md`, with the bracket-closing
+2500 and 2550 results in
+`docs/results/2026-08-28-stockfish-2500-extension.md` and
+`docs/results/2026-08-29-stockfish-2550-extension.md`.
 
 ### Priority 2: validate retained search gains
 

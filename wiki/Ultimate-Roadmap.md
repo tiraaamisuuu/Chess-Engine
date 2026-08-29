@@ -44,10 +44,12 @@ idea -> invariant tests -> fixed-work benchmark -> paired match
     loaders, version every format, and make releases reproducible for future
     maintainers.
 
-The immediate order is calibration, slower confirmation of retained search
-work, automated champion/candidate promotion, NNUE v2, then proven parallel
-strength. Classical one-thread Forklift remains champion until another
-configuration beats it under equal conditions.
+The Stockfish calibration milestone is complete: the slower 4,200-game ladder
+places the local crossing near 2503 under its exact contract. The immediate
+order is now slower confirmation of retained search work, automated
+champion/candidate promotion, NNUE v2, then proven parallel strength. Classical
+one-thread Forklift remains champion until another configuration beats it under
+equal conditions.
 
 The fully expanded programme, exit gates and research references are maintained
 in the repository's

@@ -67,7 +67,9 @@ retain the full qualification.
 The subsequent [2450 extension](2026-08-27-stockfish-2450-extension.md)
 finished `280-69-251` for Forklift. The later
 [2500 extension](2026-08-28-stockfish-2500-extension.md) was approximately
-level; the formal crossing remains open pending the 2550 rung.
+level. The later [2550 extension](2026-08-29-stockfish-2550-extension.md)
+scored 43.3% and closed the bracket at an interpolated crossing of
+approximately 2503.
 
 ## Evidence checksums
 

@@ -62,6 +62,12 @@ ladder status remains `above_range`. A crossing must not be extrapolated beyond
 the tested data. The next strict-bracketing measurement is 600 games against
 Stockfish 2550 with the same candidate and experimental contract.
 
+## Follow-up
+
+The planned 2550 extension subsequently scored 43.3%, closing the bracket and
+placing the interpolated local crossing at approximately 2503. See
+[`2026-08-29-stockfish-2550-extension.md`](2026-08-29-stockfish-2550-extension.md).
+
 ## Evidence checksums
 
 - `ladder-manifest.json`: `212c1172c9d131088a605aa17ba6f03f82ec0ad7fb79f96b1e20629ff1bbd056`

@@ -50,7 +50,7 @@ Elo claim. Full hardware, commands, commits and uncertainty are preserved in
 
 | Measurement | Result | Interpretation |
 |---|---:|---|
-| Stockfish 18 calibration, 3,600 paired `30+0.3` games | approximately level with the 2500 rung | `274-57-269` at 2500; +2.9 +/- 26.5 relative Elo, or exactly `269-56-269` after excluding six Stockfish-side timeout results |
+| Stockfish 18 calibration, 4,200 paired `30+0.3` games | approximately 2503 | Bracketed by 50.4% at 2500 and 43.3% at 2550; timeout-excluded sensitivity is exactly 2500 |
 | Stockfish 18 calibration, 1,200 paired `10+0.1` games | approximately 2321.5 | Interpolated 50% crossing in this hardware-, opening- and time-control-specific limited-strength pool |
 | v1 vs `v0.4.0`, 400 paired `10+0.1` games | `299–18–83` | 85.1%, +303.0 +/- 37.1 Elo, 100% LOS; release strength gate passed |
 | Depth-10 search work | 270,343 → 186,618 nodes | Qsearch SEE pruning plus continuation history; changed tree |
@@ -67,14 +67,14 @@ were rejected after neutral or negative measurements.
 
 ### Calibrated strength and informal game review
 
-The slower confirmation campaign and its extensions have completed 3,600 games
-at `30+0.3`. Forklift finished `274-57-269` against Stockfish 2500: 50.4%, or
-+2.9 +/- 26.5 relative Elo, directly anchoring the primary result at 2502.9 in
-this pool. Six Stockfish-side timeout results favoured Forklift; excluding those
-games gives `269-56-269`, exactly 50.0%. The conservative conclusion is that
-Forklift is approximately level with the Stockfish 2500 setting under these
-exact conditions. Because no rung scored below 50%, the formal crossing remains
-open and 2550 is the next strict-bracketing measurement.
+The slower confirmation campaign and its extensions completed 4,200 games at
+`30+0.3`. Forklift scored 50.4% (`274-57-269`) against Stockfish 2500 and 43.3%
+(`236-48-316`) against 2550, placing the interpolated 50% crossing at
+approximately **2503** in this pool. The 2550 rung had zero technical
+failures. Six Stockfish-side timeout results at 2500 favoured Forklift;
+excluding them gives an exactly level `269-56-269` and a conservative
+sensitivity estimate of **2500.0**. The defensible shorthand is therefore
+approximately **2503 local-pool Elo** under this exact contract.
 
 ![Forklift slow-control Stockfish calibration curve](docs/assets/stockfish-calibration-slow.svg)
 
@@ -94,8 +94,8 @@ rating**, and **zero misses or blunders** for Forklift. The bot side received
 96.4% and 3000. This is encouraging anecdotal evidence from one game—not a
 repeatable benchmark or proof that Forklift is 2750 Elo. The measured results
 that can currently be reproduced are the approximately 2321.5 fast-control
-crossing, the level result against the 2500 rung at the slower control, and the
-+303.0 +/- 37.1 relative Elo release match above.
+crossing, the bracketed 2503 slower-control crossing, and the +303.0 +/- 37.1
+relative Elo release match above.
 
 <!-- PERFORMANCE VISUAL
 Recommended later, once another release-grade match exists: a simple line or
@@ -201,10 +201,10 @@ GitHub Wiki, so documentation changes remain reviewable with the code.
 
 ## Roadmap
 
-The immediate sequence is: test the 2550 slow-control rung to close the
-calibration bracket above the level 2500 result, confirm the retained search
-gains at slower time controls, automate candidate-versus-champion testing,
-build a stronger NNUE v2, then prove multi-thread strength.
+The immediate sequence is: freeze this calibrated build as the post-v1
+champion, confirm the retained search gains at slower time controls, automate
+candidate-versus-champion SPRT testing, build a stronger NNUE v2, then prove
+multi-thread strength.
 
 Beyond that, the project expands into distributed SPRT testing and tuning,
 large-scale self-play, tablebases, SIMD/architecture-specific optimization,

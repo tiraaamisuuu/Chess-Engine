@@ -448,19 +448,19 @@ def main() -> int:
         ),
         "stockfish-calibration-slow.svg": stockfish_calibration_curve(
             slow_calibration,
-            subtitle="3,600 games · 600 per rung · 30+0.3 · one thread per engine · paired openings",
-            headline_value="2502.9 ± 26.5",
-            headline_label="top-rung anchor · formal bracket still open",
-            footer_estimate="tested boundary · level at 2500",
-            description="Forklift scored 50.4 percent over 600 games against Stockfish UCI Elo 2500 at 30+0.3, an anchored result of 2502.9 plus or minus 26.5 Elo. Six Stockfish-side timeout results favoured Forklift; excluding them gives an exactly level 269 wins, 56 draws and 269 losses, while the formal crossing remains unbracketed.",
-            crossing=None,
+            subtitle="4,200 games · 600 per rung · 30+0.3 · one thread per engine · paired openings",
+            headline_value="≈ 2503",
+            headline_label="local 50% crossing · bracketed",
+            footer_estimate="bracketed 2500–2550 · sensitivity ≈ 2500",
+            description="Forklift scored 50.4 percent against Stockfish UCI Elo 2500 and 43.3 percent against 2550 at 30+0.3, placing the interpolated 50 percent crossing near 2503 in this local test pool. Excluding six Stockfish-side timeout results from the 2500 rung gives a conservative sensitivity crossing of exactly 2500.",
+            crossing=calibration_crossing(slow_calibration),
         ),
         "stockfish-calibration-slow-wdl.svg": stockfish_calibration_wdl(
             slow_calibration,
-            subtitle="Forklift perspective · 3,600 games · 600 per rung · 30+0.3",
+            subtitle="Forklift perspective · 4,200 games · 600 per rung · 30+0.3",
             footer="candidate · 071b4b6",
-            integrity_note="Six Stockfish-side timeout results at 2500; no crashes, illegal moves or disconnects.",
-            description="Six stacked horizontal bars show Forklift wins, draws and losses in 600 games against each Stockfish limited-strength rung from 2250 through 2500 at 30+0.3; the 2500 result includes six Stockfish-side timeout results.",
+            integrity_note="Six Stockfish-side timeout results at 2500; every other rung had zero technical failures.",
+            description="Seven stacked horizontal bars show Forklift wins, draws and losses in 600 games against each Stockfish limited-strength rung from 2250 through 2550 at 30+0.3; the 2500 result includes six Stockfish-side timeout results.",
         ),
     }
     stale: list[Path] = []

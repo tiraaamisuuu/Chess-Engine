@@ -47,12 +47,14 @@ Before optimizing against a guessed rating, establish a durable baseline.
   crashes and relative Elo.
 - Feed compact result summaries into the versioned research notebook while
   keeping large raw evidence in `E:\Dev\Forklift-Research`.
-- Preserve the measured 2321.5 `10+0.1` crossing and the level result against
-  the 2500 rung at `30+0.3` as separate local-pool anchors; test 2550 to close
-  the slower bracket before claiming its crossing.
+- Preserve the measured 2321.5 `10+0.1` crossing and bracketed 2503
+  `30+0.3` crossing as separate local-pool anchors; never collapse them into a
+  universal rating claim.
 
-**Exit gate:** a rerunnable rating estimate with uncertainty at two time
-controls, plus a frozen post-v1 champion binary.
+**Exit gate: achieved.** The project now has rerunnable rating evidence at two
+time controls and a frozen post-v1 champion binary. Future rating work should
+add independent opponents and desktop-preset calibration rather than repeat
+the same Stockfish ladder without a specific hypothesis.
 
 ## Horizon 1: maximize the single-thread classical engine
 
@@ -262,7 +264,7 @@ lowering its evidence standard.
 
 The practical order from today is:
 
-1. calibrate absolute strength;
+1. preserve the completed absolute-strength calibration as the baseline;
 2. confirm the retained single-thread search work;
 3. automate champion/candidate promotion;
 4. build and test NNUE v2;
