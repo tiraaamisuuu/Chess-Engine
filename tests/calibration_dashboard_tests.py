@@ -139,6 +139,82 @@ class CalibrationDashboardTests(unittest.TestCase):
             self.assertEqual(snapshot["currentRung"], 2600)
             self.assertEqual(snapshot["rungs"][1]["scorePercent"], 75.0)
 
+    def test_combines_completed_history_with_current_extension(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+
+            def completed_run(name: str, rung: int, wins: int, draws: int) -> Path:
+                run_dir = root / name
+                run_dir.mkdir()
+                (run_dir / "ladder-manifest.json").write_text(
+                    json.dumps(
+                        {
+                            "configuration": {
+                                "rungs": [rung],
+                                "gamesPerRung": 600,
+                                "candidate": {"commit": "abc123"},
+                            }
+                        }
+                    )
+                )
+                attempt = run_dir / f"rung-{rung}" / "attempt-001" / "match"
+                attempt.mkdir(parents=True)
+                (attempt / "manifest.json").write_text(
+                    json.dumps({"createdAt": datetime.now(timezone.utc).isoformat()})
+                )
+                losses = 600 - wins - draws
+                (attempt / "result.json").write_text(
+                    json.dumps(
+                        {
+                            "completed": True,
+                            "score": {
+                                "candidateWins": wins,
+                                "baselineWins": losses,
+                                "draws": draws,
+                                "candidateScore": (wins + 0.5 * draws) / 600,
+                                "games": 600,
+                            },
+                            "elo": {"difference": 0.0, "uncertainty": 26.0},
+                        }
+                    )
+                )
+                (run_dir / "summary.json").write_text(json.dumps({"completed": True}))
+                return run_dir
+
+            history = completed_run("2500", 2500, 274, 57)
+            current = completed_run("2550", 2550, 236, 48)
+            snapshot = dashboard.build_snapshot(current, [history])
+
+            self.assertEqual(snapshot["completedGames"], 1200)
+            self.assertEqual(snapshot["totalRungs"], 2)
+            self.assertEqual(snapshot["state"], "complete")
+            self.assertEqual(snapshot["estimate"]["status"], "bracketed")
+            self.assertEqual(snapshot["estimate"]["estimate"], 2502.8)
+
+    def test_rejects_history_from_a_different_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            current = root / "current"
+            history = root / "history"
+            current.mkdir()
+            history.mkdir()
+            base = {
+                "rungs": [],
+                "gamesPerRung": 600,
+                "timeControl": "30+0.3",
+                "candidate": {"commit": "abc123"},
+            }
+            (current / "ladder-manifest.json").write_text(
+                json.dumps({"configuration": base})
+            )
+            mismatched = {**base, "timeControl": "10+0.1"}
+            (history / "ladder-manifest.json").write_text(
+                json.dumps({"configuration": mismatched})
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "campaign contract"):
+                dashboard.build_snapshot(current, [history])
+
 
 if __name__ == "__main__":
     unittest.main()

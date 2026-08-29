@@ -159,6 +159,19 @@ simultaneous games on the 12-core development host. Results are stored under
 keeps the computer awake without requiring the displays to remain on. Running
 the launcher again resumes the same ladder rather than overwriting evidence.
 
+When a ladder is extended in separate run directories, pass each earlier
+directory with `-HistoryRunDir` to display one deduplicated campaign. The last
+directory is the active run and wins if the same rung appears more than once:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_rating_calibration.ps1 `
+  -RunDir 'E:\Dev\Forklift-Research\matches\current-extension' `
+  -HistoryRunDir @(
+    'E:\Dev\Forklift-Research\matches\original-ladder',
+    'E:\Dev\Forklift-Research\matches\earlier-extension'
+  )
+```
+
 Use `--quick` only to verify the ladder workflow; it selects four games per
 rung at `2+0.02`. For a rating claim, use substantially larger samples and
 repeat the ladder at a second time control. Even then, describe the result as a

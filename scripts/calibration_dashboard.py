@@ -46,6 +46,13 @@ _last_cpu_times: tuple[int, int, int] | None = None
 def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", type=Path, required=True)
+    parser.add_argument(
+        "--history-run-dir",
+        type=Path,
+        action="append",
+        default=[],
+        help="completed earlier ladder directory to include (repeatable)",
+    )
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--snapshot", action="store_true")
@@ -428,16 +435,60 @@ def local_pool_estimate(
     return {"status": "noisy", "estimate": None, "display": "more games required"}
 
 
-def build_snapshot(run_dir: Path) -> dict[str, object]:
+def campaign_signature(configuration: dict[str, object]) -> tuple[object, ...]:
+    candidate = configuration.get("candidate")
+    candidate = candidate if isinstance(candidate, dict) else {}
+    stockfish = configuration.get("stockfish")
+    stockfish = stockfish if isinstance(stockfish, dict) else {}
+    return (
+        candidate.get("commit") or candidate.get("selector"),
+        stockfish.get("sha256"),
+        configuration.get("timeControl"),
+        configuration.get("threads"),
+        configuration.get("hashMb"),
+        configuration.get("concurrency"),
+        configuration.get("seed"),
+        configuration.get("gamesPerRung"),
+    )
+
+
+def build_snapshot(
+    run_dir: Path, history_run_dirs: list[Path] | None = None
+) -> dict[str, object]:
     manifest = read_json(run_dir / "ladder-manifest.json")
     configuration = manifest.get("configuration")
     configuration = configuration if isinstance(configuration, dict) else {}
-    rungs_value = configuration.get("rungs", [])
-    rungs = [int(value) for value in rungs_value] if isinstance(rungs_value, list) else []
-    games_per_rung = int(configuration.get("gamesPerRung", 0) or 0)
-    rung_rows = [rung_snapshot(run_dir, rung, games_per_rung) for rung in rungs]
+
+    source_dirs = [*(history_run_dirs or []), run_dir]
+    rows_by_elo: dict[int, dict[str, object]] = {}
+    expected_signature = campaign_signature(configuration) if configuration else None
+    for source_dir in source_dirs:
+        source_manifest = read_json(source_dir / "ladder-manifest.json")
+        source_configuration = source_manifest.get("configuration")
+        source_configuration = (
+            source_configuration if isinstance(source_configuration, dict) else {}
+        )
+        if (
+            expected_signature is not None
+            and source_configuration
+            and campaign_signature(source_configuration) != expected_signature
+        ):
+            raise RuntimeError(
+                f"history run does not match the active campaign contract: {source_dir}"
+            )
+        rungs_value = source_configuration.get("rungs", [])
+        source_rungs = (
+            [int(value) for value in rungs_value]
+            if isinstance(rungs_value, list)
+            else []
+        )
+        games_per_rung = int(source_configuration.get("gamesPerRung", 0) or 0)
+        for rung in source_rungs:
+            rows_by_elo[rung] = rung_snapshot(source_dir, rung, games_per_rung)
+
+    rung_rows = [rows_by_elo[elo] for elo in sorted(rows_by_elo)]
     completed_games = sum(int(item["games"]) for item in rung_rows)
-    total_games = games_per_rung * len(rungs)
+    total_games = sum(int(item["totalGames"]) for item in rung_rows)
     active = next((item for item in rung_rows if item["state"] == "active"), None)
     completed = sum(1 for item in rung_rows if item["state"] == "complete")
 
@@ -452,7 +503,11 @@ def build_snapshot(run_dir: Path) -> dict[str, object]:
     pid = read_pid(run_dir / "calibration.pid")
     running = process_alive(pid)
     summary = read_json(run_dir / "summary.json")
-    is_complete = bool(summary) and completed == len(rungs) and bool(rungs)
+    is_complete = (
+        bool(summary)
+        and completed == len(rung_rows)
+        and bool(rung_rows)
+    )
     stderr_lines = [
         line for line in read_text(run_dir / "calibration.stderr.log").splitlines()
         if line.strip()
@@ -483,7 +538,7 @@ def build_snapshot(run_dir: Path) -> dict[str, object]:
         "completedGames": completed_games,
         "totalGames": total_games,
         "completedRungs": completed,
-        "totalRungs": len(rungs),
+        "totalRungs": len(rung_rows),
         "percent": round(100.0 * completed_games / total_games, 2) if total_games else 0.0,
         "eta": duration(eta_seconds),
         "elapsed": duration(elapsed_seconds),
@@ -525,12 +580,16 @@ def keep_system_awake(run_dir: Path) -> None:
         ctypes.windll.kernel32.SetThreadExecutionState(continuous)
 
 
-def make_handler(run_dir: Path) -> type[BaseHTTPRequestHandler]:
+def make_handler(
+    run_dir: Path, history_run_dirs: list[Path] | None = None
+) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             route = urlparse(self.path).path
             if route == "/api/status":
-                payload = json.dumps(build_snapshot(run_dir)).encode("utf-8")
+                payload = json.dumps(
+                    build_snapshot(run_dir, history_run_dirs)
+                ).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Cache-Control", "no-store")
@@ -558,13 +617,16 @@ def make_handler(run_dir: Path) -> type[BaseHTTPRequestHandler]:
 def main() -> int:
     args = arguments()
     run_dir = args.run_dir.expanduser().resolve()
+    history_run_dirs = [path.expanduser().resolve() for path in args.history_run_dir]
     if args.snapshot:
-        print(json.dumps(build_snapshot(run_dir), indent=2))
+        print(json.dumps(build_snapshot(run_dir, history_run_dirs), indent=2))
         return 0
     if not HTML_PATH.is_file():
         raise FileNotFoundError(HTML_PATH)
     threading.Thread(target=keep_system_awake, args=(run_dir,), daemon=True).start()
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(run_dir))
+    server = ThreadingHTTPServer(
+        (args.host, args.port), make_handler(run_dir, history_run_dirs)
+    )
     print(f"Calibration dashboard: http://{args.host}:{args.port}", flush=True)
     server.serve_forever()
     return 0

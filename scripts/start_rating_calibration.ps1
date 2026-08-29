@@ -6,7 +6,8 @@ param(
     [int]$Concurrency = 6,
     [int]$Seed = 1701,
     [int]$Port = 8766,
-    [string]$EngineRef = 'HEAD'
+    [string]$EngineRef = 'HEAD',
+    [string[]]$HistoryRunDir = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,8 +44,12 @@ function Test-RecordedProcess([string]$PidPath) {
 
 $dashboardPidPath = Join-Path $resolvedRunDir 'dashboard.pid'
 if (-not (Test-RecordedProcess $dashboardPidPath)) {
+    $dashboardArguments = @('-3', $dashboardScript, '--run-dir', $resolvedRunDir, '--port', $Port)
+    foreach ($historyDirectory in $HistoryRunDir) {
+        $dashboardArguments += @('--history-run-dir', [System.IO.Path]::GetFullPath($historyDirectory))
+    }
     $dashboard = Start-Process -FilePath $pythonLauncher `
-        -ArgumentList @('-3', $dashboardScript, '--run-dir', $resolvedRunDir, '--port', $Port) `
+        -ArgumentList $dashboardArguments `
         -WorkingDirectory $repoRoot `
         -RedirectStandardOutput (Join-Path $resolvedRunDir 'dashboard.stdout.log') `
         -RedirectStandardError (Join-Path $resolvedRunDir 'dashboard.stderr.log') `
@@ -94,4 +99,5 @@ if (-not (Test-RecordedProcess $calibrationPidPath)) {
     Concurrency = $Concurrency
     Seed = $Seed
     EngineCommit = $commit
+    HistoryRunDirectories = $HistoryRunDir
 }
