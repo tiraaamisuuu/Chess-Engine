@@ -52,6 +52,40 @@ class CalibrationDashboardTests(unittest.TestCase):
         self.assertEqual(estimate["status"], "above_range")
         self.assertEqual(estimate["display"], "above 2400; add a higher rung")
 
+    def test_timeout_sensitivity_excludes_flagged_game_outcomes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            attempt = Path(temporary) / "attempt-001"
+            match = attempt / "match"
+            match.mkdir(parents=True)
+            (match / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "engines": [
+                            {"side": "Candidate", "matchName": "Forklift"},
+                            {"side": "Baseline", "matchName": "Stockfish"},
+                        ]
+                    }
+                )
+            )
+            (match / "games.pgn").write_text(
+                '[Event "?"]\n[White "Forklift"]\n[Black "Stockfish"]\n'
+                '[Result "1-0"]\n[Termination "time forfeit"]\n\n1. e4 1-0\n\n'
+                '[Event "?"]\n[White "Stockfish"]\n[Black "Forklift"]\n'
+                '[Result "1-0"]\n[Termination "adjudication"]\n\n1. e4 1-0\n'
+            )
+            sensitivity = dashboard.timeout_sensitivity(
+                attempt,
+                {"wins": 1, "draws": 0, "losses": 1},
+            )
+            self.assertIsNotNone(sensitivity)
+            assert sensitivity is not None
+            self.assertEqual(sensitivity["excluded"], 1)
+            self.assertEqual(
+                (sensitivity["wins"], sensitivity["draws"], sensitivity["losses"]),
+                (0, 0, 1),
+            )
+            self.assertEqual(sensitivity["scorePercent"], 0.0)
+
     def test_builds_snapshot_from_complete_and_live_rungs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             run_dir = Path(temporary)

@@ -236,6 +236,66 @@ def attempt_start(attempt: Path) -> datetime | None:
         return None
 
 
+def timeout_sensitivity(
+    attempt: Path, live: dict[str, object]
+) -> dict[str, object] | None:
+    match_manifest = read_json(attempt / "match" / "manifest.json")
+    engines = match_manifest.get("engines")
+    engines = engines if isinstance(engines, list) else []
+    candidate_name = next(
+        (
+            engine.get("matchName")
+            for engine in engines
+            if isinstance(engine, dict)
+            and engine.get("side") == "Candidate"
+            and isinstance(engine.get("matchName"), str)
+        ),
+        None,
+    )
+    if not candidate_name:
+        return None
+
+    timeout_wins = timeout_draws = timeout_losses = 0
+    games = re.split(r"(?m)(?=^\[Event )", read_text(attempt / "match" / "games.pgn"))
+    for game in games:
+        if '[Termination "time forfeit"]' not in game:
+            continue
+        tags = dict(re.findall(r'^\[([^ ]+) "(.*)"\]$', game, re.MULTILINE))
+        white = tags.get("White")
+        black = tags.get("Black")
+        result = tags.get("Result")
+        if candidate_name not in {white, black} or result not in {"1-0", "0-1", "1/2-1/2"}:
+            continue
+        if result == "1/2-1/2":
+            timeout_draws += 1
+        elif (white == candidate_name and result == "1-0") or (
+            black == candidate_name and result == "0-1"
+        ):
+            timeout_wins += 1
+        else:
+            timeout_losses += 1
+
+    excluded = timeout_wins + timeout_draws + timeout_losses
+    if not excluded:
+        return None
+    wins = int(live.get("wins", 0)) - timeout_wins
+    draws = int(live.get("draws", 0)) - timeout_draws
+    losses = int(live.get("losses", 0)) - timeout_losses
+    remaining = wins + draws + losses
+    return {
+        "excluded": excluded,
+        "games": remaining,
+        "wins": wins,
+        "draws": draws,
+        "losses": losses,
+        "scorePercent": (
+            round(100.0 * (wins + 0.5 * draws) / remaining, 1)
+            if remaining
+            else None
+        ),
+    }
+
+
 def rung_snapshot(run_dir: Path, rung: int, games_per_rung: int) -> dict[str, object]:
     rung_dir = run_dir / f"rung-{rung}"
     attempt = latest_attempt(rung_dir)
@@ -252,6 +312,8 @@ def rung_snapshot(run_dir: Path, rung: int, games_per_rung: int) -> dict[str, ob
             "relativeElo": None,
             "uncertainty": None,
             "anchoredPoint": None,
+            "failures": {},
+            "timeoutSensitivity": None,
             "elapsedSeconds": 0.0,
         }
 
@@ -283,6 +345,8 @@ def rung_snapshot(run_dir: Path, rung: int, games_per_rung: int) -> dict[str, ob
     elapsed = max(0.0, (ended - started).total_seconds()) if started else 0.0
     relative_elo = finite_float(live.get("relativeElo"))
     score_fraction = finite_float(live.get("score"))
+    failures = result.get("failures") if completed else {}
+    failures = failures if isinstance(failures, dict) else {}
     return {
         "elo": rung,
         "state": "complete" if completed else "active",
@@ -300,6 +364,11 @@ def rung_snapshot(run_dir: Path, rung: int, games_per_rung: int) -> dict[str, ob
         "anchoredPoint": (
             round(rung + relative_elo, 1) if relative_elo is not None else None
         ),
+        "failures": {
+            key: int(failures.get(key, 0) or 0)
+            for key in ("timeForfeits", "crashes", "illegalMoves", "disconnects")
+        },
+        "timeoutSensitivity": timeout_sensitivity(attempt, live) if completed else None,
         "elapsedSeconds": elapsed,
     }
 
