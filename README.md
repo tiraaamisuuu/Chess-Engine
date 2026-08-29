@@ -30,7 +30,7 @@ Enable with: ![Forklift interface](docs/assets/engine-room-hero.webp)
 - Resumable Stockfish labelling from streamed Lichess `.pgn.zst` archives and
   CUDA training with exact Python/C++ export verification
 - Perft, deterministic core tests, CI, fixed-position benchmarks, paired
-  opening matches, Stockfish calibration and SPRT support
+  opening matches, Stockfish calibration, and a frozen-champion SPRT gate
 
 <!-- ENGINE ARCHITECTURE VISUAL
 Recommended: restrained monochrome SVG showing UCI/web input → board state →
@@ -201,10 +201,11 @@ GitHub Wiki, so documentation changes remain reviewable with the code.
 
 ## Roadmap
 
-The immediate sequence is: freeze this calibrated build as the post-v1
-champion, confirm the retained search gains at slower time controls, automate
-candidate-versus-champion SPRT testing, build a stronger NNUE v2, then prove
-multi-thread strength.
+The calibrated post-v1 build is frozen in `research/champion.json`, and the
+candidate-versus-champion SPRT gate is now automated. The immediate sequence is
+to confirm the retained search gains at slower time controls, profile and
+improve move ordering, build a stronger NNUE v2, then prove multi-thread
+strength.
 
 Beyond that, the project expands into distributed SPRT testing and tuning,
 large-scale self-play, tablebases, SIMD/architecture-specific optimization,

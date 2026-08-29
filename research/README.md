@@ -45,6 +45,8 @@ collapsed into a universal Elo claim.
   rung-level absolute-strength calibration.
 - [`data/nnue_runs.csv`](data/nnue_runs.csv) records comparable NNUE data,
   validation and inference measurements.
+- [`champion.json`](champion.json) freezes the exact promoted engine revision,
+  binary checksum, calibration evidence, and default SPRT contract.
 - `scripts/generate_research_figures.py` regenerates the checked-in SVG figures.
 
 ## Regenerate the figures

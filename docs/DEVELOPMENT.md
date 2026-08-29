@@ -298,6 +298,9 @@ and extension are recorded in
 
 ### Priority 2: validate retained search gains
 
+- **Complete:** freeze calibrated commit `071b4b6246` as the one-thread
+  classical champion and add an automated, evidence-preserving SPRT promotion
+  gate with explicit promote/reject/inconclusive/technical outcomes.
 - Run a slower, longer paired test of continuation history plus qsearch SEE
   pruning against the pre-change baseline.
 - Tune continuation/history bonuses only with evidence.

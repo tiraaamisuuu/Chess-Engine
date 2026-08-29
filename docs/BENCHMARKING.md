@@ -199,7 +199,47 @@ multi-thread configuration stronger.
 
 ## Serious acceptance testing
 
-For a candidate expected to be at least five Elo stronger:
+The supported path is the frozen-champion gate. Inspect its exact revision and
+default contract:
+
+```powershell
+py -3 scripts\champion_gate.py show
+```
+
+Run a committed candidate against that champion. The run directory must be new
+or empty and should live in the external evidence archive:
+
+```powershell
+py -3 scripts\champion_gate.py run `
+  --candidate <candidate-commit> `
+  --run-dir E:\Dev\Forklift-Research\matches\champion-gates\candidate-001
+```
+
+The default contract permits up to 10,000 paired-opening games at `10+0.1`,
+one thread and 256 MiB hash per engine, concurrency six, and an SPRT interval
+of 0 to +5 Elo. A valid early SPRT boundary is classified as `promote` or
+`reject`; reaching the maximum without a boundary is `inconclusive`. Any crash,
+illegal move, disconnect, or time forfeit blocks promotion as a technical
+failure. `--quick` runs a four-game workflow smoke and can only produce
+`smoke_pass`, never strength evidence.
+
+Every gate preserves its immutable manifest, underlying match manifest, PGN,
+logs, strict JSON result, and a Markdown report. An interrupted directory is
+never overwritten or silently resumed; preserve it and use a new directory.
+
+Only after reviewing a `promote` result, update the versioned registry:
+
+```powershell
+py -3 scripts\champion_gate.py apply `
+  --run-dir E:\Dev\Forklift-Research\matches\champion-gates\candidate-001
+```
+
+The apply step verifies that the tested baseline is still the registered
+champion, records the new binary checksum and evidence hash, and leaves a normal
+Git change for review. It does not commit or push automatically.
+
+The lower-level runner remains available for bespoke experiments. For a
+candidate expected to be at least five Elo stronger:
 
 ```sh
 scripts/compare_engines.py \

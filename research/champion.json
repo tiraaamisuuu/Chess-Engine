@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "name": "Forklift classical one-thread champion",
+  "commit": "071b4b624629ead2326b8ff03cace89b0520aa1f",
+  "establishedAt": "2026-08-29",
+  "engine": {
+    "evaluation": "classical",
+    "threads": 1,
+    "hashMb": 256,
+    "binarySha256": "3c0b5e1cdfa350be7aa35165f91276662e77105891e6a8984089b24f85651a11"
+  },
+  "evidence": {
+    "report": "docs/results/2026-08-29-stockfish-2550-extension.md",
+    "localPoolEstimate": 2503,
+    "timeControl": "30+0.3",
+    "games": 4200,
+    "sensitivityEstimate": 2500
+  },
+  "gateDefaults": {
+    "games": 10000,
+    "timeControl": "10+0.1",
+    "threads": 1,
+    "hashMb": 256,
+    "concurrency": 6,
+    "seed": 4701,
+    "elo0": 0.0,
+    "elo1": 5.0,
+    "alpha": 0.05,
+    "beta": 0.05
+  }
+}
