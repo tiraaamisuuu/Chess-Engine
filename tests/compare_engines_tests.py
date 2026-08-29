@@ -176,6 +176,45 @@ Elo difference: inf +/- nan, LOS: 97.7 %, DrawRatio: 0.0 %
         self.assertEqual(result["elo"]["display"], "inf +/- nan")
         json.dumps(result, allow_nan=False)
 
+    def test_accepts_valid_early_sprt_h1_stop(self) -> None:
+        log = """\
+Finished game 1 (Candidate vs Champion): 1-0 {White mates}
+Finished game 2 (Champion vs Candidate): 0-1 {Black mates}
+SPRT: llr 3.02 (102.6%), lbound -2.94444, ubound 2.94444
+"""
+
+        result = compare_engines.parse_match_result(
+            log,
+            "Candidate",
+            "Champion",
+            expected_games=10000,
+            exit_code=0,
+            sprt_enabled=True,
+        )
+
+        self.assertTrue(result["completed"])
+        self.assertEqual(result["finishedGames"], 2)
+        self.assertEqual(result["sprt"]["decision"], "accepted_h1")
+
+    def test_records_maximum_game_sprt_as_inconclusive(self) -> None:
+        log = """\
+Finished game 1 (Candidate vs Champion): 1/2-1/2 {Draw by adjudication}
+Finished game 2 (Champion vs Candidate): 1/2-1/2 {Draw by adjudication}
+SPRT: llr 0.12 (4.1%), lbound -2.94444, ubound 2.94444
+"""
+
+        result = compare_engines.parse_match_result(
+            log,
+            "Candidate",
+            "Champion",
+            expected_games=2,
+            exit_code=0,
+            sprt_enabled=True,
+        )
+
+        self.assertTrue(result["completed"])
+        self.assertEqual(result["sprt"]["decision"], "inconclusive")
+
 
 if __name__ == "__main__":
     unittest.main()

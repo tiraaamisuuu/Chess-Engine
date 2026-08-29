@@ -526,12 +526,46 @@ def parse_metric(value: str) -> float | None:
     return float(value)
 
 
+def parse_sprt_result(log_text: str, enabled: bool) -> dict[str, object]:
+    if not enabled:
+        return {"enabled": False, "decision": "disabled"}
+
+    pattern = re.compile(
+        r"^SPRT:\s+llr\s+([+\-]?(?:[0-9.eE]+|inf|nan))\s+\([^)]*\),"
+        r"\s+lbound\s+([+\-]?(?:[0-9.eE]+|inf|nan)),"
+        r"\s+ubound\s+([+\-]?(?:[0-9.eE]+|inf|nan))\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    matches = list(pattern.finditer(log_text))
+    if not matches:
+        return {"enabled": True, "decision": "unavailable"}
+
+    match = matches[-1]
+    llr = parse_metric(match.group(1))
+    lower = parse_metric(match.group(2))
+    upper = parse_metric(match.group(3))
+    decision = "inconclusive"
+    if llr is not None and lower is not None and upper is not None:
+        if llr >= upper:
+            decision = "accepted_h1"
+        elif llr <= lower:
+            decision = "accepted_h0"
+    return {
+        "enabled": True,
+        "decision": decision,
+        "llr": llr,
+        "lowerBound": lower,
+        "upperBound": upper,
+    }
+
+
 def parse_match_result(
     log_text: str,
     candidate_name: str,
     baseline_name: str,
     expected_games: int,
     exit_code: int,
+    sprt_enabled: bool = False,
 ) -> dict[str, object]:
     score_pattern = re.compile(
         rf"^Score of {re.escape(candidate_name)} vs {re.escape(baseline_name)}:"
@@ -595,14 +629,24 @@ def parse_match_result(
             failure_counts["disconnects"] += count
 
     finished_games = sum(terminations.values())
+    sprt = parse_sprt_result(log_text, sprt_enabled)
+    sprt_decision = sprt.get("decision")
+    reached_valid_end = finished_games == expected_games or (
+        sprt_enabled and sprt_decision in {"accepted_h0", "accepted_h1"}
+    )
     return {
         "schemaVersion": 1,
-        "completed": exit_code == 0 and finished_games == expected_games,
+        "completed": (
+            exit_code == 0
+            and 0 < finished_games <= expected_games
+            and reached_valid_end
+        ),
         "processExitCode": exit_code,
         "expectedGames": expected_games,
         "finishedGames": finished_games,
         "score": score,
         "elo": elo,
+        "sprt": sprt,
         "terminations": terminations,
         "failures": failure_counts,
     }
@@ -864,6 +908,7 @@ def main() -> int:
         str(baseline["matchName"]),
         args.games,
         exit_code,
+        args.sprt,
     )
     result["completedAt"] = datetime.now().astimezone().isoformat(timespec="seconds")
     result["manifest"] = str(manifest_path.resolve())
