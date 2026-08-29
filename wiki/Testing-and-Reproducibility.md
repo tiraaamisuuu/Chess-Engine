@@ -32,6 +32,22 @@ The match runner supports external UCI engines, paired UHO openings, colour reve
 
 Short matches are smoke tests, not proof. A change that appears neutral or positive in a small match should be extended before it becomes the default.
 
+The current one-thread classical champion is frozen in
+`research/champion.json`. Show the champion and its versioned match contract
+with:
+
+```powershell
+py -3 scripts\champion_gate.py show
+```
+
+Run a committed candidate through `champion_gate.py run`. A serious gate uses
+paired openings and SPRT, preserves its complete evidence, distinguishes
+promote/reject/inconclusive outcomes, and blocks promotion on technical
+failures. The separate `apply` command can update the registry only after H1 is
+accepted and only if the tested champion is still current. See the repository's
+[Benchmarking guide](https://github.com/tiraaamisuuu/Forklift/blob/main/docs/BENCHMARKING.md)
+for the exact commands.
+
 ## Thread scaling
 
 Parallel search is measured separately from single-thread strength. The benchmark records speedup and efficiency at each thread count. More NPS does not by itself prove more Elo, so playing-strength tests remain necessary.

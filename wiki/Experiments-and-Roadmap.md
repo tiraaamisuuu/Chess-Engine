@@ -30,13 +30,15 @@ These figures are not mixed into one synthetic score. Node reductions, throughpu
 
 The immediate work is post-v1 strength validation:
 
-1. freeze the calibrated post-v1 build as the current champion;
+1. **complete:** freeze calibrated commit `071b4b6246` as champion and automate
+   evidence-preserving SPRT promotion gates;
 2. confirm continuation history and qsearch SEE pruning at a slower time
    control;
 3. profile root-parallel contention and prove equal-time strength before
    changing the one-thread default;
-4. target rare HalfKP inputs and test a stronger representation; and
-5. automate candidate-versus-champion promotion while preserving every result.
+4. profile the current move sorter and test one search improvement at a time;
+   and
+5. target rare HalfKP inputs and test a stronger representation.
 
 The teacher budget is now resolved: 127,784 same-position 5k-vs-20k searches
 had 97.499% score-sign agreement, leaving 3,196 disagreements. The project
