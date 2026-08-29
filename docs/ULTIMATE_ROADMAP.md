@@ -47,9 +47,9 @@ Before optimizing against a guessed rating, establish a durable baseline.
   crashes and relative Elo.
 - Feed compact result summaries into the versioned research notebook while
   keeping large raw evidence in `E:\Dev\Forklift-Research`.
-- Preserve the measured 2321.5 `10+0.1` crossing and the above-2450 tested
-  boundary at `30+0.3` as separate local-pool anchors; test 2500 to close the
-  slower bracket before claiming its crossing.
+- Preserve the measured 2321.5 `10+0.1` crossing and the level result against
+  the 2500 rung at `30+0.3` as separate local-pool anchors; test 2550 to close
+  the slower bracket before claiming its crossing.
 
 **Exit gate:** a rerunnable rating estimate with uncertainty at two time
 controls, plus a frozen post-v1 champion binary.

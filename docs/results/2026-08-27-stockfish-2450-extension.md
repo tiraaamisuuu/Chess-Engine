@@ -54,6 +54,9 @@ Taken together with the earlier 2250-2400 campaign, this supports a conservative
 description of roughly 2450-2470 under these exact conditions. It must not be
 presented as a universal rating.
 
+The subsequent [2500 extension](2026-08-28-stockfish-2500-extension.md) was
+approximately level and moved the next strict-bracketing measurement to 2550.
+
 ## Evidence checksums
 
 - `ladder-manifest.json`: `035674fe0f10539cb180ba39b79499ebc2ba2dc5cf968024294a584e965e4b32`

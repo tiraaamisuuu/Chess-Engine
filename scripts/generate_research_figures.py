@@ -357,6 +357,7 @@ def stockfish_calibration_wdl(
     *,
     subtitle: str,
     footer: str,
+    integrity_note: str,
     description: str,
 ) -> str:
     bar_x, bar_width, bar_height = 210.0, 690.0, 30.0
@@ -393,7 +394,7 @@ def stockfish_calibration_wdl(
             '  <rect class="draw" x="866" y="58" width="14" height="14"/><text class="small" x="890" y="70">draws</text>',
             '  <rect class="loss" x="963" y="58" width="14" height="14"/><text class="small" x="987" y="70">losses</text>',
             *rows_svg,
-            f'  <text class="small" x="70" y="{footer_y:.0f}">No crashes, time forfeits, illegal moves or disconnects.</text>',
+            f'  <text class="small" x="70" y="{footer_y:.0f}">{escape(integrity_note)}</text>',
             f'  <text class="small" x="1130" y="{footer_y:.0f}" text-anchor="end">{escape(footer)}</text>',
         ]
     )
@@ -442,22 +443,24 @@ def main() -> int:
             fast_calibration,
             subtitle="Forklift perspective · 1,200 games · 200 per rung · 10+0.1",
             footer="commit · beb0571",
+            integrity_note="No crashes, time forfeits, illegal moves or disconnects.",
             description="Six stacked horizontal bars show Forklift wins, draws and losses in 200 games against each Stockfish limited-strength rung from 2200 through 3190.",
         ),
         "stockfish-calibration-slow.svg": stockfish_calibration_curve(
             slow_calibration,
-            subtitle="3,000 games · 600 per rung · 30+0.3 · one thread per engine · paired openings",
-            headline_value="2466.8 ± 26.2",
+            subtitle="3,600 games · 600 per rung · 30+0.3 · one thread per engine · paired openings",
+            headline_value="2502.9 ± 26.5",
             headline_label="top-rung anchor · formal bracket still open",
-            footer_estimate="tested boundary · above 2450",
-            description="Forklift scored 52.4 percent over 600 games against Stockfish UCI Elo 2450 at 30+0.3, an anchored result of 2466.8 plus or minus 26.2 Elo; every tested rung remained above 50 percent, so the formal crossing was not bracketed.",
+            footer_estimate="tested boundary · level at 2500",
+            description="Forklift scored 50.4 percent over 600 games against Stockfish UCI Elo 2500 at 30+0.3, an anchored result of 2502.9 plus or minus 26.5 Elo. Six Stockfish-side timeout results favoured Forklift; excluding them gives an exactly level 269 wins, 56 draws and 269 losses, while the formal crossing remains unbracketed.",
             crossing=None,
         ),
         "stockfish-calibration-slow-wdl.svg": stockfish_calibration_wdl(
             slow_calibration,
-            subtitle="Forklift perspective · 3,000 games · 600 per rung · 30+0.3",
+            subtitle="Forklift perspective · 3,600 games · 600 per rung · 30+0.3",
             footer="candidate · 071b4b6",
-            description="Five stacked horizontal bars show Forklift wins, draws and losses in 600 games against each Stockfish limited-strength rung from 2250 through 2450 at 30+0.3.",
+            integrity_note="Six Stockfish-side timeout results at 2500; no crashes, illegal moves or disconnects.",
+            description="Six stacked horizontal bars show Forklift wins, draws and losses in 600 games against each Stockfish limited-strength rung from 2250 through 2500 at 30+0.3; the 2500 result includes six Stockfish-side timeout results.",
         ),
     }
     stale: list[Path] = []

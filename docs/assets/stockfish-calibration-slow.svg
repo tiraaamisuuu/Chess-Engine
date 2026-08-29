@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
   <title id="title">Forklift Stockfish calibration curve</title>
-  <desc id="desc">Forklift scored 52.4 percent over 600 games against Stockfish UCI Elo 2450 at 30+0.3, an anchored result of 2466.8 plus or minus 26.2 Elo; every tested rung remained above 50 percent, so the formal crossing was not bracketed.</desc>
+  <desc id="desc">Forklift scored 50.4 percent over 600 games against Stockfish UCI Elo 2500 at 30+0.3, an anchored result of 2502.9 plus or minus 26.5 Elo. Six Stockfish-side timeout results favoured Forklift; excluding them gives an exactly level 269 wins, 56 draws and 269 losses, while the formal crossing remains unbracketed.</desc>
   <style>
     .bg { fill: #0a0b0b; }
     .frame { fill: none; stroke: #303332; stroke-width: 1; }
@@ -24,8 +24,8 @@
   <rect class="bg" width="1200" height="620" rx="8"/>
   <rect class="frame" x="0.5" y="0.5" width="1199" height="619" rx="8"/>
   <text class="title" x="70" y="67">Forklift · Stockfish limited-strength calibration</text>
-  <text class="sub" x="70" y="99">3,000 games · 600 per rung · 30+0.3 · one thread per engine · paired openings</text>
-  <text class="value" x="1130" y="67" text-anchor="end">2466.8 ± 26.2</text>
+  <text class="sub" x="70" y="99">3,600 games · 600 per rung · 30+0.3 · one thread per engine · paired openings</text>
+  <text class="value" x="1130" y="67" text-anchor="end">2502.9 ± 26.5</text>
   <text class="sub" x="1130" y="99" text-anchor="end">top-rung anchor · formal bracket still open</text>
   <line class="grid" x1="105.0" y1="455.00" x2="1130.0" y2="455.00"/>
   <text class="small" x="88" y="460.00" text-anchor="end">0%</text>
@@ -37,39 +37,45 @@
   <text class="small" x="88" y="231.25" text-anchor="end">75%</text>
   <line class="grid" x1="105.0" y1="150.00" x2="1130.0" y2="150.00"/>
   <text class="small" x="88" y="155.00" text-anchor="end">100%</text>
-  <line class="ci" x1="275.83" y1="237.96" x2="275.83" y2="259.90"/>
-  <line class="ci" x1="268.83" y1="237.96" x2="282.83" y2="237.96"/>
-  <line class="ci" x1="268.83" y1="259.90" x2="282.83" y2="259.90"/>
-  <text class="small" x="275.83" y="480" text-anchor="middle">2250</text>
-  <line class="ci" x1="446.67" y1="247.58" x2="446.67" y2="270.00"/>
-  <line class="ci" x1="439.67" y1="247.58" x2="453.67" y2="247.58"/>
-  <line class="ci" x1="439.67" y1="270.00" x2="453.67" y2="270.00"/>
-  <text class="small" x="446.67" y="480" text-anchor="middle">2300</text>
-  <line class="ci" x1="617.50" y1="252.41" x2="617.50" y2="275.27"/>
-  <line class="ci" x1="610.50" y1="252.41" x2="624.50" y2="252.41"/>
-  <line class="ci" x1="610.50" y1="275.27" x2="624.50" y2="275.27"/>
-  <text class="small" x="617.50" y="480" text-anchor="middle">2350</text>
-  <line class="ci" x1="788.33" y1="290.19" x2="788.33" y2="313.32"/>
-  <line class="ci" x1="781.33" y1="290.19" x2="795.33" y2="290.19"/>
-  <line class="ci" x1="781.33" y1="313.32" x2="795.33" y2="313.32"/>
-  <text class="small" x="788.33" y="480" text-anchor="middle">2400</text>
-  <line class="ci" x1="959.17" y1="283.72" x2="959.17" y2="306.62"/>
-  <line class="ci" x1="952.17" y1="283.72" x2="966.17" y2="283.72"/>
-  <line class="ci" x1="952.17" y1="306.62" x2="966.17" y2="306.62"/>
-  <text class="small" x="959.17" y="480" text-anchor="middle">2450</text>
-  <path class="curve" d="M 275.83 248.51 L 446.67 258.58 L 617.50 263.76 L 788.33 301.89 L 959.17 295.18"/>
-  <circle class="point" cx="275.83" cy="248.51" r="7"/>
-  <text class="label" x="275.83" y="234.51" text-anchor="middle">67.7%</text>
-  <circle class="point" cx="446.67" cy="258.58" r="7"/>
-  <text class="label" x="446.67" y="244.58" text-anchor="middle">64.4%</text>
-  <circle class="point" cx="617.50" cy="263.76" r="7"/>
-  <text class="label" x="617.50" y="249.76" text-anchor="middle">62.7%</text>
-  <circle class="point" cx="788.33" cy="301.89" r="7"/>
-  <text class="label" x="788.33" y="287.89" text-anchor="middle">50.2%</text>
-  <circle class="point" cx="959.17" cy="295.18" r="7"/>
-  <text class="label" x="959.17" y="281.18" text-anchor="middle">52.4%</text>
+  <line class="ci" x1="251.43" y1="237.96" x2="251.43" y2="259.90"/>
+  <line class="ci" x1="244.43" y1="237.96" x2="258.43" y2="237.96"/>
+  <line class="ci" x1="244.43" y1="259.90" x2="258.43" y2="259.90"/>
+  <text class="small" x="251.43" y="480" text-anchor="middle">2250</text>
+  <line class="ci" x1="397.86" y1="247.58" x2="397.86" y2="270.00"/>
+  <line class="ci" x1="390.86" y1="247.58" x2="404.86" y2="247.58"/>
+  <line class="ci" x1="390.86" y1="270.00" x2="404.86" y2="270.00"/>
+  <text class="small" x="397.86" y="480" text-anchor="middle">2300</text>
+  <line class="ci" x1="544.29" y1="252.41" x2="544.29" y2="275.27"/>
+  <line class="ci" x1="537.29" y1="252.41" x2="551.29" y2="252.41"/>
+  <line class="ci" x1="537.29" y1="275.27" x2="551.29" y2="275.27"/>
+  <text class="small" x="544.29" y="480" text-anchor="middle">2350</text>
+  <line class="ci" x1="690.71" y1="290.19" x2="690.71" y2="313.32"/>
+  <line class="ci" x1="683.71" y1="290.19" x2="697.71" y2="290.19"/>
+  <line class="ci" x1="683.71" y1="313.32" x2="697.71" y2="313.32"/>
+  <text class="small" x="690.71" y="480" text-anchor="middle">2400</text>
+  <line class="ci" x1="837.14" y1="283.72" x2="837.14" y2="306.62"/>
+  <line class="ci" x1="830.14" y1="283.72" x2="844.14" y2="283.72"/>
+  <line class="ci" x1="830.14" y1="306.62" x2="844.14" y2="306.62"/>
+  <text class="small" x="837.14" y="480" text-anchor="middle">2450</text>
+  <line class="ci" x1="983.57" y1="289.63" x2="983.57" y2="312.84"/>
+  <line class="ci" x1="976.57" y1="289.63" x2="990.57" y2="289.63"/>
+  <line class="ci" x1="976.57" y1="312.84" x2="990.57" y2="312.84"/>
+  <text class="small" x="983.57" y="480" text-anchor="middle">2500</text>
+  <path class="curve" d="M 251.43 248.51 L 397.86 258.58 L 544.29 263.76 L 690.71 301.89 L 837.14 295.18 L 983.57 301.28"/>
+  <circle class="point" cx="251.43" cy="248.51" r="7"/>
+  <text class="label" x="251.43" y="234.51" text-anchor="middle">67.7%</text>
+  <circle class="point" cx="397.86" cy="258.58" r="7"/>
+  <text class="label" x="397.86" y="244.58" text-anchor="middle">64.4%</text>
+  <circle class="point" cx="544.29" cy="263.76" r="7"/>
+  <text class="label" x="544.29" y="249.76" text-anchor="middle">62.7%</text>
+  <circle class="point" cx="690.71" cy="301.89" r="7"/>
+  <text class="label" x="690.71" y="287.89" text-anchor="middle">50.2%</text>
+  <circle class="point" cx="837.14" cy="295.18" r="7"/>
+  <text class="label" x="837.14" y="281.18" text-anchor="middle">52.4%</text>
+  <circle class="point" cx="983.57" cy="301.28" r="7"/>
+  <text class="label" x="983.57" y="287.28" text-anchor="middle">50.4%</text>
   <text class="small" x="617.50" y="515" text-anchor="middle">Stockfish 18 configured UCI_Elo</text>
   <text class="small" x="70" y="556">Whiskers transform Cute Chess relative-Elo uncertainty into score bounds.</text>
-  <text class="small" x="1130" y="556" text-anchor="end">tested boundary · above 2450</text>
+  <text class="small" x="1130" y="556" text-anchor="end">tested boundary · level at 2500</text>
   <text class="small" x="70" y="584">This is a hardware-, opening- and time-control-specific Stockfish anchor—not FIDE, Chess.com or universal Elo.</text>
 </svg>

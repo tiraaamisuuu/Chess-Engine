@@ -65,8 +65,9 @@ lower rungs are another reason to prefer the direct near-boundary result and to
 retain the full qualification.
 
 The subsequent [2450 extension](2026-08-27-stockfish-2450-extension.md)
-finished `280-69-251` for Forklift and moved the tested boundary above 2450;
-the formal crossing remains open pending the 2500 rung.
+finished `280-69-251` for Forklift. The later
+[2500 extension](2026-08-28-stockfish-2500-extension.md) was approximately
+level; the formal crossing remains open pending the 2550 rung.
 
 ## Evidence checksums
 
