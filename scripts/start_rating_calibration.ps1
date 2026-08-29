@@ -7,7 +7,8 @@ param(
     [int]$Seed = 1701,
     [int]$Port = 8766,
     [string]$EngineRef = 'HEAD',
-    [string[]]$HistoryRunDir = @()
+    [string[]]$HistoryRunDir = @(),
+    [string]$MatchRunDir = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -47,6 +48,9 @@ if (-not (Test-RecordedProcess $dashboardPidPath)) {
     $dashboardArguments = @('-3', $dashboardScript, '--run-dir', $resolvedRunDir, '--port', $Port)
     foreach ($historyDirectory in $HistoryRunDir) {
         $dashboardArguments += @('--history-run-dir', [System.IO.Path]::GetFullPath($historyDirectory))
+    }
+    if ($MatchRunDir) {
+        $dashboardArguments += @('--match-run-dir', [System.IO.Path]::GetFullPath($MatchRunDir))
     }
     $dashboard = Start-Process -FilePath $pythonLauncher `
         -ArgumentList $dashboardArguments `

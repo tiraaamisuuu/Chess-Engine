@@ -172,6 +172,19 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start_rating_calibration.ps1 
   )
 ```
 
+To pin a live engine-vs-engine confirmation above the ladder, pass its run
+directory with `-MatchRunDir` (or use `--match-run-dir` when starting
+`calibration_dashboard.py` directly). The dashboard then shows its current
+games, W/D/L, score, live Elo estimate, SPRT state, elapsed time, maximum ETA,
+and match contract while the completed calibration remains below it:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_rating_calibration.ps1 `
+  -RunDir 'E:\Dev\Forklift-Research\matches\current-extension' `
+  -HistoryRunDir @('E:\Dev\Forklift-Research\matches\original-ladder') `
+  -MatchRunDir 'E:\Dev\Forklift-Research\matches\retained-search-confirmation'
+```
+
 Use `--quick` only to verify the ladder workflow; it selects four games per
 rung at `2+0.02`. For a rating claim, use substantially larger samples and
 repeat the ladder at a second time control. Even then, describe the result as a

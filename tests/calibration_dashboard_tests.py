@@ -31,6 +31,60 @@ class CalibrationDashboardTests(unittest.TestCase):
         self.assertEqual(result["score"], 0.575)
         self.assertEqual(result["relativeElo"], 52.5)
 
+    def test_builds_live_direct_match_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary)
+            match_dir = run_dir / "match"
+            match_dir.mkdir()
+            (match_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "createdAt": datetime.now(timezone.utc).isoformat(),
+                        "configuration": {
+                            "games": 5000,
+                            "timeControl": "10+0.1",
+                            "threads": 1,
+                            "hashMb": 256,
+                            "concurrency": 6,
+                            "seed": 5701,
+                            "sprt": {"enabled": True, "elo0": 0, "elo1": 5},
+                        },
+                        "engines": [
+                            {
+                                "side": "Candidate",
+                                "matchName": "Search candidate",
+                                "commit": "candidate123",
+                            },
+                            {
+                                "side": "Baseline",
+                                "matchName": "Pre-change baseline",
+                                "commit": "baseline123",
+                            },
+                        ],
+                    }
+                )
+            )
+            (match_dir / "match.log").write_text(
+                "Score of Search candidate vs Pre-change baseline: "
+                "3 - 1 - 2  [0.667] 6\n"
+                "Elo difference: +120.4 +/- 90.0, LOS: 99.0 %, "
+                "DrawRatio: 33.3 %\n"
+                "SPRT: llr 0.42 (14.3%), lbound -2.94444, ubound 2.94444\n"
+            )
+
+            snapshot = dashboard.build_match_snapshot(run_dir)
+
+            self.assertEqual(snapshot["games"], 6)
+            self.assertEqual(
+                (snapshot["wins"], snapshot["draws"], snapshot["losses"]),
+                (3, 2, 1),
+            )
+            self.assertEqual(snapshot["scorePercent"], 66.7)
+            self.assertEqual(snapshot["relativeElo"], 120.4)
+            self.assertFalse(snapshot["relativeEloEstimated"])
+            self.assertEqual(snapshot["sprt"]["llr"], 0.42)
+            self.assertEqual(snapshot["candidate"]["commit"], "candidate123")
+
     def test_interpolates_completed_rating_bracket(self) -> None:
         estimate = dashboard.local_pool_estimate(
             [

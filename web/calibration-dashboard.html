@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Forklift / calibration</title>
+  <title>Forklift / lab</title>
   <style>
     :root {
       color-scheme: dark;
@@ -65,6 +65,13 @@
     .detail { min-height: 17px; margin-top: 8px; font-size: 11px; }
     .log { margin-top: 18px; color: var(--muted); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
     .error { color: var(--bad); }
+    .match-panel { margin-top: 72px; padding: 25px 0 30px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .match-title { margin: 11px 0 8px; font-size: 28px; font-weight: 400; letter-spacing: -.035em; }
+    .match-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; margin-top: 30px; }
+    .match-value { margin-top: 8px; font-size: 21px; font-variant-numeric: tabular-nums; }
+    .match-progress { margin-top: 28px; }
+    .match-summary { margin-top: 16px; color: var(--muted); font-size: 11px; line-height: 1.7; }
+    .match-summary strong { color: var(--fg); font-weight: 400; }
     footer { margin-top: 18px; font-size: 11px; }
     @media (max-width: 620px) {
       main { width: calc(100% - 28px); padding-top: 28px; }
@@ -72,6 +79,7 @@
       .hero { padding: 76px 0 48px; }
       .target { display: block; margin-top: 10px; font-size: .52em; letter-spacing: -.03em; }
       .resource-grid { grid-template-columns: 1fr; gap: 28px; }
+      .match-grid { grid-template-columns: 1fr 1fr; }
       th:nth-child(5), td:nth-child(5), th:nth-child(6), td:nth-child(6) { display: none; }
       th, td { padding-left: 4px; padding-right: 4px; }
     }
@@ -81,12 +89,27 @@
 <body>
   <main>
     <header>
-      <div class="wordmark">forklift<span class="slash">/</span>calibration</div>
+      <div class="wordmark">forklift<span class="slash">/</span>lab</div>
       <div class="status"><span class="dot" id="status-dot"></span><span id="status">connecting</span></div>
     </header>
 
+    <section class="match-panel" id="match-panel" aria-label="Active search experiment" hidden>
+      <div class="spread"><span class="caption">active experiment</span><span class="active" id="match-state">starting</span></div>
+      <h1 class="match-title">retained search confirmation</h1>
+      <div class="detail" id="match-opponents">loading committed revisions</div>
+      <div class="match-grid">
+        <div><div class="caption">games</div><div class="match-value"><span id="match-games">—</span><span class="target" id="match-total"> / —</span></div></div>
+        <div><div class="caption">candidate W–D–L</div><div class="match-value" id="match-wdl">—</div></div>
+        <div><div class="caption">score</div><div class="match-value" id="match-score">—</div></div>
+        <div><div class="caption">relative elo</div><div class="match-value" id="match-elo">—</div></div>
+      </div>
+      <div class="track match-progress" role="progressbar" aria-label="Maximum match progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="bar" id="match-bar"></span></div>
+      <div class="spread progress-caption"><span id="match-percent">—</span><span id="match-eta">maximum ETA calculating</span></div>
+      <div class="match-summary"><div><strong id="match-sprt">SPRT collecting</strong></div><div id="match-contract">waiting for match contract</div></div>
+    </section>
+
     <section class="hero" aria-live="polite">
-      <div class="kicker" id="kicker">paired games completed</div>
+      <div class="kicker" id="kicker">calibration archive · paired games completed</div>
       <div class="count"><span id="completed">—</span><span class="target" id="total"> / —</span></div>
       <div class="eta">estimated time remaining&nbsp;&nbsp;<strong id="eta">calculating</strong></div>
       <div class="track" role="progressbar" aria-label="Calibration progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="bar" id="bar"></span></div>
@@ -140,6 +163,7 @@
     const el = id => document.getElementById(id);
     const number = value => Number(value || 0).toLocaleString("en-GB");
     const pct = value => value == null ? "—" : `${Number(value).toFixed(1)}%`;
+    const signed = value => value == null ? "—" : `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(1)}`;
     const width = value => `${Math.max(0, Math.min(100, Number(value || 0)))}%`;
     const text = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
     const bytes = value => {
@@ -164,15 +188,59 @@
       el(`${id}-meter`).style.width = width(value);
     }
 
+    function renderMatch(match) {
+      const panel = el("match-panel");
+      panel.hidden = !match;
+      if (!match) return;
+
+      const shortCommit = value => value ? String(value).slice(0, 8) : "working tree";
+      const candidate = match.candidate || {};
+      const baseline = match.baseline || {};
+      const cfg = match.configuration || {};
+      const sprt = match.sprt || {};
+      el("match-state").textContent = match.state || "starting";
+      el("match-opponents").textContent = `${candidate.name || "candidate"} ${shortCommit(candidate.commit)} vs ${baseline.name || "baseline"} ${shortCommit(baseline.commit)}`;
+      el("match-games").textContent = number(match.games);
+      el("match-total").textContent = ` / ${number(match.totalGames)}`;
+      el("match-wdl").textContent = `${number(match.wins)}–${number(match.draws)}–${number(match.losses)}`;
+      el("match-score").textContent = pct(match.scorePercent);
+      el("match-elo").textContent = match.relativeElo == null
+        ? "—"
+        : `${match.relativeEloEstimated ? "≈" : ""}${signed(match.relativeElo)}${match.uncertainty == null ? "" : ` ± ${Number(match.uncertainty).toFixed(1)}`}`;
+      el("match-bar").style.width = width(match.percent);
+      el("match-bar").parentElement.setAttribute("aria-valuenow", String(match.percent || 0));
+      el("match-percent").textContent = `${Number(match.percent || 0).toFixed(1)}% of maximum`;
+      el("match-eta").textContent = match.state === "complete"
+        ? `completed in ${match.elapsed}`
+        : `elapsed ${match.elapsed} · max ETA ${match.eta || "calculating"} · may stop early`;
+
+      let sprtText = "SPRT collecting";
+      if (!sprt.enabled) sprtText = "fixed-length match";
+      else if (sprt.decision === "accepted_h1") sprtText = "H1 accepted · candidate confirmed";
+      else if (sprt.decision === "accepted_h0") sprtText = "H0 accepted · candidate not confirmed";
+      else if (sprt.llr != null) sprtText = `SPRT LLR ${Number(sprt.llr).toFixed(2)} · bounds ${Number(sprt.lowerBound).toFixed(2)} to ${Number(sprt.upperBound).toFixed(2)}`;
+      else if (match.state === "complete") sprtText = "SPRT inconclusive";
+      else if (cfg.elo0 != null && cfg.elo1 != null) sprtText = `SPRT collecting · target ${signed(cfg.elo0)} to ${signed(cfg.elo1)} Elo`;
+      el("match-sprt").textContent = sprtText;
+
+      const failureTotal = Object.values(match.failures || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+      el("match-contract").textContent = `${cfg.timeControl || "—"} · ${number(cfg.concurrency)} concurrent · ${number(cfg.threads)} thread · ${number(cfg.hashMb)} MB hash · seed ${number(cfg.seed)}${failureTotal ? ` · ${number(failureTotal)} technical failure${failureTotal === 1 ? "" : "s"}` : ""}`;
+    }
+
     async function refresh() {
       try {
         const response = await fetch("/api/status", {cache: "no-store"});
         if (!response.ok) throw new Error("status unavailable");
         const data = await response.json();
         const resources = data.resources || {};
-        const stopped = !data.running && data.state !== "complete" && data.state !== "starting";
+        const match = data.match || null;
+        renderMatch(match);
+        const activeMatch = match && match.state === "running";
+        const stopped = match
+          ? !match.running && match.state !== "complete" && match.state !== "starting"
+          : !data.running && data.state !== "complete" && data.state !== "starting";
         el("status-dot").classList.toggle("stopped", stopped);
-        el("status").textContent = data.state;
+        el("status").textContent = activeMatch ? "search test running" : (match?.state || data.state);
         el("completed").textContent = number(data.completedGames);
         el("total").textContent = ` / ${number(data.totalGames)}`;
         el("eta").textContent = data.eta;
@@ -208,9 +276,10 @@
         resource("cpu", resources.cpuPercent);
         resource("ram", resources.ramPercent);
         el("ram-detail").textContent = `${bytes(resources.ramUsed)} / ${bytes(resources.ramTotal)}`;
-        el("recent").innerHTML = (data.recent || []).map(line => `<div>${text(line)}</div>`).join("") || "waiting for the runner";
+        const recent = match?.recent?.length ? match.recent : (data.recent || []);
+        el("recent").innerHTML = recent.map(line => `<div>${text(line)}</div>`).join("") || "waiting for the runner";
         el("errors").innerHTML = (data.errors || []).map(line => `<div>${text(line)}</div>`).join("");
-        const cfg = data.configuration || {};
+        const cfg = activeMatch ? (match.configuration || {}) : (data.configuration || {});
         const workers = Number(cfg.concurrency) * 2 * Number(cfg.threads);
         el("cpu-detail").textContent = Number.isFinite(workers) && workers > 0
           ? `${number(cfg.concurrency)} simultaneous games · ${number(workers)} search workers`

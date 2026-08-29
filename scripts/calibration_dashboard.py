@@ -53,6 +53,11 @@ def arguments() -> argparse.Namespace:
         default=[],
         help="completed earlier ladder directory to include (repeatable)",
     )
+    parser.add_argument(
+        "--match-run-dir",
+        type=Path,
+        help="direct engine-match run directory to show above the calibration",
+    )
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--snapshot", action="store_true")
@@ -182,6 +187,12 @@ ELO_PATTERN = re.compile(
     r"\s+\+/-\s+([+\-]?(?:[0-9.]+|inf|nan))",
     re.IGNORECASE | re.MULTILINE,
 )
+SPRT_PATTERN = re.compile(
+    r"^SPRT:\s+llr\s+([+\-]?(?:[0-9.eE]+|inf|nan))\s+\([^)]*\),"
+    r"\s+lbound\s+([+\-]?(?:[0-9.eE]+|inf|nan)),"
+    r"\s+ubound\s+([+\-]?(?:[0-9.eE]+|inf|nan))\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 def finite_float(value: object) -> float | None:
@@ -224,6 +235,170 @@ def parse_live_result(log_text: str) -> dict[str, object]:
         "score": score_fraction,
         "relativeElo": relative_elo,
         "uncertainty": uncertainty,
+    }
+
+
+def parse_live_sprt(log_text: str, enabled: bool) -> dict[str, object]:
+    if not enabled:
+        return {"enabled": False, "decision": "disabled"}
+    matches = list(SPRT_PATTERN.finditer(log_text))
+    if not matches:
+        return {"enabled": True, "decision": "collecting"}
+    match = matches[-1]
+    llr = finite_float(match.group(1))
+    lower = finite_float(match.group(2))
+    upper = finite_float(match.group(3))
+    decision = "inconclusive"
+    if llr is not None and lower is not None and upper is not None:
+        if llr >= upper:
+            decision = "accepted_h1"
+        elif llr <= lower:
+            decision = "accepted_h0"
+    return {
+        "enabled": True,
+        "decision": decision,
+        "llr": llr,
+        "lowerBound": lower,
+        "upperBound": upper,
+    }
+
+
+def build_match_snapshot(run_dir: Path) -> dict[str, object]:
+    match_dir = run_dir / "match"
+    if not match_dir.is_dir():
+        match_dir = run_dir
+    manifest = read_json(match_dir / "manifest.json")
+    configuration = manifest.get("configuration")
+    configuration = configuration if isinstance(configuration, dict) else {}
+    result = read_json(match_dir / "result.json")
+    completed = result.get("completed") is True
+    log_text = read_text(match_dir / "match.log")
+
+    if completed:
+        score = result.get("score")
+        score = score if isinstance(score, dict) else {}
+        elo = result.get("elo")
+        elo = elo if isinstance(elo, dict) else {}
+        live = {
+            "wins": int(score.get("candidateWins", 0) or 0),
+            "losses": int(score.get("baselineWins", 0) or 0),
+            "draws": int(score.get("draws", 0) or 0),
+            "games": int(score.get("games", 0) or 0),
+            "score": finite_float(score.get("candidateScore")),
+            "relativeElo": finite_float(elo.get("difference")),
+            "uncertainty": finite_float(elo.get("uncertainty")),
+        }
+    else:
+        live = parse_live_result(log_text)
+
+    sprt_configuration = configuration.get("sprt")
+    sprt_configuration = (
+        sprt_configuration if isinstance(sprt_configuration, dict) else {}
+    )
+    sprt_enabled = sprt_configuration.get("enabled") is True
+    result_sprt = result.get("sprt")
+    sprt = (
+        result_sprt
+        if completed and isinstance(result_sprt, dict)
+        else parse_live_sprt(log_text, sprt_enabled)
+    )
+
+    engines = manifest.get("engines")
+    engines = engines if isinstance(engines, list) else []
+    candidate = next(
+        (
+            engine
+            for engine in engines
+            if isinstance(engine, dict) and engine.get("side") == "Candidate"
+        ),
+        {},
+    )
+    baseline = next(
+        (
+            engine
+            for engine in engines
+            if isinstance(engine, dict) and engine.get("side") == "Baseline"
+        ),
+        {},
+    )
+    candidate = candidate if isinstance(candidate, dict) else {}
+    baseline = baseline if isinstance(baseline, dict) else {}
+
+    started = parse_datetime(manifest.get("createdAt"))
+    completed_at = parse_datetime(result.get("completedAt")) if completed else None
+    ended = completed_at or datetime.now(timezone.utc)
+    elapsed_seconds = max(0.0, (ended - started).total_seconds()) if started else 0.0
+    games = int(live.get("games", 0) or 0)
+    total_games = int(configuration.get("games", 0) or 0)
+    seconds_per_game = elapsed_seconds / games if games else None
+    eta_seconds = (
+        0.0
+        if completed
+        else seconds_per_game * max(0, total_games - games)
+        if seconds_per_game is not None
+        else None
+    )
+    pid = read_pid(run_dir / "match.pid")
+    running = process_alive(pid)
+    if completed:
+        state = "complete"
+    elif running:
+        state = "running"
+    elif manifest:
+        state = "stopped"
+    else:
+        state = "starting"
+
+    score_fraction = finite_float(live.get("score"))
+    relative_elo = finite_float(live.get("relativeElo"))
+    relative_elo_estimated = False
+    if relative_elo is None and score_fraction is not None and 0.0 < score_fraction < 1.0:
+        relative_elo = 400.0 * math.log10(score_fraction / (1.0 - score_fraction))
+        relative_elo_estimated = True
+    failures = result.get("failures")
+    failures = failures if isinstance(failures, dict) else {}
+    recent = [line for line in log_text.splitlines() if line.strip()][-6:]
+    return {
+        "state": state,
+        "running": running,
+        "pid": pid,
+        "games": games,
+        "totalGames": total_games,
+        "percent": round(100.0 * games / total_games, 2) if total_games else 0.0,
+        "wins": int(live.get("wins", 0) or 0),
+        "draws": int(live.get("draws", 0) or 0),
+        "losses": int(live.get("losses", 0) or 0),
+        "scorePercent": (
+            round(score_fraction * 100.0, 1) if score_fraction is not None else None
+        ),
+        "relativeElo": relative_elo,
+        "relativeEloEstimated": relative_elo_estimated,
+        "uncertainty": finite_float(live.get("uncertainty")),
+        "elapsed": duration(elapsed_seconds),
+        "eta": duration(eta_seconds),
+        "sprt": sprt,
+        "failures": {
+            key: int(failures.get(key, 0) or 0)
+            for key in ("timeForfeits", "crashes", "illegalMoves", "disconnects")
+        },
+        "candidate": {
+            "name": candidate.get("matchName") or "Candidate",
+            "commit": candidate.get("commit") or candidate.get("selector"),
+        },
+        "baseline": {
+            "name": baseline.get("matchName") or "Baseline",
+            "commit": baseline.get("commit") or baseline.get("selector"),
+        },
+        "configuration": {
+            "timeControl": configuration.get("timeControl"),
+            "threads": configuration.get("threads"),
+            "hashMb": configuration.get("hashMb"),
+            "concurrency": configuration.get("concurrency"),
+            "seed": configuration.get("seed"),
+            "elo0": sprt_configuration.get("elo0"),
+            "elo1": sprt_configuration.get("elo1"),
+        },
+        "recent": recent,
     }
 
 
@@ -453,7 +628,9 @@ def campaign_signature(configuration: dict[str, object]) -> tuple[object, ...]:
 
 
 def build_snapshot(
-    run_dir: Path, history_run_dirs: list[Path] | None = None
+    run_dir: Path,
+    history_run_dirs: list[Path] | None = None,
+    match_run_dir: Path | None = None,
 ) -> dict[str, object]:
     manifest = read_json(run_dir / "ladder-manifest.json")
     configuration = manifest.get("configuration")
@@ -555,6 +732,7 @@ def build_snapshot(
         },
         "recent": recent_lines,
         "errors": stderr_lines,
+        "match": build_match_snapshot(match_run_dir) if match_run_dir else None,
     }
 
 
@@ -581,14 +759,16 @@ def keep_system_awake(run_dir: Path) -> None:
 
 
 def make_handler(
-    run_dir: Path, history_run_dirs: list[Path] | None = None
+    run_dir: Path,
+    history_run_dirs: list[Path] | None = None,
+    match_run_dir: Path | None = None,
 ) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             route = urlparse(self.path).path
             if route == "/api/status":
                 payload = json.dumps(
-                    build_snapshot(run_dir, history_run_dirs)
+                    build_snapshot(run_dir, history_run_dirs, match_run_dir)
                 ).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -618,14 +798,22 @@ def main() -> int:
     args = arguments()
     run_dir = args.run_dir.expanduser().resolve()
     history_run_dirs = [path.expanduser().resolve() for path in args.history_run_dir]
+    match_run_dir = (
+        args.match_run_dir.expanduser().resolve() if args.match_run_dir else None
+    )
     if args.snapshot:
-        print(json.dumps(build_snapshot(run_dir, history_run_dirs), indent=2))
+        print(
+            json.dumps(
+                build_snapshot(run_dir, history_run_dirs, match_run_dir), indent=2
+            )
+        )
         return 0
     if not HTML_PATH.is_file():
         raise FileNotFoundError(HTML_PATH)
     threading.Thread(target=keep_system_awake, args=(run_dir,), daemon=True).start()
     server = ThreadingHTTPServer(
-        (args.host, args.port), make_handler(run_dir, history_run_dirs)
+        (args.host, args.port),
+        make_handler(run_dir, history_run_dirs, match_run_dir),
     )
     print(f"Calibration dashboard: http://{args.host}:{args.port}", flush=True)
     server.serve_forever()
