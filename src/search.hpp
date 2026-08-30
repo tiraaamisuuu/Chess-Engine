@@ -226,32 +226,6 @@ inline void updateHistoryValue(int& entry, int bonus){
     entry = std::clamp(entry, -HistoryLimit, HistoryLimit);
 }
 
-inline int quietLateMoveReduction(int newDepth, size_t moveIndex, bool improving,
-                                  bool pvNode, bool primaryKiller,
-                                  int historyScore, int continuationScore){
-    if(newDepth < 3 || moveIndex < 3) return 0;
-
-    int reduction = 1;
-    if(moveIndex >= 4) reduction++;
-    if(moveIndex >= 8) reduction++;
-    if(newDepth >= 5) reduction++;
-    if(newDepth >= 8 && moveIndex >= 12) reduction++;
-    if(!improving) reduction++;
-    if(pvNode) reduction--;
-    if(primaryKiller) reduction--;
-
-    if(historyScore > 18000) reduction -= 2;
-    else if(historyScore > 9000) reduction--;
-
-    // A reply that has repeatedly worked after the previous move deserves a
-    // fuller search. Persistently poor replies can be reduced one ply further,
-    // but only in the deeper, genuinely late part of the move list.
-    if(continuationScore > 12000) reduction--;
-    else if(continuationScore < -12000 && newDepth >= 5 && moveIndex >= 8) reduction++;
-
-    return std::clamp(reduction, 0, std::max(0, newDepth - 1));
-}
-
 template<typename MoveContainer, typename Scorer>
 inline void sortMovesByScore(MoveContainer& moves, Scorer scorer){
     struct ScoredMove { int score; Move move; };
@@ -606,13 +580,17 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
 
         int reduction = 0;
         if(newDepth >= 3 && i >= 3 && isQuiet && !givesCheck){
-            const int continuationScore = prevMove.to < 64
-                ? ctx.continuationHistory[side][prevMove.to][m.to]
-                : 0;
-            reduction = quietLateMoveReduction(
-                newDepth, i, improving, pvNode,
-                ply < 128 && sameMove(m, ctx.killer[ply][0]),
-                ctx.history[side][m.from][m.to], continuationScore);
+            reduction = 1;
+            if(i >= 4) reduction++;
+            if(i >= 8) reduction++;
+            if(newDepth >= 5) reduction++;
+            if(newDepth >= 8 && i >= 12) reduction++;
+            if(!improving) reduction++;
+            if(pvNode) reduction--;
+            if(ply < 128 && sameMove(m, ctx.killer[ply][0])) reduction--;
+            if(ctx.history[side][m.from][m.to] > 18000) reduction -= 2;
+            else if(ctx.history[side][m.from][m.to] > 9000) reduction--;
+            reduction = std::clamp(reduction, 0, std::max(0, newDepth - 1));
         }
 
         if(i == 0){

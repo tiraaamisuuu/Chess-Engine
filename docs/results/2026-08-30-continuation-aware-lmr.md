@@ -46,9 +46,21 @@ stability signal, so the candidate advanced to confirmation.
 
 ## Powered confirmation
 
-The preregistered confirmation is running under
+The preregistered confirmation completed under
 `E:\Dev\Forklift-Research\matches\lmr-continuation-confirmation-20260830`.
-Its maximum is 5,000 games at `10+0.1`, with SPRT Elo0 = 0 and Elo1 = 5,
-opening seed 5802, one thread, 256 MiB hash and six concurrent games. The
-candidate is retained only if the registered decision rule supports it.
+Its contract was 5,000 games at `10+0.1`, with SPRT Elo0 = 0 and Elo1 = 5,
+opening seed 5802, one thread, 256 MiB hash and six concurrent games.
 
+- Candidate W-D-L: `1513-1927-1560`
+- Candidate score: 49.5%
+- Relative Elo: `-3.3 +/- 7.5`
+- SPRT: inconclusive at maximum games, LLR `-1.94` within `[-2.94, 2.94]`
+- Technical failures: zero
+
+## Decision
+
+Rejected and reverted. The experiment did not cross H0, so it is not evidence
+that every continuation-aware reduction scheme is harmful. It did, however,
+exhaust the registered sample without demonstrating the positive gain required
+for promotion, and the point estimate favoured the baseline. The short
+200-game result was noise and is not used as a strength claim.

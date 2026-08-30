@@ -545,21 +545,6 @@ void testContinuationHistoryOrdering(const Zobrist& zobrist){
            "quiet ordering should include the previous-move continuation history");
 }
 
-void testContinuationAwareLateMoveReduction(){
-    const int baseline = quietLateMoveReduction(6, 8, true, false, false, 0, 0);
-    const int goodReply = quietLateMoveReduction(6, 8, true, false, false, 0, 20000);
-    const int poorReply = quietLateMoveReduction(6, 8, true, false, false, 0, -20000);
-    expect(baseline > 0, "late quiet moves should receive a baseline reduction");
-    expect(goodReply < baseline,
-           "successful continuations should receive a smaller late-move reduction");
-    expect(poorReply > baseline,
-           "poor continuations should receive a larger late-move reduction");
-    expect(quietLateMoveReduction(2, 20, false, false, false, 0, -90000) == 0,
-           "shallow searches should not reduce late moves");
-    expect(quietLateMoveReduction(6, 8, true, true, false, 0, 0) < baseline,
-           "principal-variation nodes should remain less aggressively reduced");
-}
-
 void testClockTimeManagement(const Zobrist& zobrist){
     Board board;
     board.setZobrist(&zobrist);
@@ -659,7 +644,6 @@ int main(){
     testIncrementalNnue(zobrist);
     testStaticExchange(zobrist);
     testContinuationHistoryOrdering(zobrist);
-    testContinuationAwareLateMoveReduction();
     testClockTimeManagement(zobrist);
     testParallelSearchSafety(zobrist);
 
