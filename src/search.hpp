@@ -181,6 +181,15 @@ inline int mvvLvaScore(const Board& bd, const Move& m){
     return victim*10 - attacker;
 }
 
+inline int scoreCaptureMove(const Board& bd, SearchContext& ctx, const Move& m, int see){
+    const int side = (bd.stm==Color::White)?0:1;
+    const Piece attacker = bd.at(m.from);
+    const int attackerType = std::clamp(int(attacker.t), 0, 6);
+    const int band = see >= 0 ? 100000 : 70000;
+    return band + see * 8 + mvvLvaScore(bd, m) +
+           ctx.captureHistory[side][attackerType][m.to];
+}
+
 inline int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const Move& ttMove, int ply, const Move& prevMove){
     if(ttMove.from < 64 && ttMove.from==m.from && ttMove.to==m.to && ttMove.promo==m.promo) return 1000000;
 
@@ -199,8 +208,7 @@ inline int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const M
 
     if(m.isCapture || m.isEnPassant){
         const int see = staticExchangeEvaluation(bd, m);
-        const int band = see >= 0 ? 100000 : 70000;
-        return band + see * 8 + mvvLvaScore(bd, m) + ctx.captureHistory[side][attackerType][m.to];
+        return scoreCaptureMove(bd, ctx, m, see);
     }
 
     if(ply<128){
@@ -218,6 +226,80 @@ inline int scoreMove(const Board& bd, SearchContext& ctx, const Move& m, const M
     }
     return quietScore;
 }
+
+enum class MoveStage : u8 {
+    Transposition,
+    GoodTactical,
+    SpecialQuiet,
+    Quiet,
+    BadTactical,
+    Done
+};
+
+class StagedMovePicker {
+public:
+    StagedMovePicker(const Board& board, SearchContext& context, MoveList& moves,
+                     const Move& ttMove, int ply, const Move& previousMove)
+        : moves_(moves){
+        const int side = board.stm == Color::White ? 0 : 1;
+        const Move counter = previousMove.from < 64 && previousMove.to < 64
+            ? context.countermove[side][previousMove.from][previousMove.to]
+            : invalidMove();
+
+        for(size_t index = 0; index < moves_.size(); index++){
+            const Move& move = moves_[index];
+            if(ttMove.from < 64 && sameMove(move, ttMove)){
+                stages_[index] = MoveStage::Transposition;
+                scores_[index] = 1000000;
+            } else if(move.promo != PieceType::None){
+                stages_[index] = MoveStage::GoodTactical;
+                scores_[index] = scoreMove(board, context, move, invalidMove(), ply, previousMove);
+            } else if(move.isCapture || move.isEnPassant){
+                const int see = staticExchangeEvaluation(board, move);
+                stages_[index] = see >= 0 ? MoveStage::GoodTactical : MoveStage::BadTactical;
+                scores_[index] = scoreCaptureMove(board, context, move, see);
+            } else {
+                const bool killer = ply < 128 &&
+                    (sameMove(move, context.killer[ply][0]) ||
+                     sameMove(move, context.killer[ply][1]));
+                stages_[index] = killer || sameMove(move, counter)
+                    ? MoveStage::SpecialQuiet
+                    : MoveStage::Quiet;
+                scores_[index] = scoreMove(board, context, move, invalidMove(), ply, previousMove);
+            }
+        }
+    }
+
+    bool next(Move& move){
+        while(stage_ != MoveStage::Done){
+            size_t bestIndex = moves_.size();
+            int bestScore = -1000000000;
+            for(size_t index = nextIndex_; index < moves_.size(); index++){
+                if(stages_[index] != stage_ || scores_[index] <= bestScore) continue;
+                bestIndex = index;
+                bestScore = scores_[index];
+            }
+            if(bestIndex == moves_.size()){
+                stage_ = static_cast<MoveStage>(static_cast<u8>(stage_) + 1);
+                continue;
+            }
+
+            std::swap(moves_[nextIndex_], moves_[bestIndex]);
+            std::swap(scores_[nextIndex_], scores_[bestIndex]);
+            std::swap(stages_[nextIndex_], stages_[bestIndex]);
+            move = moves_[nextIndex_++];
+            return true;
+        }
+        return false;
+    }
+
+private:
+    MoveList& moves_;
+    std::array<int, 320> scores_{};
+    std::array<MoveStage, 320> stages_{};
+    size_t nextIndex_=0;
+    MoveStage stage_=MoveStage::Transposition;
+};
 
 inline void updateHistoryValue(int& entry, int bonus){
     constexpr int HistoryLimit = 90000;
@@ -526,9 +608,7 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         depth++;
     }
 
-    sortMovesByScore(moves, [&](const Move& move){
-        return scoreMove(bd, ctx, move, ttMove, ply, prevMove);
-    });
+    StagedMovePicker movePicker(bd, ctx, moves, ttMove, ply, prevMove);
 
     int best = -INF;
     Move bestM{};
@@ -540,22 +620,24 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
     quietTried.reserve(moves.size());
     tacticalTried.reserve(moves.size());
 
-    for(size_t i=0;i<moves.size();i++){
-        const Move& m = moves[i];
+    Move m{};
+    size_t i=0;
+    while(movePicker.next(m)){
+        const size_t moveIndex = i++;
         bool isQuiet = !(m.isCapture || m.isEnPassant) && (m.promo==PieceType::None);
 
         if(!inCheck && !pvNode && isQuiet){
             if(depth <= 3){
                 const size_t futilitySkipAfter = size_t(4 + depth * 3);
                 const int futilityMargin = 90 + 120 * depth + (improving ? 20 : 0);
-                if(i >= futilitySkipAfter && staticEval + futilityMargin <= alpha){
+                if(moveIndex >= futilitySkipAfter && staticEval + futilityMargin <= alpha){
                     continue;
                 }
             }
 
             if(depth <= 4){
                 const size_t lmpThreshold = size_t(3 + depth * depth + (improving ? 2 : 0));
-                if(i >= lmpThreshold){
+                if(moveIndex >= lmpThreshold){
                     continue;
                 }
             }
@@ -579,12 +661,12 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
         int score = 0;
 
         int reduction = 0;
-        if(newDepth >= 3 && i >= 3 && isQuiet && !givesCheck){
+        if(newDepth >= 3 && moveIndex >= 3 && isQuiet && !givesCheck){
             reduction = 1;
-            if(i >= 4) reduction++;
-            if(i >= 8) reduction++;
+            if(moveIndex >= 4) reduction++;
+            if(moveIndex >= 8) reduction++;
             if(newDepth >= 5) reduction++;
-            if(newDepth >= 8 && i >= 12) reduction++;
+            if(newDepth >= 8 && moveIndex >= 12) reduction++;
             if(!improving) reduction++;
             if(pvNode) reduction--;
             if(ply < 128 && sameMove(m, ctx.killer[ply][0])) reduction--;
@@ -593,7 +675,7 @@ inline int negamax(Board& bd, SearchContext& ctx, int depth, int alpha, int beta
             reduction = std::clamp(reduction, 0, std::max(0, newDepth - 1));
         }
 
-        if(i == 0){
+        if(moveIndex == 0){
             score = -negamax(bd, ctx, newDepth, -beta, -alpha, ply + 1, m, true);
         } else {
             // PVS + LMR: search late quiet moves reduced on a null-window first.

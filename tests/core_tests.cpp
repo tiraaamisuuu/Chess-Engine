@@ -545,6 +545,62 @@ void testContinuationHistoryOrdering(const Zobrist& zobrist){
            "quiet ordering should include the previous-move continuation history");
 }
 
+void testStagedMovePicker(const Zobrist& zobrist){
+    Board board;
+    board.setZobrist(&zobrist);
+    board.reset();
+    SearchContext context;
+    MoveList moves;
+    board.genLegalMoves(moves);
+    const size_t legalCount = moves.size();
+
+    const Move ttMove = findMove(board, "g1f3");
+    const Move killer = findMove(board, "b1c3");
+    const Move counter = findMove(board, "e2e4");
+    context.killer[0][0] = killer;
+    Move previous = invalidMove();
+    previous.from = 1;
+    previous.to = 18;
+    context.countermove[0][previous.from][previous.to] = counter;
+
+    StagedMovePicker picker(board, context, moves, ttMove, 0, previous);
+    Move picked{};
+    expect(picker.next(picked) && sameMove(picked, ttMove),
+           "staged picker should emit the transposition move first");
+    expect(picker.next(picked) && sameMove(picked, killer),
+           "staged picker should emit the primary killer before ordinary quiets");
+    expect(picker.next(picked) && sameMove(picked, counter),
+           "staged picker should emit the countermove before ordinary quiets");
+
+    std::vector<std::string> seen = {
+        moveToUCI(ttMove), moveToUCI(killer), moveToUCI(counter)
+    };
+    while(picker.next(picked)){
+        const std::string uci = moveToUCI(picked);
+        expect(std::find(seen.begin(), seen.end(), uci) == seen.end(),
+               "staged picker should never emit a move twice");
+        seen.push_back(uci);
+    }
+    expect(seen.size() == legalCount,
+           "staged picker should emit every legal move exactly once");
+
+    expect(board.loadFEN("4k3/8/8/3q4/8/8/3R4/4K3 w - - 0 1"),
+           "winning staged-picker fixture should load");
+    board.genLegalMoves(moves);
+    StagedMovePicker winningPicker(board, context, moves, invalidMove(), 0, invalidMove());
+    expect(winningPicker.next(picked) && moveToUCI(picked) == "d2d5",
+           "winning captures should precede quiet moves");
+
+    expect(board.loadFEN("4k3/8/4p3/3p4/8/8/8/3QK3 w - - 0 1"),
+           "losing staged-picker fixture should load");
+    board.genLegalMoves(moves);
+    StagedMovePicker losingPicker(board, context, moves, invalidMove(), 0, invalidMove());
+    Move last{};
+    while(losingPicker.next(picked)) last = picked;
+    expect(moveToUCI(last) == "d1d5",
+           "losing captures should follow ordinary quiet moves");
+}
+
 void testClockTimeManagement(const Zobrist& zobrist){
     Board board;
     board.setZobrist(&zobrist);
@@ -644,6 +700,7 @@ int main(){
     testIncrementalNnue(zobrist);
     testStaticExchange(zobrist);
     testContinuationHistoryOrdering(zobrist);
+    testStagedMovePicker(zobrist);
     testClockTimeManagement(zobrist);
     testParallelSearchSafety(zobrist);
 
